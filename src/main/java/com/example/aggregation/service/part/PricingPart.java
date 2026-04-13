@@ -43,7 +43,7 @@ public class PricingPart implements AggregationPart {
                 .asString(context.inboundRequest().path("currency").asString("USD"))
         );
 
-        return pricingClient.postPricing(request, context.headers());
+        return pricingClient.postPricing(request, context.downstreamRequest());
     }
 
     @Override

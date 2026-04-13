@@ -37,6 +37,6 @@ public class ProfilePart extends EmbeddedJsonPart {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
         request.put("customerId", context.mainResponse().path("customerId").asString());
         request.put("market", context.inboundRequest().path("market").asString("US"));
-        return profileClient.postProfile(request, context.headers());
+        return profileClient.postProfile(request, context.downstreamRequest());
     }
 }

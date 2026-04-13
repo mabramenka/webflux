@@ -1,7 +1,7 @@
 package com.example.aggregation.client.impl;
 
 import com.example.aggregation.client.PricingClient;
-import com.example.aggregation.web.DownstreamHeaders;
+import com.example.aggregation.web.DownstreamRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -20,11 +20,11 @@ public class WebClientPricingClient implements PricingClient {
     }
 
     @Override
-    public Mono<JsonNode> postPricing(ObjectNode request, DownstreamHeaders headers) {
+    public Mono<JsonNode> postPricing(ObjectNode request, DownstreamRequest downstreamRequest) {
         return webClient.post()
-            .uri("/pricing")
+            .uri(uriBuilder -> downstreamRequest.applyQueryParams(uriBuilder.path("/pricing")).build())
             .contentType(MediaType.APPLICATION_JSON)
-            .headers(headers::applyTo)
+            .headers(downstreamRequest.headers()::applyTo)
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), response ->

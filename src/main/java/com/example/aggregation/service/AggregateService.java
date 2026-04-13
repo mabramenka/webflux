@@ -1,7 +1,7 @@
 package com.example.aggregation.service;
 
 import com.example.aggregation.client.MainClient;
-import com.example.aggregation.web.DownstreamHeaders;
+import com.example.aggregation.web.DownstreamRequest;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,19 +29,19 @@ public class AggregateService {
         this.partByName = buildPartIndex(parts);
     }
 
-    public Mono<JsonNode> aggregate(ObjectNode inboundRequest, DownstreamHeaders headers) {
+    public Mono<JsonNode> aggregate(ObjectNode inboundRequest, DownstreamRequest downstreamRequest) {
         return Mono.defer(() -> {
             RequestedParts requestedParts = RequestedParts.from(inboundRequest);
             validateRequestedParts(requestedParts);
 
             ObjectNode mainRequest = buildMainRequest(inboundRequest);
 
-            return mainClient.postMain(mainRequest, headers)
+            return mainClient.postMain(mainRequest, downstreamRequest)
                 .flatMap(mainResponse -> {
                     AggregationContext context = new AggregationContext(
                         inboundRequest,
                         mainResponse,
-                        headers,
+                        downstreamRequest,
                         requestedParts
                     );
 

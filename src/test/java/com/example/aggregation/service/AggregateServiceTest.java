@@ -11,6 +11,7 @@ import com.example.aggregation.client.ProfileClient;
 import com.example.aggregation.service.part.PricingPart;
 import com.example.aggregation.service.part.ProfilePart;
 import com.example.aggregation.web.DownstreamHeaders;
+import com.example.aggregation.web.DownstreamRequest;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,10 @@ class AggregateServiceTest {
         ObjectNode inboundRequest = objectMapper.createObjectNode()
             .put("customerId", "cust-1")
             .put("market", "US");
-        DownstreamHeaders headers = DownstreamHeaders.builder().authorization("Bearer token").build();
+        DownstreamRequest downstreamRequest = new DownstreamRequest(
+            DownstreamHeaders.builder().authorization("Bearer token").build(),
+            true
+        );
 
         JsonNode mainResponse = json("""
             {
@@ -63,13 +67,13 @@ class AggregateServiceTest {
             }
             """);
 
-        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamHeaders.class))).thenReturn(Mono.just(mainResponse));
-        when(profileClient.postProfile(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamRequest.class))).thenReturn(Mono.just(mainResponse));
+        when(profileClient.postProfile(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.error(new RuntimeException("profile down")));
-        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.error(new RuntimeException("pricing down")));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, headers))
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest))
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("customerId").asString()).isEqualTo("cust-1");
@@ -88,12 +92,12 @@ class AggregateServiceTest {
             }
             """);
 
-        when(profileClient.postProfile(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(profileClient.postProfile(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.just(profileResponse));
-        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.just(pricingResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, headers))
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest))
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("customerProfile").path("tier").asString())
@@ -124,11 +128,11 @@ class AggregateServiceTest {
             """);
         JsonNode profileResponse = json("{\"tier\":\"GOLD\"}");
 
-        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamHeaders.class))).thenReturn(Mono.just(mainResponse));
-        when(profileClient.postProfile(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamRequest.class))).thenReturn(Mono.just(mainResponse));
+        when(profileClient.postProfile(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.just(profileResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, DownstreamHeaders.builder().build()))
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("customerProfile").path("tier").asString())
@@ -137,7 +141,7 @@ class AggregateServiceTest {
             })
             .verifyComplete();
 
-        verify(pricingClient, never()).postPricing(any(ObjectNode.class), any(DownstreamHeaders.class));
+        verify(pricingClient, never()).postPricing(any(ObjectNode.class), any(DownstreamRequest.class));
     }
 
     @Test
@@ -146,13 +150,13 @@ class AggregateServiceTest {
             .put("customerId", "cust-1");
         inboundRequest.putArray("include").add("unknown");
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, DownstreamHeaders.builder().build()))
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
             .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unknown"))
             .verify();
 
-        verify(mainClient, never()).postMain(any(ObjectNode.class), any(DownstreamHeaders.class));
+        verify(mainClient, never()).postMain(any(ObjectNode.class), any(DownstreamRequest.class));
     }
 
     @Test
@@ -161,13 +165,13 @@ class AggregateServiceTest {
             .put("customerId", "cust-1");
         inboundRequest.putArray("include").add(42);
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, DownstreamHeaders.builder().build()))
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
             .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("non-blank strings"))
             .verify();
 
-        verify(mainClient, never()).postMain(any(ObjectNode.class), any(DownstreamHeaders.class));
+        verify(mainClient, never()).postMain(any(ObjectNode.class), any(DownstreamRequest.class));
     }
 
     @Test
@@ -194,11 +198,11 @@ class AggregateServiceTest {
             }
             """);
 
-        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamHeaders.class))).thenReturn(Mono.just(mainResponse));
-        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamRequest.class))).thenReturn(Mono.just(mainResponse));
+        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.just(pricingResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, DownstreamHeaders.builder().build()))
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).has("price")).isFalse();
@@ -207,7 +211,7 @@ class AggregateServiceTest {
             })
             .verifyComplete();
 
-        verify(profileClient, never()).postProfile(any(ObjectNode.class), any(DownstreamHeaders.class));
+        verify(profileClient, never()).postProfile(any(ObjectNode.class), any(DownstreamRequest.class));
     }
 
     private JsonNode json(String raw) {
@@ -216,5 +220,9 @@ class AggregateServiceTest {
         } catch (Exception ex) {
             throw new IllegalArgumentException(ex);
         }
+    }
+
+    private DownstreamRequest downstreamRequest() {
+        return new DownstreamRequest(DownstreamHeaders.builder().build(), null);
     }
 }
