@@ -41,8 +41,7 @@ class AggregateServiceTest {
     void setUp() {
         aggregateService = new AggregateService(
             mainClient,
-            List.of(new ProfilePart(profileClient), new PricingPart(pricingClient)),
-            objectMapper
+            List.of(new ProfilePart(profileClient), new PricingPart(pricingClient))
         );
     }
 

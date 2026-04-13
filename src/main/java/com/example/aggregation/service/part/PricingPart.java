@@ -7,13 +7,16 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
+@Order(200)
 @RequiredArgsConstructor
 public class PricingPart implements AggregationPart {
 
@@ -32,7 +35,7 @@ public class PricingPart implements AggregationPart {
 
     @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
-        ObjectNode request = context.objectMapper().createObjectNode();
+        ObjectNode request = JsonNodeFactory.instance.objectNode();
         request.set("itemIds", itemIds(context));
         request.put(
             "currency",
@@ -65,7 +68,7 @@ public class PricingPart implements AggregationPart {
     }
 
     private ArrayNode itemIds(AggregationContext context) {
-        ArrayNode itemIds = context.objectMapper().createArrayNode();
+        ArrayNode itemIds = JsonNodeFactory.instance.arrayNode();
         JsonNode itemsNode = context.mainResponse().path("items");
         if (!itemsNode.isArray()) {
             return itemIds;

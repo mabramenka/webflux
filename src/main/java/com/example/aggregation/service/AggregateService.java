@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 @Service
@@ -22,13 +22,11 @@ public class AggregateService {
     private final MainClient mainClient;
     private final List<AggregationPart> parts;
     private final Map<String, AggregationPart> partByName;
-    private final ObjectMapper objectMapper;
 
-    public AggregateService(MainClient mainClient, List<AggregationPart> parts, ObjectMapper objectMapper) {
+    public AggregateService(MainClient mainClient, List<AggregationPart> parts) {
         this.mainClient = mainClient;
         this.parts = List.copyOf(parts);
         this.partByName = buildPartIndex(parts);
-        this.objectMapper = objectMapper;
     }
 
     public Mono<JsonNode> aggregate(ObjectNode inboundRequest, DownstreamHeaders headers) {
@@ -44,7 +42,6 @@ public class AggregateService {
                         inboundRequest,
                         mainResponse,
                         headers,
-                        objectMapper,
                         requestedParts
                     );
 
@@ -64,7 +61,7 @@ public class AggregateService {
     }
 
     private ObjectNode buildMainRequest(ObjectNode inboundRequest) {
-        ObjectNode request = objectMapper.createObjectNode();
+        ObjectNode request = JsonNodeFactory.instance.objectNode();
         request.put("customerId", inboundRequest.path("customerId").asString());
         request.put("market", inboundRequest.path("market").asString("US"));
         request.put("includeItems", inboundRequest.path("includeItems").asBoolean(true));
