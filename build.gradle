@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.5'
+    alias(libs.plugins.spring.boot)
 }
 
 group = 'com.example'
@@ -8,24 +8,24 @@ version = '0.0.1-SNAPSHOT'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(libs.versions.java.get())
     }
 }
 
 dependencies {
-    implementation platform('org.springframework.boot:spring-boot-dependencies:4.0.5')
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'org.springframework.boot:spring-boot-webclient'
+    implementation platform(libs.spring.boot.dependencies)
+    implementation libs.spring.boot.starter.webflux
+    implementation libs.spring.boot.webclient
 
-    compileOnly 'org.projectlombok:lombok:1.18.44'
-    annotationProcessor 'org.projectlombok:lombok:1.18.44'
+    compileOnly libs.lombok
+    annotationProcessor libs.lombok
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webflux-test'
-    testImplementation 'io.projectreactor:reactor-test'
-    testCompileOnly 'org.projectlombok:lombok:1.18.44'
-    testAnnotationProcessor 'org.projectlombok:lombok:1.18.44'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation libs.spring.boot.starter.test
+    testImplementation libs.spring.boot.starter.webflux.test
+    testImplementation libs.reactor.test
+    testCompileOnly libs.lombok
+    testAnnotationProcessor libs.lombok
+    testRuntimeOnly libs.junit.platform.launcher
 }
 
 tasks.named('test') {
