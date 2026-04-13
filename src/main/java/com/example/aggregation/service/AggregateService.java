@@ -1,126 +1,119 @@
 package com.example.aggregation.service;
 
 import com.example.aggregation.client.MainClient;
-import com.example.aggregation.client.PricingClient;
-import com.example.aggregation.client.ProfileClient;
 import com.example.aggregation.web.DownstreamHeaders;
-import java.math.BigDecimal;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.MissingNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Service
-@RequiredArgsConstructor
+@Slf4j
 public class AggregateService {
 
-    private static final MissingNode MISSING = MissingNode.getInstance();
-
     private final MainClient mainClient;
-    private final ProfileClient profileClient;
-    private final PricingClient pricingClient;
+    private final List<AggregationPart> parts;
+    private final Map<String, AggregationPart> partByName;
     private final ObjectMapper objectMapper;
 
+    public AggregateService(MainClient mainClient, List<AggregationPart> parts, ObjectMapper objectMapper) {
+        this.mainClient = mainClient;
+        this.parts = List.copyOf(parts);
+        this.partByName = buildPartIndex(parts);
+        this.objectMapper = objectMapper;
+    }
+
     public Mono<JsonNode> aggregate(ObjectNode inboundRequest, DownstreamHeaders headers) {
-        ObjectNode mainRequest = buildMainRequest(inboundRequest);
+        return Mono.defer(() -> {
+            RequestedParts requestedParts = RequestedParts.from(inboundRequest);
+            validateRequestedParts(requestedParts);
 
-        return mainClient.postMain(mainRequest, headers)
-            .flatMap(mainResponse -> {
-                Mono<JsonNode> profileMono = fetchOptionalProfile(mainResponse, inboundRequest, headers);
-                Mono<JsonNode> pricingMono = fetchOptionalPricing(mainResponse, inboundRequest, headers);
+            ObjectNode mainRequest = buildMainRequest(inboundRequest);
 
-                return Mono.zip(profileMono, pricingMono)
-                    .map(results -> merge(mainResponse, results.getT1(), results.getT2()));
-            });
+            return mainClient.postMain(mainRequest, headers)
+                .flatMap(mainResponse -> {
+                    AggregationContext context = new AggregationContext(
+                        inboundRequest,
+                        mainResponse,
+                        headers,
+                        objectMapper,
+                        requestedParts
+                    );
+
+                    List<AggregationPart> enabledParts = parts.stream()
+                        .filter(part -> requestedParts.includes(part.name()))
+                        .filter(part -> part.supports(context))
+                        .toList();
+
+                    ObjectNode root = (ObjectNode) mainResponse.deepCopy();
+
+                    return Flux.fromIterable(enabledParts)
+                        .flatMap(part -> fetchPart(part, context))
+                        .collectList()
+                        .map(results -> merge(root, enabledParts, results));
+                });
+        });
     }
 
     private ObjectNode buildMainRequest(ObjectNode inboundRequest) {
         ObjectNode request = objectMapper.createObjectNode();
-        request.put("customerId", inboundRequest.path("customerId").asText());
-        request.put("market", inboundRequest.path("market").asText("US"));
+        request.put("customerId", inboundRequest.path("customerId").asString());
+        request.put("market", inboundRequest.path("market").asString("US"));
         request.put("includeItems", inboundRequest.path("includeItems").asBoolean(true));
         return request;
     }
 
-    private Mono<JsonNode> fetchOptionalProfile(JsonNode mainResponse, ObjectNode inbound, DownstreamHeaders headers) {
-        String customerId = mainResponse.path("customerId").asText("");
-        boolean includeProfile = inbound.path("includeProfile").asBoolean(true);
-
-        if (!includeProfile || customerId.isBlank()) {
-            return Mono.just(MISSING);
-        }
-
-        ObjectNode request = objectMapper.createObjectNode();
-        request.put("customerId", customerId);
-        request.put("market", inbound.path("market").asText("US"));
-
-        return profileClient.postProfile(request, headers)
-            .onErrorResume(ex -> Mono.just(MISSING));
+    private Mono<PartResult> fetchPart(AggregationPart part, AggregationContext context) {
+        return part.fetch(context)
+            .map(response -> PartResult.success(part, response))
+            .onErrorResume(ex -> {
+                log.warn("Optional aggregation part '{}' failed and will be skipped", part.name(), ex);
+                return Mono.just(PartResult.failed(part, ex));
+            });
     }
 
-    private Mono<JsonNode> fetchOptionalPricing(JsonNode mainResponse, ObjectNode inbound, DownstreamHeaders headers) {
-        JsonNode itemsNode = mainResponse.path("items");
-        if (!itemsNode.isArray() || itemsNode.isEmpty()) {
-            return Mono.just(MISSING);
-        }
+    private JsonNode merge(ObjectNode root, List<AggregationPart> enabledParts, List<PartResult> results) {
+        Map<String, PartResult> resultByName = results.stream()
+            .collect(Collectors.toMap(PartResult::name, Function.identity()));
 
-        ObjectNode request = objectMapper.createObjectNode();
-        ArrayNode itemIds = objectMapper.createArrayNode();
-        itemsNode.forEach(item -> {
-            String itemId = item.path("itemId").asText("");
-            if (!itemId.isBlank()) {
-                itemIds.add(itemId);
-            }
-        });
-
-        if (itemIds.isEmpty()) {
-            return Mono.just(MISSING);
-        }
-
-        request.set("itemIds", itemIds);
-        request.put("currency", mainResponse.path("currency").asText(inbound.path("currency").asText("USD")));
-
-        return pricingClient.postPricing(request, headers)
-            .onErrorResume(ex -> Mono.just(MISSING));
-    }
-
-    private JsonNode merge(JsonNode mainResponse, JsonNode profileResponse, JsonNode pricingResponse) {
-        ObjectNode root = (ObjectNode) mainResponse.deepCopy();
-
-        if (!profileResponse.isMissingNode()) {
-            root.set("customerProfile", profileResponse);
-        }
-
-        if (!pricingResponse.isMissingNode()) {
-            mergePricingIntoItems(root, pricingResponse);
-        }
+        enabledParts.stream()
+            .map(part -> resultByName.get(part.name()))
+            .filter(result -> result != null && result.successful())
+            .forEach(result -> result.mergeInto(root));
 
         return root;
     }
 
-    private void mergePricingIntoItems(ObjectNode root, JsonNode pricingResponse) {
-        Map<String, BigDecimal> amountByItemId = new HashMap<>();
-        pricingResponse.path("prices").forEach(price -> {
-            String itemId = price.path("itemId").asText("");
-            if (!itemId.isBlank()) {
-                amountByItemId.put(itemId, price.path("amount").decimalValue());
-            }
-        });
+    private void validateRequestedParts(RequestedParts requestedParts) {
+        if (requestedParts.all()) {
+            return;
+        }
 
-        root.withArray("items").forEach(item -> {
-            if (item instanceof ObjectNode itemObject) {
-                String itemId = itemObject.path("itemId").asText("");
-                BigDecimal amount = amountByItemId.get(itemId);
-                if (amount != null) {
-                    itemObject.put("price", amount);
-                }
+        List<String> unknownParts = requestedParts.names().stream()
+            .filter(name -> !partByName.containsKey(name))
+            .toList();
+
+        if (!unknownParts.isEmpty()) {
+            throw new IllegalArgumentException("Unknown aggregation part(s): " + String.join(", ", unknownParts));
+        }
+    }
+
+    private Map<String, AggregationPart> buildPartIndex(List<AggregationPart> registeredParts) {
+        Map<String, AggregationPart> index = new LinkedHashMap<>();
+        registeredParts.forEach(part -> {
+            AggregationPart previous = index.putIfAbsent(part.name(), part);
+            if (previous != null) {
+                throw new IllegalStateException("Duplicate aggregation part name: " + part.name());
             }
         });
+        return Map.copyOf(index);
     }
 }

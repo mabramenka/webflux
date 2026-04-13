@@ -58,7 +58,7 @@ class AggregateControllerTest {
         ArgumentCaptor<DownstreamHeaders> headersCaptor = ArgumentCaptor.forClass(DownstreamHeaders.class);
         verify(aggregateService).aggregate(requestCaptor.capture(), headersCaptor.capture());
 
-        org.assertj.core.api.Assertions.assertThat(requestCaptor.getValue().path("customerId").asText()).isEqualTo("cust-1");
+        org.assertj.core.api.Assertions.assertThat(requestCaptor.getValue().path("customerId").asString()).isEqualTo("cust-1");
         org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().authorization()).isEqualTo("Bearer abc");
         org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().requestId()).isEqualTo("req-123");
         org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().correlationId()).isEqualTo("corr-456");
