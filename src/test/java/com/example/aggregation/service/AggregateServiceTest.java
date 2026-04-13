@@ -70,7 +70,7 @@ class AggregateServiceTest {
             })
             .verifyComplete();
 
-        JsonNode profileResponse = json("""{"tier":"GOLD"}""");
+        JsonNode profileResponse = json("{\"tier\":\"GOLD\"}");
         JsonNode pricingResponse = json("""
             {
               "prices": [

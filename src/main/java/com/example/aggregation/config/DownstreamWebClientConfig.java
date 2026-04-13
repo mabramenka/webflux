@@ -9,6 +9,11 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class DownstreamWebClientConfig {
 
     @Bean
+    public WebClient.Builder webClientBuilder() {
+        return WebClient.builder();
+    }
+
+    @Bean
     public WebClient mainWebClient(WebClient.Builder builder, @Value("${downstream.main.base-url}") String baseUrl) {
         return builder.baseUrl(baseUrl).build();
     }

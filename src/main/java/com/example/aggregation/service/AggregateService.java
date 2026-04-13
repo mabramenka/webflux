@@ -91,7 +91,7 @@ public class AggregateService {
     }
 
     private JsonNode merge(JsonNode mainResponse, JsonNode profileResponse, JsonNode pricingResponse) {
-        ObjectNode root = mainResponse.deepCopy();
+        ObjectNode root = (ObjectNode) mainResponse.deepCopy();
 
         if (!profileResponse.isMissingNode()) {
             root.set("customerProfile", profileResponse);

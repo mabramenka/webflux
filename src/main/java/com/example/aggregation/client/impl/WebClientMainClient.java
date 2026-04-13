@@ -2,7 +2,6 @@ package com.example.aggregation.client.impl;
 
 import com.example.aggregation.client.MainClient;
 import com.example.aggregation.web.DownstreamHeaders;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -12,11 +11,13 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
-@RequiredArgsConstructor
 public class WebClientMainClient implements MainClient {
 
-    @Qualifier("mainWebClient")
     private final WebClient webClient;
+
+    public WebClientMainClient(@Qualifier("mainWebClient") WebClient webClient) {
+        this.webClient = webClient;
+    }
 
     @Override
     public Mono<JsonNode> postMain(ObjectNode request, DownstreamHeaders headers) {
