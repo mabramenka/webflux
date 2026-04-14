@@ -13,7 +13,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 @Order(200)
 @RequiredArgsConstructor
-public class PricingPart extends MatchedArrayEnrichmentPart {
+public class PricingPart extends KeyedArrayEnrichmentPart {
 
     private final PricingClient pricingClient;
 
@@ -24,7 +24,7 @@ public class PricingPart extends MatchedArrayEnrichmentPart {
 
     @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
-        ObjectNode request = requestWithTargetIds(context.mainResponse());
+        ObjectNode request = requestWithKeys(context.mainResponse());
         request.put(
             "currency",
             context.mainResponse().path("currency")
@@ -35,37 +35,27 @@ public class PricingPart extends MatchedArrayEnrichmentPart {
     }
 
     @Override
-    protected String targetIdsRequestField() {
+    protected String requestKeysField() {
         return "itemIds";
     }
 
     @Override
-    protected List<Target> targets(JsonNode root) {
-        JsonNode items = root.path("items");
-        if (!items.isArray()) {
-            return List.of();
-        }
-
-        return items.values().stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .map(item -> new Target(item.path("itemId").asString(""), item))
-            .filter(target -> !target.id().isBlank())
-            .toList();
+    protected List<EnrichmentTarget> targetsFrom(JsonNode root) {
+        return targetsFromArray(root, "items", item -> item.path("itemId").asString(""));
     }
 
     @Override
-    protected String responseArrayField() {
+    protected String responseEntriesField() {
         return "prices";
     }
 
     @Override
-    protected String responseIdField() {
+    protected String responseKeyField() {
         return "itemId";
     }
 
     @Override
-    protected String targetField() {
+    protected String targetEnrichmentField() {
         return "pricing";
     }
 }
