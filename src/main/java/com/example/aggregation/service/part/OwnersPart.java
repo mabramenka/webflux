@@ -21,7 +21,7 @@ public class OwnersPart extends KeyedArrayEnrichmentPart {
         )
             .requestKeysField("ids")
             .build())
-        .responseRule(responseArrayRule("data", owner -> owner.path("id").asString(""))
+        .responseRule(responseArrayRule("data", owner -> owner.path("individual").path("number").asString(""))
             .targetField("owners1")
             .build())
         .build();

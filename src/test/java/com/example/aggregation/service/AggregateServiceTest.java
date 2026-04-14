@@ -296,9 +296,9 @@ class AggregateServiceTest {
         JsonNode ownersResponse = json("""
             {
               "data": [
-                {"id": "owner-a", "name": "Ada"},
-                {"id": "owner-b", "name": "Bob", "flags": ["primary"]},
-                {"id": "owner-c", "name": "Cid"}
+                {"individual": {"number": "owner-a"}, "name": "Ada"},
+                {"individual": {"number": "owner-b"}, "name": "Bob", "flags": ["primary"]},
+                {"individual": {"number": "owner-c"}, "name": "Cid"}
               ]
             }
             """);
