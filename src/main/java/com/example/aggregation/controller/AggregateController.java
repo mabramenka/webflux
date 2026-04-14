@@ -26,13 +26,12 @@ public class AggregateController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<JsonNode>> aggregate(
-        @RequestBody Mono<ObjectNode> requestBody,
+        @RequestBody ObjectNode requestBody,
         @RequestHeader HttpHeaders headers,
         @RequestParam MultiValueMap<String, String> queryParams
     ) {
         DownstreamRequest downstreamRequest = DownstreamRequest.from(headers, queryParams);
-        return requestBody
-            .flatMap(body -> aggregateService.aggregate(body, downstreamRequest))
+        return aggregateService.aggregate(requestBody, downstreamRequest)
             .map(ResponseEntity::ok);
     }
 }
