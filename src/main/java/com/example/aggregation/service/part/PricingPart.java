@@ -14,7 +14,7 @@ public class PricingPart extends KeyedArrayEnrichmentPart {
 
     private static final Rule ENRICHMENT_RULE = keyedArrayRule()
         .requestKeysField("itemIds")
-        .targets(targetsFromArray("items", item -> item.path("itemId").asString("")))
+        .targetRule(targetsFromArray("items", item -> item.path("itemId").asString("")))
         .responseEntriesField("prices")
         .responseKeyField("itemId")
         .targetEnrichmentField("pricing")

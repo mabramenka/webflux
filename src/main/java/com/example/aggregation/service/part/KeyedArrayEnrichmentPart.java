@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import lombok.Builder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -36,8 +37,8 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         return request;
     }
 
-    protected static RuleBuilder keyedArrayRule() {
-        return new RuleBuilder();
+    protected static Rule.RuleBuilder keyedArrayRule() {
+        return Rule.builder();
     }
 
     protected static TargetRule targetsFromArray(
@@ -89,6 +90,7 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         }
     }
 
+    @Builder
     protected record Rule(
         String requestKeysField,
         TargetRule targetRule,
@@ -96,50 +98,6 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         String responseKeyField,
         String targetEnrichmentField
     ) {
-    }
-
-    protected static class RuleBuilder {
-
-        private String requestKeysField;
-        private TargetRule targetRule;
-        private String responseEntriesField;
-        private String responseKeyField;
-        private String targetEnrichmentField;
-
-        public RuleBuilder requestKeysField(String requestKeysField) {
-            this.requestKeysField = requestKeysField;
-            return this;
-        }
-
-        public RuleBuilder targets(TargetRule targetRule) {
-            this.targetRule = targetRule;
-            return this;
-        }
-
-        public RuleBuilder responseEntriesField(String responseEntriesField) {
-            this.responseEntriesField = responseEntriesField;
-            return this;
-        }
-
-        public RuleBuilder responseKeyField(String responseKeyField) {
-            this.responseKeyField = responseKeyField;
-            return this;
-        }
-
-        public RuleBuilder targetEnrichmentField(String targetEnrichmentField) {
-            this.targetEnrichmentField = targetEnrichmentField;
-            return this;
-        }
-
-        public Rule build() {
-            return new Rule(
-                requestKeysField,
-                targetRule,
-                responseEntriesField,
-                responseKeyField,
-                targetEnrichmentField
-            );
-        }
     }
 
     @FunctionalInterface
