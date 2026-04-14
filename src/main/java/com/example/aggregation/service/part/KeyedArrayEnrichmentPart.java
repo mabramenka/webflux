@@ -43,23 +43,6 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         return Rule.builder();
     }
 
-    protected static TargetRule.TargetRuleBuilder mainArrayRule(
-        String arrayField,
-        Function<ObjectNode, String> keyRule
-    ) {
-        return TargetRule.builder()
-            .targetsFrom(root -> targetsFromArray(root, arrayField, keyRule));
-    }
-
-    protected static TargetRule.TargetRuleBuilder mainNestedArrayRule(
-        String parentArrayField,
-        String nestedArrayField,
-        Function<ObjectNode, String> keyRule
-    ) {
-        return TargetRule.builder()
-            .targetsFrom(root -> targetsFromNestedArray(root, parentArrayField, nestedArrayField, keyRule));
-    }
-
     protected static TargetRule.TargetRuleBuilder mainNestedArrayToSiblingArrayRule(
         String parentArrayField,
         String nestedArrayField,
@@ -75,47 +58,6 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
     ) {
         return ResponseRule.builder()
             .entriesByKey(response -> entriesByKeyFromArray(response, entriesField, keyRule));
-    }
-
-    private static List<EnrichmentTarget> targetsFromArray(
-        JsonNode root,
-        String arrayField,
-        Function<ObjectNode, String> keyRule
-    ) {
-        JsonNode sourceArray = root.path(arrayField);
-        if (!sourceArray.isArray()) {
-            return List.of();
-        }
-
-        return sourceArray.values().stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .map(node -> new EnrichmentTarget(keyRule.apply(node), node))
-            .filter(EnrichmentTarget::hasKey)
-            .toList();
-    }
-
-    private static List<EnrichmentTarget> targetsFromNestedArray(
-        JsonNode root,
-        String parentArrayField,
-        String nestedArrayField,
-        Function<ObjectNode, String> keyRule
-    ) {
-        JsonNode parentArray = root.path(parentArrayField);
-        if (!parentArray.isArray()) {
-            return List.of();
-        }
-
-        return parentArray.values().stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(parent -> parent.path(nestedArrayField))
-            .filter(JsonNode::isArray)
-            .flatMap(nestedArray -> nestedArray.values().stream())
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .map(node -> new EnrichmentTarget(keyRule.apply(node), node))
-            .filter(EnrichmentTarget::hasKey)
-            .toList();
     }
 
     private static List<EnrichmentTarget> siblingArrayTargetsFromNestedArray(
@@ -149,7 +91,7 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         return nestedArray.values().stream()
             .filter(ObjectNode.class::isInstance)
             .map(ObjectNode.class::cast)
-            .map(child -> EnrichmentTarget.siblingArrayEntry(keyRule.apply(child), parent))
+            .map(child -> new EnrichmentTarget(keyRule.apply(child), parent))
             .filter(EnrichmentTarget::hasKey)
             .toList();
     }
@@ -184,7 +126,7 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
     private void attachMatchingEntry(EnrichmentTarget target, Map<String, JsonNode> entriesByKey) {
         JsonNode entry = entriesByKey.get(target.key());
         if (entry != null) {
-            target.attach(rule.responseRule().targetField(), entry);
+            target.node().withArrayProperty(rule.responseRule().targetField()).add(entry);
         }
     }
 
@@ -234,26 +176,10 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         }
     }
 
-    protected record EnrichmentTarget(String key, ObjectNode node, boolean appendToTargetArray) {
-
-        private EnrichmentTarget(String key, ObjectNode node) {
-            this(key, node, false);
-        }
-
-        private static EnrichmentTarget siblingArrayEntry(String key, ObjectNode node) {
-            return new EnrichmentTarget(key, node, true);
-        }
+    protected record EnrichmentTarget(String key, ObjectNode node) {
 
         private boolean hasKey() {
             return key != null && !key.isBlank();
-        }
-
-        private void attach(String fieldName, JsonNode entry) {
-            if (appendToTargetArray) {
-                node.withArrayProperty(fieldName).add(entry);
-            } else {
-                node.set(fieldName, entry);
-            }
         }
     }
 }
