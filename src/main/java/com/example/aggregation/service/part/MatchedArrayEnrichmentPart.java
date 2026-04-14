@@ -39,29 +39,13 @@ public abstract class MatchedArrayEnrichmentPart implements AggregationPart {
 
     protected abstract String targetIdsRequestField();
 
-    protected abstract String sourceArrayField();
-
-    protected abstract String sourceIdField();
+    protected abstract List<Target> targets(JsonNode root);
 
     protected abstract String responseArrayField();
 
     protected abstract String responseIdField();
 
     protected abstract String targetField();
-
-    private List<Target> targets(JsonNode root) {
-        JsonNode sourceArray = root.path(sourceArrayField());
-        if (!sourceArray.isArray()) {
-            return List.of();
-        }
-
-        return sourceArray.values().stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .map(node -> new Target(node.path(sourceIdField()).asString(""), node))
-            .filter(target -> !target.id().isBlank())
-            .toList();
-    }
 
     private Map<String, JsonNode> responseById(JsonNode response) {
         Map<String, JsonNode> responseById = new HashMap<>();
@@ -81,6 +65,6 @@ public abstract class MatchedArrayEnrichmentPart implements AggregationPart {
         }
     }
 
-    private record Target(String id, ObjectNode node) {
+    protected record Target(String id, ObjectNode node) {
     }
 }

@@ -2,6 +2,7 @@ package com.example.aggregation.service.part;
 
 import com.example.aggregation.client.PricingClient;
 import com.example.aggregation.service.AggregationContext;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -39,13 +40,18 @@ public class PricingPart extends MatchedArrayEnrichmentPart {
     }
 
     @Override
-    protected String sourceArrayField() {
-        return "items";
-    }
+    protected List<Target> targets(JsonNode root) {
+        JsonNode items = root.path("items");
+        if (!items.isArray()) {
+            return List.of();
+        }
 
-    @Override
-    protected String sourceIdField() {
-        return "itemId";
+        return items.values().stream()
+            .filter(ObjectNode.class::isInstance)
+            .map(ObjectNode.class::cast)
+            .map(item -> new Target(item.path("itemId").asString(""), item))
+            .filter(target -> !target.id().isBlank())
+            .toList();
     }
 
     @Override
