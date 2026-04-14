@@ -3,6 +3,8 @@ package com.example.aggregation.service.part;
 import com.example.aggregation.client.PricingClient;
 import com.example.aggregation.service.AggregationContext;
 import com.example.aggregation.service.AggregationPart;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -45,7 +47,23 @@ public class PricingPart implements AggregationPart {
 
     @Override
     public void merge(ObjectNode root, JsonNode pricingResponse) {
-        root.set("pricing", pricingResponse);
+        Map<String, JsonNode> pricingByItemId = new HashMap<>();
+        pricingResponse.path("prices").forEach(price -> {
+            String itemId = price.path("itemId").asString("");
+            if (!itemId.isBlank()) {
+                pricingByItemId.put(itemId, price);
+            }
+        });
+
+        root.withArrayProperty("items").forEach(item -> {
+            if (item instanceof ObjectNode itemObject) {
+                String itemId = itemObject.path("itemId").asString("");
+                JsonNode pricing = pricingByItemId.get(itemId);
+                if (pricing != null) {
+                    itemObject.set("pricing", pricing);
+                }
+            }
+        });
     }
 
     private ArrayNode itemIds(AggregationContext context) {
