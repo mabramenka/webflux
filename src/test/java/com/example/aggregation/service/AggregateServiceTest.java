@@ -278,7 +278,7 @@ class AggregateServiceTest {
                   "basicDetails": {
                     "owners": [
                       {"id": "owner-a"},
-                      {"id": "owner-b"}
+                      {"number": "owner-b"}
                     ]
                   }
                 },
@@ -298,7 +298,7 @@ class AggregateServiceTest {
               "data": [
                 {"individual": {"number": "owner-a"}, "name": "Ada"},
                 {"individual": {"number": "owner-b"}, "name": "Bob", "flags": ["primary"]},
-                {"individual": {"number": "owner-c"}, "name": "Cid"}
+                {"id": "owner-c", "name": "Cid"}
               ]
             }
             """);

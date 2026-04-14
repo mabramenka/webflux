@@ -12,17 +12,11 @@ import tools.jackson.databind.node.ObjectNode;
 @Order(300)
 public class OwnersPart extends KeyedArrayEnrichmentPart {
 
-    private static final Rule ENRICHMENT_RULE = keyedArrayRule()
-        .targetRule(mainItemNestedArrayRule(
-            "data",
-            item -> item.path("basicDetails").path("owners"),
-            owner -> owner.path("id").asString("")
-        )
-            .requestKeysField("ids")
-            .build())
-        .responseRule(responseArrayRule("data", owner -> owner.path("individual").path("number").asString(""))
-            .targetField("owners1")
-            .build())
+    private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
+        .mainItems("$.data[*]", "basicDetails.owners[*].id", "basicDetails.owners[*].number")
+        .responseItems("$.data[*]", "individual.number", "id")
+        .requestKeysField("ids")
+        .targetField("owners1")
         .build();
 
     private final OwnersClient ownersClient;
