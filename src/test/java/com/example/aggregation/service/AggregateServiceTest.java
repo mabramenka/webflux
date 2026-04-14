@@ -253,7 +253,7 @@ class AggregateServiceTest {
 
         ArgumentCaptor<ObjectNode> pricingRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
         verify(pricingClient).postPricing(pricingRequestCaptor.capture(), any(DownstreamRequest.class));
-        org.assertj.core.api.Assertions.assertThat(pricingRequestCaptor.getValue().path("itemIds").values())
+        org.assertj.core.api.Assertions.assertThat(pricingRequestCaptor.getValue().path("ids").values())
             .extracting(JsonNode::asString)
             .containsExactly("acc-a", "acc-b", "acc-c");
         verify(profileClient, never()).postProfile(any(ObjectNode.class), any(DownstreamRequest.class));
