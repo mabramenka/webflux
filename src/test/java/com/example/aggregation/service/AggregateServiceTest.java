@@ -6,8 +6,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.aggregation.client.MainClient;
+import com.example.aggregation.client.OwnersClient;
 import com.example.aggregation.client.PricingClient;
 import com.example.aggregation.client.ProfileClient;
+import com.example.aggregation.service.part.OwnersPart;
 import com.example.aggregation.service.part.PricingPart;
 import com.example.aggregation.service.part.ProfilePart;
 import com.example.aggregation.web.DownstreamHeaders;
@@ -36,6 +38,8 @@ class AggregateServiceTest {
     private ProfileClient profileClient;
     @Mock
     private PricingClient pricingClient;
+    @Mock
+    private OwnersClient ownersClient;
 
     private AggregateService aggregateService;
 
@@ -43,7 +47,7 @@ class AggregateServiceTest {
     void setUp() {
         aggregateService = new AggregateService(
             mainClient,
-            List.of(new ProfilePart(profileClient), new PricingPart(pricingClient))
+            List.of(new ProfilePart(profileClient), new PricingPart(pricingClient), new OwnersPart(ownersClient))
         );
     }
 
@@ -257,6 +261,75 @@ class AggregateServiceTest {
             .extracting(JsonNode::asString)
             .containsExactly("acc-a", "acc-b", "acc-c");
         verify(profileClient, never()).postProfile(any(ObjectNode.class), any(DownstreamRequest.class));
+    }
+
+    @Test
+    void aggregate_embedsOwnersIntoBasicDetailsSiblingArray() {
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        inboundRequest.putArray("include").add("owners");
+
+        JsonNode mainResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "id": "item-1",
+                  "basicDetails": {
+                    "owners": [
+                      {"id": "owner-a"},
+                      {"id": "owner-b"}
+                    ]
+                  }
+                },
+                {
+                  "id": "item-2",
+                  "basicDetails": {
+                    "owners": [
+                      {"id": "owner-c"}
+                    ]
+                  }
+                }
+              ]
+            }
+            """);
+        JsonNode ownersResponse = json("""
+            {
+              "data": [
+                {"id": "owner-a", "name": "Ada"},
+                {"id": "owner-b", "name": "Bob", "flags": ["primary"]},
+                {"id": "owner-c", "name": "Cid"}
+              ]
+            }
+            """);
+
+        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamRequest.class))).thenReturn(Mono.just(mainResponse));
+        when(ownersClient.postOwners(any(ObjectNode.class), any(DownstreamRequest.class)))
+            .thenReturn(Mono.just(ownersResponse));
+
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
+            .assertNext(aggregated -> {
+                ObjectNode root = (ObjectNode) aggregated;
+                JsonNode firstBasicDetails = root.path("data").get(0).path("basicDetails");
+                JsonNode secondBasicDetails = root.path("data").get(1).path("basicDetails");
+                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners").get(0).has("owners1"))
+                    .isFalse();
+                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners1").get(0).path("name").asString())
+                    .isEqualTo("Ada");
+                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners1").get(1).path("flags").get(0).asString())
+                    .isEqualTo("primary");
+                org.assertj.core.api.Assertions.assertThat(secondBasicDetails.path("owners1").get(0).path("name").asString())
+                    .isEqualTo("Cid");
+            })
+            .verifyComplete();
+
+        ArgumentCaptor<ObjectNode> ownersRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(ownersClient).postOwners(ownersRequestCaptor.capture(), any(DownstreamRequest.class));
+        org.assertj.core.api.Assertions.assertThat(ownersRequestCaptor.getValue().path("ids").values())
+            .extracting(JsonNode::asString)
+            .containsExactly("owner-a", "owner-b", "owner-c");
+        verify(profileClient, never()).postProfile(any(ObjectNode.class), any(DownstreamRequest.class));
+        verify(pricingClient, never()).postPricing(any(ObjectNode.class), any(DownstreamRequest.class));
     }
 
     private JsonNode json(String raw) {

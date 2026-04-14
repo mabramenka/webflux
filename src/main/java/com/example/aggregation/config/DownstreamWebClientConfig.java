@@ -22,4 +22,9 @@ public class DownstreamWebClientConfig {
     public WebClient pricingWebClient(WebClient.Builder builder, @Value("${downstream.pricing.base-url}") String baseUrl) {
         return builder.clone().baseUrl(baseUrl).build();
     }
+
+    @Bean
+    public WebClient ownersWebClient(WebClient.Builder builder, @Value("${downstream.owners.base-url}") String baseUrl) {
+        return builder.clone().baseUrl(baseUrl).build();
+    }
 }
