@@ -13,11 +13,9 @@ import tools.jackson.databind.node.ObjectNode;
 public class OwnersPart extends KeyedArrayEnrichmentPart {
 
     private static final Rule ENRICHMENT_RULE = keyedArrayRule()
-        .targetRule(mainNestedArrayToSiblingArrayRule(
+        .targetRule(mainItemNestedArrayRule(
             "data",
-            item -> item.path("basicDetails"),
-            item -> item,
-            "owners",
+            item -> item.path("basicDetails").path("owners"),
             owner -> owner.path("id").asString("")
         )
             .requestKeysField("ids")
