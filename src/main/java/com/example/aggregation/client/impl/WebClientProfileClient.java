@@ -1,7 +1,7 @@
 package com.example.aggregation.client.impl;
 
 import com.example.aggregation.client.ProfileClient;
-import com.example.aggregation.web.DownstreamHeaders;
+import com.example.aggregation.web.DownstreamRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -20,11 +20,11 @@ public class WebClientProfileClient implements ProfileClient {
     }
 
     @Override
-    public Mono<JsonNode> postProfile(ObjectNode request, DownstreamHeaders headers) {
+    public Mono<JsonNode> postProfile(ObjectNode request, DownstreamRequest downstreamRequest) {
         return webClient.post()
-            .uri("/profiles")
+            .uri(uriBuilder -> downstreamRequest.applyQueryParams(uriBuilder.path("/profiles")).build())
             .contentType(MediaType.APPLICATION_JSON)
-            .headers(headers::applyTo)
+            .headers(downstreamRequest.headers()::applyTo)
             .bodyValue(request)
             .retrieve()
             .onStatus(status -> status.isError(), response ->

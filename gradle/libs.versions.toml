@@ -1,0 +1,17 @@
+[versions]
+java = "21"
+spring-boot = "4.0.5"
+lombok = "1.18.44"
+
+[plugins]
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+
+[libraries]
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
+spring-boot-webclient = { module = "org.springframework.boot:spring-boot-webclient" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-webflux-test = { module = "org.springframework.boot:spring-boot-starter-webflux-test" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+reactor-test = { module = "io.projectreactor:reactor-test" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

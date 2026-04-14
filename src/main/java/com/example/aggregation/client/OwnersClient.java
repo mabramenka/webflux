@@ -5,7 +5,7 @@ import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
-public interface ProfileClient {
+public interface OwnersClient {
 
-    Mono<JsonNode> postProfile(ObjectNode request, DownstreamRequest downstreamRequest);
+    Mono<JsonNode> postOwners(ObjectNode request, DownstreamRequest downstreamRequest);
 }

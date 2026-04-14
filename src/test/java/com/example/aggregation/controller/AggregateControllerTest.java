@@ -5,7 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.aggregation.service.AggregateService;
-import com.example.aggregation.web.DownstreamHeaders;
+import com.example.aggregation.web.DownstreamRequest;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,11 +34,11 @@ class AggregateControllerTest {
         ObjectNode mergedResponse = objectMapper.createObjectNode();
         mergedResponse.put("status", "ok");
 
-        when(aggregateService.aggregate(any(ObjectNode.class), any(DownstreamHeaders.class)))
+        when(aggregateService.aggregate(any(ObjectNode.class), any(DownstreamRequest.class)))
             .thenReturn(Mono.just(mergedResponse));
 
         webTestClient.post()
-            .uri("/api/v1/aggregate")
+            .uri("/api/v1/aggregate?detokenize=true")
             .contentType(MediaType.APPLICATION_JSON)
             .accept(MediaType.APPLICATION_JSON)
             .header(HttpHeaders.AUTHORIZATION, "Bearer abc")
@@ -55,13 +55,27 @@ class AggregateControllerTest {
             .jsonPath("$.status").isEqualTo("ok");
 
         ArgumentCaptor<ObjectNode> requestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        ArgumentCaptor<DownstreamHeaders> headersCaptor = ArgumentCaptor.forClass(DownstreamHeaders.class);
-        verify(aggregateService).aggregate(requestCaptor.capture(), headersCaptor.capture());
+        ArgumentCaptor<DownstreamRequest> downstreamRequestCaptor = ArgumentCaptor.forClass(DownstreamRequest.class);
+        verify(aggregateService).aggregate(requestCaptor.capture(), downstreamRequestCaptor.capture());
 
-        org.assertj.core.api.Assertions.assertThat(requestCaptor.getValue().path("customerId").asText()).isEqualTo("cust-1");
-        org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().authorization()).isEqualTo("Bearer abc");
-        org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().requestId()).isEqualTo("req-123");
-        org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().correlationId()).isEqualTo("corr-456");
-        org.assertj.core.api.Assertions.assertThat(headersCaptor.getValue().acceptLanguage()).isEqualTo("en-US");
+        org.assertj.core.api.Assertions.assertThat(requestCaptor.getValue().path("customerId").asString()).isEqualTo("cust-1");
+        DownstreamRequest downstreamRequest = downstreamRequestCaptor.getValue();
+        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().authorization()).isEqualTo("Bearer abc");
+        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().requestId()).isEqualTo("req-123");
+        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().correlationId()).isEqualTo("corr-456");
+        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().acceptLanguage()).isEqualTo("en-US");
+        org.assertj.core.api.Assertions.assertThat(downstreamRequest.detokenize()).isTrue();
+    }
+
+    @Test
+    void aggregate_rejectsInvalidDetokenizeQueryParam() {
+        webTestClient.post()
+            .uri("/api/v1/aggregate?detokenize=yes")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {"customerId":"cust-1"}
+                """)
+            .exchange()
+            .expectStatus().isBadRequest();
     }
 }
