@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices"
+  ],
+  "timezone": "Europe/Warsaw",
+  "dependencyDashboard": true,
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Keep Spring Boot plugin and BOM updates together.",
+      "matchPackageNames": [
+        "org.springframework.boot",
+        "org.springframework.boot:spring-boot-dependencies"
+      ],
+      "groupName": "Spring Boot"
+    },
+    {
+      "description": "Keep Lombok compiler dependencies together.",
+      "matchPackageNames": [
+        "org.projectlombok:lombok"
+      ],
+      "groupName": "Lombok"
+    }
+  ]
+}
