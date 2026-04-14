@@ -2,23 +2,17 @@ package com.example.aggregation.service.part;
 
 import com.example.aggregation.client.PricingClient;
 import com.example.aggregation.service.AggregationContext;
-import com.example.aggregation.service.AggregationPart;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
 @Order(200)
 @RequiredArgsConstructor
-public class PricingPart implements AggregationPart {
+public class PricingPart extends MatchedArrayEnrichmentPart {
 
     private final PricingClient pricingClient;
 
@@ -28,16 +22,8 @@ public class PricingPart implements AggregationPart {
     }
 
     @Override
-    public boolean supports(AggregationContext context) {
-        return !itemTargets(context.mainResponse()).isEmpty();
-    }
-
-    @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
-        List<ItemTarget> itemTargets = itemTargets(context.mainResponse());
-
-        ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.set("itemIds", itemIdArray(itemTargets));
+        ObjectNode request = requestWithTargetIds(context.mainResponse());
         request.put(
             "currency",
             context.mainResponse().path("currency")
@@ -48,51 +34,32 @@ public class PricingPart implements AggregationPart {
     }
 
     @Override
-    public void merge(ObjectNode root, JsonNode pricingResponse) {
-        Map<String, JsonNode> pricingByItemId = pricingByItemId(pricingResponse);
-        itemTargets(root).forEach(target -> attachPricing(target, pricingByItemId));
+    protected String targetIdsRequestField() {
+        return "itemIds";
     }
 
-    private List<ItemTarget> itemTargets(JsonNode root) {
-        JsonNode itemsNode = root.path("items");
-        if (!itemsNode.isArray()) {
-            return List.of();
-        }
-
-        return itemsNode.values().stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .map(item -> new ItemTarget(item.path("itemId").asString(""), item))
-            .filter(target -> !target.itemId().isBlank())
-            .toList();
+    @Override
+    protected String sourceArrayField() {
+        return "items";
     }
 
-    private ArrayNode itemIdArray(List<ItemTarget> itemTargets) {
-        ArrayNode itemIds = JsonNodeFactory.instance.arrayNode();
-        itemTargets.stream()
-            .map(ItemTarget::itemId)
-            .forEach(itemIds::add);
-        return itemIds;
+    @Override
+    protected String sourceIdField() {
+        return "itemId";
     }
 
-    private Map<String, JsonNode> pricingByItemId(JsonNode pricingResponse) {
-        Map<String, JsonNode> pricingByItemId = new HashMap<>();
-        pricingResponse.path("prices").forEach(price -> {
-            String itemId = price.path("itemId").asString("");
-            if (!itemId.isBlank()) {
-                pricingByItemId.put(itemId, price);
-            }
-        });
-        return pricingByItemId;
+    @Override
+    protected String responseArrayField() {
+        return "prices";
     }
 
-    private void attachPricing(ItemTarget target, Map<String, JsonNode> pricingByItemId) {
-        JsonNode pricing = pricingByItemId.get(target.itemId());
-        if (pricing != null) {
-            target.item().set("pricing", pricing);
-        }
+    @Override
+    protected String responseIdField() {
+        return "itemId";
     }
 
-    private record ItemTarget(String itemId, ObjectNode item) {
+    @Override
+    protected String targetField() {
+        return "pricing";
     }
 }
