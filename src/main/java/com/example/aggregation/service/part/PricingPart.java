@@ -2,8 +2,6 @@ package com.example.aggregation.service.part;
 
 import com.example.aggregation.client.PricingClient;
 import com.example.aggregation.service.AggregationContext;
-import java.util.List;
-import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -12,10 +10,22 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Component
 @Order(200)
-@RequiredArgsConstructor
 public class PricingPart extends KeyedArrayEnrichmentPart {
 
+    private static final Rule ENRICHMENT_RULE = keyedArrayRule()
+        .requestKeysField("itemIds")
+        .targets(targetsFromArray("items", item -> item.path("itemId").asString("")))
+        .responseEntriesField("prices")
+        .responseKeyField("itemId")
+        .targetEnrichmentField("pricing")
+        .build();
+
     private final PricingClient pricingClient;
+
+    public PricingPart(PricingClient pricingClient) {
+        super(ENRICHMENT_RULE);
+        this.pricingClient = pricingClient;
+    }
 
     @Override
     public String name() {
@@ -32,30 +42,5 @@ public class PricingPart extends KeyedArrayEnrichmentPart {
         );
 
         return pricingClient.postPricing(request, context.downstreamRequest());
-    }
-
-    @Override
-    protected String requestKeysField() {
-        return "itemIds";
-    }
-
-    @Override
-    protected List<EnrichmentTarget> targetsFrom(JsonNode root) {
-        return targetsFromArray(root, "items", item -> item.path("itemId").asString(""));
-    }
-
-    @Override
-    protected String responseEntriesField() {
-        return "prices";
-    }
-
-    @Override
-    protected String responseKeyField() {
-        return "itemId";
-    }
-
-    @Override
-    protected String targetEnrichmentField() {
-        return "pricing";
     }
 }

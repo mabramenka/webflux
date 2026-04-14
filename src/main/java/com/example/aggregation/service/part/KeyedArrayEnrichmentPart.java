@@ -13,6 +13,12 @@ import tools.jackson.databind.node.ObjectNode;
 
 public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
 
+    private final Rule rule;
+
+    protected KeyedArrayEnrichmentPart(Rule rule) {
+        this.rule = rule;
+    }
+
     @Override
     public boolean supports(AggregationContext context) {
         return !targetsFrom(context.mainResponse()).isEmpty();
@@ -26,37 +32,36 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
 
     protected ObjectNode requestWithKeys(JsonNode root) {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.set(requestKeysField(), keysFrom(targetsFrom(root)));
+        request.set(rule.requestKeysField(), keysFrom(targetsFrom(root)));
         return request;
     }
 
-    protected List<EnrichmentTarget> targetsFromArray(
-        JsonNode root,
+    protected static RuleBuilder keyedArrayRule() {
+        return new RuleBuilder();
+    }
+
+    protected static TargetRule targetsFromArray(
         String arrayField,
         Function<ObjectNode, String> keyRule
     ) {
-        JsonNode sourceArray = root.path(arrayField);
-        if (!sourceArray.isArray()) {
-            return List.of();
-        }
+        return root -> {
+            JsonNode sourceArray = root.path(arrayField);
+            if (!sourceArray.isArray()) {
+                return List.of();
+            }
 
-        return sourceArray.values().stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .map(node -> new EnrichmentTarget(keyRule.apply(node), node))
-            .filter(EnrichmentTarget::hasKey)
-            .toList();
+            return sourceArray.values().stream()
+                .filter(ObjectNode.class::isInstance)
+                .map(ObjectNode.class::cast)
+                .map(node -> new EnrichmentTarget(keyRule.apply(node), node))
+                .filter(EnrichmentTarget::hasKey)
+                .toList();
+        };
     }
 
-    protected abstract String requestKeysField();
-
-    protected abstract List<EnrichmentTarget> targetsFrom(JsonNode root);
-
-    protected abstract String responseEntriesField();
-
-    protected abstract String responseKeyField();
-
-    protected abstract String targetEnrichmentField();
+    private List<EnrichmentTarget> targetsFrom(JsonNode root) {
+        return rule.targetRule().targetsFrom(root);
+    }
 
     private ArrayNode keysFrom(List<EnrichmentTarget> targets) {
         ArrayNode keys = JsonNodeFactory.instance.arrayNode();
@@ -68,8 +73,8 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
 
     private Map<String, JsonNode> responseEntriesByKey(JsonNode response) {
         Map<String, JsonNode> entriesByKey = new HashMap<>();
-        response.path(responseEntriesField()).forEach(entry -> {
-            String key = entry.path(responseKeyField()).asString("");
+        response.path(rule.responseEntriesField()).forEach(entry -> {
+            String key = entry.path(rule.responseKeyField()).asString("");
             if (!key.isBlank()) {
                 entriesByKey.put(key, entry);
             }
@@ -80,8 +85,67 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
     private void attachMatchingEntry(EnrichmentTarget target, Map<String, JsonNode> entriesByKey) {
         JsonNode entry = entriesByKey.get(target.key());
         if (entry != null) {
-            target.node().set(targetEnrichmentField(), entry);
+            target.node().set(rule.targetEnrichmentField(), entry);
         }
+    }
+
+    protected record Rule(
+        String requestKeysField,
+        TargetRule targetRule,
+        String responseEntriesField,
+        String responseKeyField,
+        String targetEnrichmentField
+    ) {
+    }
+
+    protected static class RuleBuilder {
+
+        private String requestKeysField;
+        private TargetRule targetRule;
+        private String responseEntriesField;
+        private String responseKeyField;
+        private String targetEnrichmentField;
+
+        public RuleBuilder requestKeysField(String requestKeysField) {
+            this.requestKeysField = requestKeysField;
+            return this;
+        }
+
+        public RuleBuilder targets(TargetRule targetRule) {
+            this.targetRule = targetRule;
+            return this;
+        }
+
+        public RuleBuilder responseEntriesField(String responseEntriesField) {
+            this.responseEntriesField = responseEntriesField;
+            return this;
+        }
+
+        public RuleBuilder responseKeyField(String responseKeyField) {
+            this.responseKeyField = responseKeyField;
+            return this;
+        }
+
+        public RuleBuilder targetEnrichmentField(String targetEnrichmentField) {
+            this.targetEnrichmentField = targetEnrichmentField;
+            return this;
+        }
+
+        public Rule build() {
+            return new Rule(
+                requestKeysField,
+                targetRule,
+                responseEntriesField,
+                responseKeyField,
+                targetEnrichmentField
+            );
+        }
+    }
+
+    @FunctionalInterface
+    protected interface TargetRule {
+
+        List<EnrichmentTarget> targetsFrom(JsonNode root);
     }
 
     protected record EnrichmentTarget(String key, ObjectNode node) {
