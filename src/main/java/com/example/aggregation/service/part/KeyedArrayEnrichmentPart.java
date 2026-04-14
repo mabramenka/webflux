@@ -5,6 +5,7 @@ import com.example.aggregation.service.AggregationPart;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import lombok.Builder;
 import tools.jackson.databind.JsonNode;
@@ -17,7 +18,8 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
     private final Rule rule;
 
     protected KeyedArrayEnrichmentPart(Rule rule) {
-        this.rule = rule;
+        this.rule = Objects.requireNonNull(rule, "rule");
+        this.rule.validate();
     }
 
     @Override
@@ -27,7 +29,7 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
 
     @Override
     public void merge(ObjectNode root, JsonNode partResponse) {
-        Map<String, JsonNode> entriesByKey = rule.responseRule().entriesByKey().entriesByKey(partResponse);
+        Map<String, JsonNode> entriesByKey = rule.responseRule().entriesByKey(partResponse);
         targetsFrom(root).forEach(target -> attachMatchingEntry(target, entriesByKey));
     }
 
@@ -91,7 +93,7 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
     }
 
     private List<EnrichmentTarget> targetsFrom(JsonNode root) {
-        return rule.targetRule().targetsFrom().targetsFrom(root);
+        return rule.targetRule().targetsFrom(root);
     }
 
     private ArrayNode keysFrom(List<EnrichmentTarget> targets) {
@@ -114,32 +116,45 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         TargetRule targetRule,
         ResponseRule responseRule
     ) {
+
+        private void validate() {
+            Objects.requireNonNull(targetRule, "targetRule");
+            Objects.requireNonNull(responseRule, "responseRule");
+            targetRule.validate();
+            responseRule.validate();
+        }
     }
 
     @Builder
     protected record TargetRule(
         String requestKeysField,
-        TargetExtractor targetsFrom
+        Function<JsonNode, List<EnrichmentTarget>> targetsFrom
     ) {
+
+        private List<EnrichmentTarget> targetsFrom(JsonNode root) {
+            return targetsFrom.apply(root);
+        }
+
+        private void validate() {
+            Objects.requireNonNull(requestKeysField, "requestKeysField");
+            Objects.requireNonNull(targetsFrom, "targetsFrom");
+        }
     }
 
     @Builder
     protected record ResponseRule(
-        ResponseIndexer entriesByKey,
+        Function<JsonNode, Map<String, JsonNode>> entriesByKey,
         String targetField
     ) {
-    }
 
-    @FunctionalInterface
-    protected interface TargetExtractor {
+        private Map<String, JsonNode> entriesByKey(JsonNode response) {
+            return entriesByKey.apply(response);
+        }
 
-        List<EnrichmentTarget> targetsFrom(JsonNode root);
-    }
-
-    @FunctionalInterface
-    protected interface ResponseIndexer {
-
-        Map<String, JsonNode> entriesByKey(JsonNode response);
+        private void validate() {
+            Objects.requireNonNull(entriesByKey, "entriesByKey");
+            Objects.requireNonNull(targetField, "targetField");
+        }
     }
 
     protected record EnrichmentTarget(String key, ObjectNode node) {
