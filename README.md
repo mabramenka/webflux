@@ -1,8 +1,24 @@
 # WebFlux JSON Aggregation
 
+[![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring WebFlux](https://img.shields.io/badge/WebFlux-reactive-6DB33F?logo=spring&logoColor=white)](https://docs.spring.io/spring-framework/reference/web/webflux.html)
+[![Gradle](https://img.shields.io/badge/Gradle-version%20catalog-02303A?logo=gradle&logoColor=white)](https://docs.gradle.org/current/userguide/version_catalogs.html)
+[![Jackson 3](https://img.shields.io/badge/Jackson-3.x-2F6DB3)](https://github.com/FasterXML/jackson)
+[![Renovate](https://img.shields.io/badge/Renovate-enabled-1A1F6C?logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
+
 Reactive Spring Boot service that calls a main downstream service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the main JSON document.
 
 The service keeps downstream payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
+
+## Highlights
+
+- Dynamic JSON aggregation without fixed downstream response DTOs
+- Parallel optional enrichment parts with failure isolation
+- Declarative path-based enrichment rules
+- Fallback key paths for inconsistent downstream schemas
+- Header and query parameter forwarding for downstream calls
+- Renovate-ready dependency maintenance
 
 ## Stack
 
