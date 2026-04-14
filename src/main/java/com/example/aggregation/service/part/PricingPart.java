@@ -3,9 +3,6 @@ package com.example.aggregation.service.part;
 import com.example.aggregation.client.PricingClient;
 import com.example.aggregation.service.AggregationContext;
 import com.example.aggregation.service.AggregationPart;
-import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -48,23 +45,7 @@ public class PricingPart implements AggregationPart {
 
     @Override
     public void merge(ObjectNode root, JsonNode pricingResponse) {
-        Map<String, BigDecimal> amountByItemId = new HashMap<>();
-        pricingResponse.path("prices").forEach(price -> {
-            String itemId = price.path("itemId").asString("");
-            price.path("amount").asDecimalOpt()
-                .filter(amount -> !itemId.isBlank())
-                .ifPresent(amount -> amountByItemId.put(itemId, amount));
-        });
-
-        root.withArrayProperty("items").forEach(item -> {
-            if (item instanceof ObjectNode itemObject) {
-                String itemId = itemObject.path("itemId").asString("");
-                BigDecimal amount = amountByItemId.get(itemId);
-                if (amount != null) {
-                    itemObject.put("price", amount);
-                }
-            }
-        });
+        root.set("pricing", pricingResponse);
     }
 
     private ArrayNode itemIds(AggregationContext context) {

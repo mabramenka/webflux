@@ -102,10 +102,11 @@ class AggregateServiceTest {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("customerProfile").path("tier").asString())
                     .isEqualTo("GOLD");
-                org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).path("price").decimalValue())
+                org.assertj.core.api.Assertions.assertThat(root.path("pricing").path("prices").get(0).path("amount").decimalValue())
                     .isEqualByComparingTo("10.5");
-                org.assertj.core.api.Assertions.assertThat(root.path("items").get(1).path("price").decimalValue())
+                org.assertj.core.api.Assertions.assertThat(root.path("pricing").path("prices").get(1).path("amount").decimalValue())
                     .isEqualByComparingTo("20.0");
+                org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).has("price")).isFalse();
             })
             .verifyComplete();
     }
@@ -175,7 +176,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsPricingEntriesWithNonDecimalAmount() {
+    void aggregate_embedsPricingResponseAsSeparateProperty() {
         ObjectNode inboundRequest = objectMapper.createObjectNode()
             .put("customerId", "cust-1");
         inboundRequest.putArray("include").add("pricing");
@@ -206,7 +207,10 @@ class AggregateServiceTest {
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).has("price")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(root.path("items").get(1).path("price").decimalValue())
+                org.assertj.core.api.Assertions.assertThat(root.path("items").get(1).has("price")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(root.path("pricing").path("prices").get(0).path("amount").asString())
+                    .isEqualTo("not-a-number");
+                org.assertj.core.api.Assertions.assertThat(root.path("pricing").path("prices").get(1).path("amount").decimalValue())
                     .isEqualByComparingTo("20.0");
             })
             .verifyComplete();
