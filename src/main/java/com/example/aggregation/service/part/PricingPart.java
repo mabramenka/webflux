@@ -16,7 +16,7 @@ public class PricingPart extends KeyedArrayEnrichmentPart {
         .targetRule(mainNestedArrayToSiblingArrayRule("data", "accounts", account -> account.path("id").asString(""))
             .requestKeysField("itemIds")
             .build())
-        .responseRule(responseArrayRule("prices", account -> account.path("id").asString(""))
+        .responseRule(responseArrayRule("data", account -> account.path("id").asString(""))
             .targetField("account1")
             .build())
         .build();

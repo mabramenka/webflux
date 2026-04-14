@@ -92,7 +92,7 @@ class AggregateServiceTest {
         JsonNode profileResponse = json("{\"tier\":\"GOLD\"}");
         JsonNode pricingResponse = json("""
             {
-              "prices": [
+              "data": [
                 {"id": "A", "amount": 10.50},
                 {"id": "B", "amount": 20.00}
               ]
@@ -212,7 +212,7 @@ class AggregateServiceTest {
             """);
         JsonNode pricingResponse = json("""
             {
-              "prices": [
+              "data": [
                 {"id": "acc-a", "amount": "not-a-number", "source": "pricing-service"},
                 {"id": "acc-b", "amount": 20.00, "discount": {"code": "SPRING"}},
                 {"id": "acc-c", "amount": 30.00}
