@@ -264,7 +264,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_embedsOwnersIntoBasicDetailsSiblingArray() {
+    void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
         ObjectNode inboundRequest = objectMapper.createObjectNode()
             .put("customerId", "cust-1");
         inboundRequest.putArray("include").add("owners");
@@ -310,15 +310,19 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
-                JsonNode firstBasicDetails = root.path("data").get(0).path("basicDetails");
-                JsonNode secondBasicDetails = root.path("data").get(1).path("basicDetails");
+                JsonNode firstData = root.path("data").get(0);
+                JsonNode secondData = root.path("data").get(1);
+                JsonNode firstBasicDetails = firstData.path("basicDetails");
+                JsonNode secondBasicDetails = secondData.path("basicDetails");
                 org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners").get(0).has("owners1"))
                     .isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners1").get(0).path("name").asString())
+                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.has("owners1")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(secondBasicDetails.has("owners1")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(firstData.path("owners1").get(0).path("name").asString())
                     .isEqualTo("Ada");
-                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners1").get(1).path("flags").get(0).asString())
+                org.assertj.core.api.Assertions.assertThat(firstData.path("owners1").get(1).path("flags").get(0).asString())
                     .isEqualTo("primary");
-                org.assertj.core.api.Assertions.assertThat(secondBasicDetails.path("owners1").get(0).path("name").asString())
+                org.assertj.core.api.Assertions.assertThat(secondData.path("owners1").get(0).path("name").asString())
                     .isEqualTo("Cid");
             })
             .verifyComplete();

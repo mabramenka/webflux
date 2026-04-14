@@ -16,6 +16,7 @@ public class OwnersPart extends KeyedArrayEnrichmentPart {
         .targetRule(mainNestedArrayToSiblingArrayRule(
             "data",
             item -> item.path("basicDetails"),
+            item -> item,
             "owners",
             owner -> owner.path("id").asString("")
         )

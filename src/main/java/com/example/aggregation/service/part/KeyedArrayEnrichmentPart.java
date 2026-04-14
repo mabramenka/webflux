@@ -48,14 +48,13 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         String nestedArrayField,
         Function<ObjectNode, String> keyRule
     ) {
-        return TargetRule.builder()
-            .targetExtractor(root -> siblingArrayTargetsFromNestedArray(
-                root,
-                parentArrayField,
-                parent -> parent,
-                nestedArrayField,
-                keyRule
-            ));
+        return mainNestedArrayToSiblingArrayRule(
+            parentArrayField,
+            parent -> parent,
+            parent -> parent,
+            nestedArrayField,
+            keyRule
+        );
     }
 
     protected static TargetRule.TargetRuleBuilder mainNestedArrayToSiblingArrayRule(
@@ -64,11 +63,28 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         String nestedArrayField,
         Function<ObjectNode, String> keyRule
     ) {
+        return mainNestedArrayToSiblingArrayRule(
+            parentArrayField,
+            containerRule,
+            containerRule,
+            nestedArrayField,
+            keyRule
+        );
+    }
+
+    protected static TargetRule.TargetRuleBuilder mainNestedArrayToSiblingArrayRule(
+        String parentArrayField,
+        Function<ObjectNode, JsonNode> sourceContainerRule,
+        Function<ObjectNode, JsonNode> targetContainerRule,
+        String nestedArrayField,
+        Function<ObjectNode, String> keyRule
+    ) {
         return TargetRule.builder()
             .targetExtractor(root -> siblingArrayTargetsFromNestedArray(
                 root,
                 parentArrayField,
-                containerRule,
+                sourceContainerRule,
+                targetContainerRule,
                 nestedArrayField,
                 keyRule
             ));
@@ -85,7 +101,8 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
     private static List<EnrichmentTarget> siblingArrayTargetsFromNestedArray(
         JsonNode root,
         String parentArrayField,
-        Function<ObjectNode, JsonNode> containerRule,
+        Function<ObjectNode, JsonNode> sourceContainerRule,
+        Function<ObjectNode, JsonNode> targetContainerRule,
         String nestedArrayField,
         Function<ObjectNode, String> keyRule
     ) {
@@ -97,20 +114,27 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         return parentArray.values().stream()
             .filter(ObjectNode.class::isInstance)
             .map(ObjectNode.class::cast)
-            .flatMap(parent -> nestedTargets(containerRule.apply(parent), nestedArrayField, keyRule).stream())
+            .flatMap(parent -> nestedTargets(
+                sourceContainerRule.apply(parent),
+                targetContainerRule.apply(parent),
+                nestedArrayField,
+                keyRule
+            ).stream())
             .toList();
     }
 
     private static List<EnrichmentTarget> nestedTargets(
-        JsonNode container,
+        JsonNode sourceContainer,
+        JsonNode targetContainer,
         String nestedArrayField,
         Function<ObjectNode, String> keyRule
     ) {
-        if (!(container instanceof ObjectNode containerObject)) {
+        if (!(sourceContainer instanceof ObjectNode sourceContainerObject)
+            || !(targetContainer instanceof ObjectNode targetContainerObject)) {
             return List.of();
         }
 
-        JsonNode nestedArray = containerObject.path(nestedArrayField);
+        JsonNode nestedArray = sourceContainerObject.path(nestedArrayField);
         if (!nestedArray.isArray()) {
             return List.of();
         }
@@ -118,7 +142,7 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         return nestedArray.values().stream()
             .filter(ObjectNode.class::isInstance)
             .map(ObjectNode.class::cast)
-            .map(child -> new EnrichmentTarget(keyRule.apply(child), containerObject))
+            .map(child -> new EnrichmentTarget(keyRule.apply(child), targetContainerObject))
             .filter(EnrichmentTarget::hasKey)
             .toList();
     }
