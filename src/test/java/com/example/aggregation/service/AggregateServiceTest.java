@@ -194,8 +194,8 @@ class AggregateServiceTest {
         JsonNode pricingResponse = json("""
             {
               "prices": [
-                {"itemId": "A", "amount": "not-a-number"},
-                {"itemId": "B", "amount": 20.00}
+                {"itemId": "A", "amount": "not-a-number", "source": "pricing-service"},
+                {"itemId": "B", "amount": 20.00, "discount": {"code": "SPRING"}}
               ]
             }
             """);
@@ -209,10 +209,16 @@ class AggregateServiceTest {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).has("price")).isFalse();
                 org.assertj.core.api.Assertions.assertThat(root.path("items").get(1).has("price")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).path("pricing").path("itemId").asString())
+                    .isEqualTo("A");
                 org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).path("pricing").path("amount").asString())
                     .isEqualTo("not-a-number");
+                org.assertj.core.api.Assertions.assertThat(root.path("items").get(0).path("pricing").path("source").asString())
+                    .isEqualTo("pricing-service");
                 org.assertj.core.api.Assertions.assertThat(root.path("items").get(1).path("pricing").path("amount").decimalValue())
                     .isEqualByComparingTo("20.0");
+                org.assertj.core.api.Assertions.assertThat(root.path("items").get(1).path("pricing").path("discount").path("code").asString())
+                    .isEqualTo("SPRING");
                 org.assertj.core.api.Assertions.assertThat(root.has("pricing")).isFalse();
             })
             .verifyComplete();
