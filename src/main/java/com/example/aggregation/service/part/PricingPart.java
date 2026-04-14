@@ -13,11 +13,11 @@ import tools.jackson.databind.node.ObjectNode;
 public class PricingPart extends KeyedArrayEnrichmentPart {
 
     private static final Rule ENRICHMENT_RULE = keyedArrayRule()
-        .targetRule(mainArrayRule("items", item -> item.path("itemId").asString(""))
+        .targetRule(mainNestedArrayRule("data", "accounts", account -> account.path("id").asString(""))
             .requestKeysField("itemIds")
             .build())
-        .responseRule(responseArrayRule("prices", price -> price.path("itemId").asString(""))
-            .targetField("pricing")
+        .responseRule(responseArrayRule("prices", account -> account.path("id").asString(""))
+            .targetField("account1")
             .build())
         .build();
 

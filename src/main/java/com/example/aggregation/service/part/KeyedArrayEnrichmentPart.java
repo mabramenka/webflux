@@ -51,6 +51,15 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
             .targetsFrom(root -> targetsFromArray(root, arrayField, keyRule));
     }
 
+    protected static TargetRule.TargetRuleBuilder mainNestedArrayRule(
+        String parentArrayField,
+        String nestedArrayField,
+        Function<ObjectNode, String> keyRule
+    ) {
+        return TargetRule.builder()
+            .targetsFrom(root -> targetsFromNestedArray(root, parentArrayField, nestedArrayField, keyRule));
+    }
+
     protected static ResponseRule.ResponseRuleBuilder responseArrayRule(
         String entriesField,
         Function<JsonNode, String> keyRule
@@ -70,6 +79,29 @@ public abstract class KeyedArrayEnrichmentPart implements AggregationPart {
         }
 
         return sourceArray.values().stream()
+            .filter(ObjectNode.class::isInstance)
+            .map(ObjectNode.class::cast)
+            .map(node -> new EnrichmentTarget(keyRule.apply(node), node))
+            .filter(EnrichmentTarget::hasKey)
+            .toList();
+    }
+
+    private static List<EnrichmentTarget> targetsFromNestedArray(
+        JsonNode root,
+        String parentArrayField,
+        String nestedArrayField,
+        Function<ObjectNode, String> keyRule
+    ) {
+        JsonNode parentArray = root.path(parentArrayField);
+        if (!parentArray.isArray()) {
+            return List.of();
+        }
+
+        return parentArray.values().stream()
+            .filter(ObjectNode.class::isInstance)
+            .map(parent -> parent.path(nestedArrayField))
+            .filter(JsonNode::isArray)
+            .flatMap(nestedArray -> nestedArray.values().stream())
             .filter(ObjectNode.class::isInstance)
             .map(ObjectNode.class::cast)
             .map(node -> new EnrichmentTarget(keyRule.apply(node), node))
