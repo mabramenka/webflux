@@ -109,12 +109,12 @@ class AggregateServiceTest {
                 ObjectNode root = (ObjectNode) aggregated;
                 org.assertj.core.api.Assertions.assertThat(root.path("customerProfile").path("tier").asString())
                     .isEqualTo("GOLD");
-                JsonNode accounts = root.path("data").get(0).path("accounts");
-                org.assertj.core.api.Assertions.assertThat(accounts.get(0).path("account1").path("amount").decimalValue())
+                JsonNode dataEntry = root.path("data").get(0);
+                org.assertj.core.api.Assertions.assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
                     .isEqualByComparingTo("10.5");
-                org.assertj.core.api.Assertions.assertThat(accounts.get(1).path("account1").path("amount").decimalValue())
+                org.assertj.core.api.Assertions.assertThat(dataEntry.path("account1").get(1).path("amount").decimalValue())
                     .isEqualByComparingTo("20.0");
-                org.assertj.core.api.Assertions.assertThat(accounts.get(0).has("price")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(dataEntry.path("accounts").get(0).has("account1")).isFalse();
                 org.assertj.core.api.Assertions.assertThat(root.has("account1")).isFalse();
             })
             .verifyComplete();
@@ -227,21 +227,25 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
             .assertNext(aggregated -> {
                 ObjectNode root = (ObjectNode) aggregated;
-                JsonNode firstAccounts = root.path("data").get(0).path("accounts");
-                JsonNode secondAccounts = root.path("data").get(1).path("accounts");
+                JsonNode firstData = root.path("data").get(0);
+                JsonNode secondData = root.path("data").get(1);
+                JsonNode firstAccounts = firstData.path("accounts");
                 org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).has("price")).isFalse();
                 org.assertj.core.api.Assertions.assertThat(firstAccounts.get(1).has("price")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).path("account1").path("id").asString())
+                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).has("account1")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(1).has("account1")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(0).path("id").asString())
                     .isEqualTo("acc-a");
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).path("account1").path("amount").asString())
+                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(0).path("amount").asString())
                     .isEqualTo("not-a-number");
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).path("account1").path("source").asString())
+                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(0).path("source").asString())
                     .isEqualTo("pricing-service");
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(1).path("account1").path("amount").decimalValue())
+                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(1).path("amount").decimalValue())
                     .isEqualByComparingTo("20.0");
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(1).path("account1").path("discount").path("code").asString())
+                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(1).path("discount").path("code").asString())
                     .isEqualTo("SPRING");
-                org.assertj.core.api.Assertions.assertThat(secondAccounts.get(0).path("account1").path("amount").decimalValue())
+                org.assertj.core.api.Assertions.assertThat(secondData.path("accounts").get(0).has("account1")).isFalse();
+                org.assertj.core.api.Assertions.assertThat(secondData.path("account1").get(0).path("amount").decimalValue())
                     .isEqualByComparingTo("30.0");
                 org.assertj.core.api.Assertions.assertThat(root.has("account1")).isFalse();
             })
