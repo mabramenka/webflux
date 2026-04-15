@@ -12,17 +12,17 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=code_smells&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=duplicated_lines_density&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 
-Reactive Spring Boot service that calls a main downstream service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the main JSON document.
+Reactive Spring Boot service that calls an account group service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the account group JSON document.
 
-The service keeps downstream payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
+The service keeps external service payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
 
 ## Highlights
 
-- Dynamic JSON aggregation without fixed downstream response DTOs
+- Dynamic JSON aggregation without fixed external response DTOs
 - Parallel optional enrichment parts with failure isolation
 - Declarative path-based enrichment rules
-- Fallback key paths for inconsistent downstream schemas
-- Header and query parameter forwarding for downstream calls
+- Fallback key paths for inconsistent external schemas
+- Header and query parameter forwarding for client calls
 - CI-ready test, coverage, and SonarQube Cloud analysis
 - Renovate-ready dependency maintenance
 
@@ -42,13 +42,12 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 ./gradlew bootRun
 ```
 
-Default downstream URLs are configured in [application.properties](src/main/resources/application.properties):
+Default client URLs are configured in [application.properties](src/main/resources/application.properties):
 
 ```properties
-downstream.main.base-url=http://localhost:8081
-downstream.profile.base-url=http://localhost:8082
-downstream.pricing.base-url=http://localhost:8083
-downstream.owners.base-url=http://localhost:8084
+client.account-group.base-url=http://localhost:8081
+client.account.base-url=http://localhost:8083
+client.owners.base-url=http://localhost:8084
 ```
 
 Override them with Spring configuration when running in another environment.
@@ -79,11 +78,11 @@ Content-Type: application/json
   "customerId": "cust-1",
   "market": "US",
   "includeItems": true,
-  "include": ["profile", "pricing", "owners"]
+  "include": ["account", "owners"]
 }
 ```
 
-Fields sent to the main downstream service:
+Fields sent to the account group service:
 
 - `customerId`
 - `market`, default `US`
@@ -92,9 +91,9 @@ Fields sent to the main downstream service:
 `include` controls optional aggregation parts:
 
 - omitted or `null`: all registered parts are enabled
-- empty array: only the main response is returned
-- supported values: `profile`, `pricing`, `owners`
-- unknown values fail before calling the main downstream service
+- empty array: only the account group response is returned
+- supported values: `account`, `owners`
+- unknown values fail before calling the account group service
 
 ### Query Parameters
 
@@ -102,11 +101,11 @@ Fields sent to the main downstream service:
 POST /api/v1/aggregate?detokenize=true
 ```
 
-`detokenize` is optional and must be `true` or `false`. When present, it is forwarded to downstream WebClient calls.
+`detokenize` is optional and must be `true` or `false`. When present, it is forwarded to WebClient calls.
 
 ### Forwarded Headers
 
-The service forwards selected inbound headers to downstream services:
+The service forwards selected inbound headers to external services:
 
 - `Authorization`
 - `X-Request-Id`
@@ -115,47 +114,29 @@ The service forwards selected inbound headers to downstream services:
 
 ## Aggregation Flow
 
-1. Build and send the main request to `/main`.
+1. Build and send the account group request to `/account-groups`.
 2. Read `include` and select registered optional parts.
-3. Skip optional parts that do not support the main response shape.
+3. Skip optional parts that do not support the account group response shape.
 4. Fetch enabled optional parts in parallel.
-5. Ignore failed optional parts and keep the main response.
+5. Ignore failed optional parts and keep the account group response.
 6. Merge successful optional responses in registered order.
 
 Optional part order:
 
-1. `profile`
-2. `pricing`
-3. `owners`
+1. `account`
+2. `owners`
 
 ## Optional Parts
 
-### Profile
+### Account
 
-Request is built from the main response:
-
-```json
-{
-  "customerId": "cust-1",
-  "market": "US"
-}
-```
-
-The profile response is embedded into the root response under:
-
-```text
-customerProfile
-```
-
-### Pricing
-
-Reads account ids from the main response:
+Reads account ids from the account group response:
 
 ```text
 $.data[*].accounts[*].id
 ```
 
-Calls pricing with:
+Calls account with:
 
 ```json
 {
@@ -164,7 +145,7 @@ Calls pricing with:
 }
 ```
 
-Indexes pricing response entries by:
+Indexes account response entries by:
 
 ```text
 $.data[*].id
@@ -178,7 +159,7 @@ account1
 
 ### Owners
 
-Reads owner ids from the main response with fallback fields:
+Reads owner ids from the account group response with fallback fields:
 
 ```text
 $.data[*].basicDetails.owners[*].id
@@ -221,7 +202,7 @@ private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
 
 Rule semantics:
 
-- `mainItems` selects the owner item level in the main response.
+- `mainItems` selects the owner item level in the account group response.
 - main key paths are relative to each selected owner item.
 - response key paths are relative to each selected response item.
 - key paths are tried in order, so later paths are fallback values.

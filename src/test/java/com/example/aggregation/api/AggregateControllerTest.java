@@ -4,8 +4,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.aggregation.application.AggregateService;
-import com.example.aggregation.downstream.DownstreamRequest;
+import com.example.aggregation.service.AggregateService;
+import com.example.aggregation.client.ClientRequestContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +34,7 @@ class AggregateControllerTest {
         ObjectNode mergedResponse = objectMapper.createObjectNode();
         mergedResponse.put("status", "ok");
 
-        when(aggregateService.aggregate(any(ObjectNode.class), any(DownstreamRequest.class)))
+        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.just(mergedResponse));
 
         webTestClient.post()
@@ -55,16 +55,16 @@ class AggregateControllerTest {
             .jsonPath("$.status").isEqualTo("ok");
 
         ArgumentCaptor<ObjectNode> requestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        ArgumentCaptor<DownstreamRequest> downstreamRequestCaptor = ArgumentCaptor.forClass(DownstreamRequest.class);
-        verify(aggregateService).aggregate(requestCaptor.capture(), downstreamRequestCaptor.capture());
+        ArgumentCaptor<ClientRequestContext> clientRequestContextCaptor = ArgumentCaptor.forClass(ClientRequestContext.class);
+        verify(aggregateService).aggregate(requestCaptor.capture(), clientRequestContextCaptor.capture());
 
         org.assertj.core.api.Assertions.assertThat(requestCaptor.getValue().path("customerId").asString()).isEqualTo("cust-1");
-        DownstreamRequest downstreamRequest = downstreamRequestCaptor.getValue();
-        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().authorization()).isEqualTo("Bearer abc");
-        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().requestId()).isEqualTo("req-123");
-        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().correlationId()).isEqualTo("corr-456");
-        org.assertj.core.api.Assertions.assertThat(downstreamRequest.headers().acceptLanguage()).isEqualTo("en-US");
-        org.assertj.core.api.Assertions.assertThat(downstreamRequest.detokenize()).isTrue();
+        ClientRequestContext clientRequestContext = clientRequestContextCaptor.getValue();
+        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().authorization()).isEqualTo("Bearer abc");
+        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().requestId()).isEqualTo("req-123");
+        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().correlationId()).isEqualTo("corr-456");
+        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().acceptLanguage()).isEqualTo("en-US");
+        org.assertj.core.api.Assertions.assertThat(clientRequestContext.detokenize()).isTrue();
     }
 
     @Test

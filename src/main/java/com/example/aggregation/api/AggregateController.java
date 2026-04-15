@@ -1,7 +1,7 @@
 package com.example.aggregation.api;
 
-import com.example.aggregation.application.AggregateService;
-import com.example.aggregation.downstream.DownstreamRequest;
+import com.example.aggregation.service.AggregateService;
+import com.example.aggregation.client.ClientRequestContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -30,8 +30,8 @@ public class AggregateController {
         @RequestHeader HttpHeaders headers,
         @RequestParam MultiValueMap<String, String> queryParams
     ) {
-        DownstreamRequest downstreamRequest = DownstreamRequest.from(headers, queryParams);
-        return aggregateService.aggregate(requestBody, downstreamRequest)
+        ClientRequestContext clientRequestContext = ClientRequestContext.from(headers, queryParams);
+        return aggregateService.aggregate(requestBody, clientRequestContext)
             .map(ResponseEntity::ok);
     }
 }
