@@ -15,6 +15,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.NettyOutbound;
 import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
+import reactor.netty.http.server.HttpServerRequest;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -72,18 +73,22 @@ class HttpServiceClientConfigIntegrationTest {
             .host("localhost")
             .port(0)
             .route(routes -> routes
-                .post("/account-groups", (request, response) -> jsonResponse(response, "account-group"))
-                .post("/accounts", (request, response) -> jsonResponse(response, "account"))
-                .post("/owners", (request, response) -> jsonResponse(response, "owners")))
+                .post("/account-groups", (request, response) -> jsonResponse(request, response, "account-group"))
+                .post("/accounts", (request, response) -> jsonResponse(request, response, "account"))
+                .post("/owners", (request, response) -> jsonResponse(request, response, "owners")))
             .bindNow();
     }
 
     private static NettyOutbound jsonResponse(
+        HttpServerRequest request,
         reactor.netty.http.server.HttpServerResponse response,
         String client
     ) {
+        String requestId = request.requestHeaders().get("X-Request-Id");
         return response.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .sendString(Mono.just("{\"client\":\"" + client + "\"}"));
+            .sendString(Mono.just("""
+                {"client":"%s","requestId":"%s","uri":"%s"}
+                """.formatted(client, requestId, request.uri())));
     }
 
     private static String serverUrl() {
@@ -96,5 +101,7 @@ class HttpServiceClientConfigIntegrationTest {
 
     private static void assertClientResponse(JsonNode response, String client) {
         assertThat(response.path("client").asString()).isEqualTo(client);
+        assertThat(response.path("requestId").asString()).isEqualTo("req-1");
+        assertThat(response.path("uri").asString()).endsWith("?detokenize=true");
     }
 }
