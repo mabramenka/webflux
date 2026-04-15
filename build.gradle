@@ -14,6 +14,14 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll([
+        '-Xlint:deprecation',
+        '-Xlint:removal',
+        '-Werror'
+    ])
+}
+
 jacoco {
     toolVersion = libs.versions.jacoco.get()
 }
