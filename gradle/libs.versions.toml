@@ -11,6 +11,7 @@ sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-webclient = { module = "org.springframework.boot:spring-boot-webclient" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
