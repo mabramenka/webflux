@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.util.UriComponentsBuilder;
 
 class ClientRequestContextTest {
 
@@ -18,7 +17,6 @@ class ClientRequestContextTest {
         ClientRequestContext request = ClientRequestContext.from(new HttpHeaders(), queryParams);
 
         assertThat(request.detokenize()).isFalse();
-        assertThat(request.applyQueryParams(UriComponentsBuilder.fromPath("/account-groups")).build()).hasToString("/account-groups?detokenize=false");
     }
 
     @Test
@@ -31,6 +29,22 @@ class ClientRequestContextTest {
         ClientRequestContext request = ClientRequestContext.from(new HttpHeaders(), queryParams);
 
         assertThat(request.detokenize()).isNull();
-        assertThat(request.applyQueryParams(UriComponentsBuilder.fromPath("/account-groups")).build()).hasToString("/account-groups");
+    }
+
+    @Test
+    void from_preservesForwardedHeadersAsMap() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth("abc");
+        headers.set("X-Request-Id", "req-123");
+        headers.set("X-Correlation-Id", "corr-456");
+        headers.set(HttpHeaders.ACCEPT_LANGUAGE, "en-US");
+
+        ClientRequestContext request = ClientRequestContext.from(headers, new LinkedMultiValueMap<>());
+
+        assertThat(request.headers().asMap())
+            .containsEntry(HttpHeaders.AUTHORIZATION, "Bearer abc")
+            .containsEntry("X-Request-Id", "req-123")
+            .containsEntry("X-Correlation-Id", "corr-456")
+            .containsEntry(HttpHeaders.ACCEPT_LANGUAGE, "en-US");
     }
 }

@@ -2,7 +2,7 @@ package com.example.aggregation.service;
 
 import com.example.aggregation.enrichment.AggregationEnrichment;
 import com.example.aggregation.client.ClientRequestContext;
-import com.example.aggregation.client.WebClientAccountGroupClient;
+import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.model.EnrichmentFetchResult;
 import com.example.aggregation.model.EnrichmentSelection;
@@ -25,11 +25,11 @@ public class AggregateService {
 
     private static final String CUSTOMER_ID_FIELD = "customerId";
 
-    private final WebClientAccountGroupClient accountGroupClient;
+    private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
     private final Map<String, AggregationEnrichment> enrichmentByName;
 
-    public AggregateService(WebClientAccountGroupClient accountGroupClient, List<AggregationEnrichment> enrichments) {
+    public AggregateService(AccountGroups accountGroupClient, List<AggregationEnrichment> enrichments) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
         this.enrichmentByName = buildEnrichmentIndex(enrichments);
@@ -42,7 +42,7 @@ public class AggregateService {
 
             ObjectNode accountGroupRequest = buildAccountGroupRequest(inboundRequest);
 
-            return accountGroupClient.postAccountGroup(accountGroupRequest, clientRequestContext)
+            return accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext)
                 .flatMap(accountGroupResponse -> {
                     AggregationContext context = new AggregationContext(
                         inboundRequest,

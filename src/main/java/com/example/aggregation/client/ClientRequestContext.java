@@ -5,7 +5,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.util.UriBuilder;
 
 public record ClientRequestContext(
     ForwardedHeaders headers,
@@ -19,13 +18,6 @@ public record ClientRequestContext(
             ForwardedHeaders.from(headers),
             booleanQueryParam(queryParams, DETOKENIZE_QUERY_PARAM).orElse(null)
         );
-    }
-
-    public UriBuilder applyQueryParams(UriBuilder builder) {
-        if (detokenize != null) {
-            builder.queryParam(DETOKENIZE_QUERY_PARAM, detokenize);
-        }
-        return builder;
     }
 
     private static Optional<Boolean> booleanQueryParam(MultiValueMap<String, String> queryParams, String name) {

@@ -45,9 +45,12 @@ The service keeps external service payloads dynamic by working with Jackson `Jso
 Default client URLs are configured in [application.properties](src/main/resources/application.properties):
 
 ```properties
-client.account-group.base-url=http://localhost:8081
-client.account.base-url=http://localhost:8083
-client.owners.base-url=http://localhost:8084
+spring.http.clients.connect-timeout=2s
+spring.http.clients.read-timeout=5s
+
+spring.http.serviceclient.account-group.base-url=http://localhost:8081
+spring.http.serviceclient.account.base-url=http://localhost:8083
+spring.http.serviceclient.owners.base-url=http://localhost:8084
 ```
 
 Override them with Spring configuration when running in another environment.
@@ -101,7 +104,7 @@ Fields sent to the account group service:
 POST /api/v1/aggregate?detokenize=true
 ```
 
-`detokenize` is optional and must be `true` or `false`. When present, it is forwarded to WebClient calls.
+`detokenize` is optional and must be `true` or `false`. When present, it is forwarded to downstream client calls.
 
 ### Forwarded Headers
 

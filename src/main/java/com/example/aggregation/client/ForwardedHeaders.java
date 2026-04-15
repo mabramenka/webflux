@@ -1,5 +1,7 @@
 package com.example.aggregation.client;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import lombok.Builder;
 import org.springframework.http.HttpHeaders;
 
@@ -20,16 +22,18 @@ public record ForwardedHeaders(
             .build();
     }
 
-    public void applyTo(HttpHeaders target) {
-        setIfPresent(target, HttpHeaders.AUTHORIZATION, authorization);
-        setIfPresent(target, "X-Request-Id", requestId);
-        setIfPresent(target, "X-Correlation-Id", correlationId);
-        setIfPresent(target, HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage);
+    public Map<String, String> asMap() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        putIfPresent(headers, HttpHeaders.AUTHORIZATION, authorization);
+        putIfPresent(headers, "X-Request-Id", requestId);
+        putIfPresent(headers, "X-Correlation-Id", correlationId);
+        putIfPresent(headers, HttpHeaders.ACCEPT_LANGUAGE, acceptLanguage);
+        return headers;
     }
 
-    private static void setIfPresent(HttpHeaders target, String name, String value) {
+    private static void putIfPresent(Map<String, String> target, String name, String value) {
         if (value != null && !value.isBlank()) {
-            target.set(name, value);
+            target.put(name, value);
         }
     }
 }

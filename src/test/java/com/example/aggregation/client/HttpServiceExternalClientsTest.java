@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpHeaders;
@@ -14,13 +13,15 @@ import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.support.WebClientAdapter;
+import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
-class WebClientExternalClientsTest {
+class HttpServiceExternalClientsTest {
 
     private static final ObjectNode REQUEST = JsonNodeFactory.instance.objectNode().put("id", "request-1");
     private static final ClientRequestContext CLIENT_REQUEST_CONTEXT = new ClientRequestContext(
@@ -35,14 +36,14 @@ class WebClientExternalClientsTest {
 
     @ParameterizedTest
     @MethodSource("clients")
-    void post_sendsExpectedRequest(WebClientCase clientCase) {
+    void fetch_sendsExpectedRequest(WebClientCase clientCase) {
         AtomicReference<ClientRequest> capturedRequest = new AtomicReference<>();
         WebClient webClient = webClient(capturedRequest, ClientResponse.create(HttpStatus.OK)
             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .body("{\"status\":\"ok\"}")
             .build());
 
-        StepVerifier.create(clientCase.invocationFactory().apply(webClient).post(REQUEST, CLIENT_REQUEST_CONTEXT))
+        StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
             .assertNext(response -> assertThat(response.path("status").asString()).isEqualTo("ok"))
             .verifyComplete();
 
@@ -51,6 +52,7 @@ class WebClientExternalClientsTest {
         assertThat(request.url().getPath()).isEqualTo(clientCase.path());
         assertThat(request.url().getQuery()).isEqualTo("detokenize=true");
         assertThat(request.headers().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
+        assertThat(request.headers().getAccept()).containsExactly(MediaType.APPLICATION_JSON);
         assertThat(request.headers().getFirst(HttpHeaders.AUTHORIZATION)).isEqualTo("Bearer token");
         assertThat(request.headers().getFirst("X-Request-Id")).isEqualTo("req-1");
         assertThat(request.headers().getFirst("X-Correlation-Id")).isEqualTo("corr-1");
@@ -59,35 +61,41 @@ class WebClientExternalClientsTest {
 
     @ParameterizedTest
     @MethodSource("clients")
-    void post_mapsErrorStatusToIllegalStateException(WebClientCase clientCase) {
+    void fetch_mapsErrorStatusToIllegalStateException(WebClientCase clientCase) {
         WebClient webClient = webClient(new AtomicReference<>(), ClientResponse.create(HttpStatus.BAD_GATEWAY)
             .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
             .body("client unavailable")
             .build());
 
-        StepVerifier.create(clientCase.invocationFactory().apply(webClient).post(REQUEST, CLIENT_REQUEST_CONTEXT))
+        StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
             .expectErrorSatisfies(error -> assertThat(error)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable"))
             .verify();
     }
 
-    @Test
-    void post_usesDefaultErrorMessageForEmptyErrorBody() {
-        WebClient webClient = webClient(new AtomicReference<>(), ClientResponse.create(HttpStatus.BAD_GATEWAY).build());
+    @ParameterizedTest
+    @MethodSource("clients")
+    void fetch_usesDefaultErrorMessageForEmptyErrorBody(WebClientCase clientCase) {
+        WebClient webClient = webClient(new AtomicReference<>(), ClientResponse.create(HttpStatus.BAD_GATEWAY)
+            .body(" ")
+            .build());
 
-        StepVerifier.create(new WebClientAccountGroupClient(webClient).postAccountGroup(REQUEST, CLIENT_REQUEST_CONTEXT))
+        StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
             .expectErrorSatisfies(error -> assertThat(error)
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Account group client failed: account group client request failed"))
+                .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage()))
             .verify();
     }
 
     private static Stream<WebClientCase> clients() {
         return Stream.of(
-            new WebClientCase("/account-groups", "Account group", webClient -> new WebClientAccountGroupClient(webClient)::postAccountGroup),
-            new WebClientCase("/owners", "Owners", webClient -> new WebClientOwnersClient(webClient)::postOwners),
-            new WebClientCase("/accounts", "Account", webClient -> new WebClientAccountClient(webClient)::postAccount)
+            new WebClientCase("/account-groups", "Account group", webClient ->
+                httpClient(webClient, AccountGroups.class, "Account group")::fetchAccountGroup),
+            new WebClientCase("/owners", "Owners", webClient ->
+                httpClient(webClient, Owners.class, "Owners")::fetchOwners),
+            new WebClientCase("/accounts", "Account", webClient ->
+                httpClient(webClient, Accounts.class, "Account")::fetchAccounts)
         );
     }
 
@@ -101,15 +109,29 @@ class WebClientExternalClientsTest {
             .build();
     }
 
+    private static <T> T httpClient(WebClient webClient, Class<T> clientType, String clientName) {
+        WebClient filteredWebClient = webClient.mutate()
+            .filter(DownstreamClientErrorFilter.forClient(clientName))
+            .build();
+        return HttpServiceProxyFactory.builderFor(WebClientAdapter.create(filteredWebClient))
+            .customArgumentResolver(new ClientRequestContextArgumentResolver())
+            .build()
+            .createClient(clientType);
+    }
+
     private record WebClientCase(
         String path,
         String errorPrefix,
         Function<WebClient, WebClientInvocation> invocationFactory
     ) {
+
+        String defaultErrorMessage() {
+            return errorPrefix.substring(0, 1).toLowerCase() + errorPrefix.substring(1) + " client request failed";
+        }
     }
 
     @FunctionalInterface
     private interface WebClientInvocation {
-        Mono<JsonNode> post(ObjectNode request, ClientRequestContext clientRequestContext);
+        Mono<JsonNode> fetch(ObjectNode request, ClientRequestContext clientRequestContext);
     }
 }

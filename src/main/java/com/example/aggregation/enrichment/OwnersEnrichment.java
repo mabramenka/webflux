@@ -3,7 +3,7 @@ package com.example.aggregation.enrichment;
 import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.enrichment.keyed.EnrichmentRule;
 import com.example.aggregation.enrichment.keyed.KeyedArrayEnrichment;
-import com.example.aggregation.client.WebClientOwnersClient;
+import com.example.aggregation.client.Owners;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -21,9 +21,9 @@ public class OwnersEnrichment extends KeyedArrayEnrichment {
         .targetField("owners1")
         .build();
 
-    private final WebClientOwnersClient ownersClient;
+    private final Owners ownersClient;
 
-    public OwnersEnrichment(WebClientOwnersClient ownersClient) {
+    public OwnersEnrichment(Owners ownersClient) {
         super(ENRICHMENT_RULE);
         this.ownersClient = ownersClient;
     }
@@ -36,6 +36,6 @@ public class OwnersEnrichment extends KeyedArrayEnrichment {
     @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
         ObjectNode request = requestWithKeys(context.accountGroupResponse());
-        return ownersClient.postOwners(request, context.clientRequestContext());
+        return ownersClient.fetchOwners(request, context.clientRequestContext());
     }
 }
