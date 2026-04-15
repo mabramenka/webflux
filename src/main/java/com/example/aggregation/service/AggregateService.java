@@ -19,6 +19,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Slf4j
 public class AggregateService {
 
+    private static final String CUSTOMER_ID_FIELD = "customerId";
+
     private final MainClient mainClient;
     private final List<AggregationPart> parts;
     private final Map<String, AggregationPart> partByName;
@@ -62,7 +64,7 @@ public class AggregateService {
 
     private ObjectNode buildMainRequest(ObjectNode inboundRequest) {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.put("customerId", inboundRequest.path("customerId").asString());
+        request.put(CUSTOMER_ID_FIELD, inboundRequest.path(CUSTOMER_ID_FIELD).asString());
         request.put("market", inboundRequest.path("market").asString("US"));
         request.put("includeItems", inboundRequest.path("includeItems").asBoolean(true));
         return request;
