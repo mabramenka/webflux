@@ -264,6 +264,62 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_deduplicatesPricingRequestIdsButMergesAllMatchingItems() {
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        inboundRequest.putArray("include").add("pricing");
+
+        JsonNode mainResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "id": "first",
+                  "accounts": [
+                    {"id": "shared-account"}
+                  ]
+                },
+                {
+                  "id": "second",
+                  "accounts": [
+                    {"id": "shared-account"}
+                  ]
+                }
+              ]
+            }
+            """);
+        JsonNode pricingResponse = json("""
+            {
+              "data": [
+                {"id": "shared-account", "amount": 15.00}
+              ]
+            }
+            """);
+
+        when(mainClient.postMain(any(ObjectNode.class), any(DownstreamRequest.class))).thenReturn(Mono.just(mainResponse));
+        when(pricingClient.postPricing(any(ObjectNode.class), any(DownstreamRequest.class)))
+            .thenReturn(Mono.just(pricingResponse));
+
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, downstreamRequest()))
+            .assertNext(aggregated -> {
+                JsonNode data = aggregated.path("data");
+                org.assertj.core.api.Assertions.assertThat(data.get(0).path("account1").get(0).path("amount").decimalValue())
+                    .isEqualByComparingTo("15.0");
+                org.assertj.core.api.Assertions.assertThat(data.get(1).path("account1").get(0).path("amount").decimalValue())
+                    .isEqualByComparingTo("15.0");
+            })
+            .verifyComplete();
+
+        ArgumentCaptor<ObjectNode> pricingRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(pricingClient).postPricing(pricingRequestCaptor.capture(), any(DownstreamRequest.class));
+        org.assertj.core.api.Assertions.assertThat(pricingRequestCaptor.getValue().path("ids").values())
+            .extracting(JsonNode::asString)
+            .containsExactly("shared-account");
+        verify(profileClient, never()).postProfile(any(ObjectNode.class), any(DownstreamRequest.class));
+        verify(ownersClient, never()).postOwners(any(ObjectNode.class), any(DownstreamRequest.class));
+    }
+
+    @Test
     void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
         ObjectNode inboundRequest = objectMapper.createObjectNode()
             .put("customerId", "cust-1");
