@@ -6,6 +6,8 @@ import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.model.EnrichmentFetchResult;
 import com.example.aggregation.model.EnrichmentSelection;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,11 +30,17 @@ public class AggregateService {
     private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
     private final Map<String, AggregationEnrichment> enrichmentByName;
+    private final MeterRegistry meterRegistry;
 
-    public AggregateService(AccountGroups accountGroupClient, List<AggregationEnrichment> enrichments) {
+    public AggregateService(
+        AccountGroups accountGroupClient,
+        List<AggregationEnrichment> enrichments,
+        MeterRegistry meterRegistry
+    ) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
         this.enrichmentByName = buildEnrichmentIndex(enrichments);
+        this.meterRegistry = meterRegistry;
     }
 
     public Mono<JsonNode> aggregate(ObjectNode inboundRequest, ClientRequestContext clientRequestContext) {
@@ -76,11 +84,21 @@ public class AggregateService {
 
     private Mono<EnrichmentFetchResult> fetchEnrichment(AggregationEnrichment enrichment, AggregationContext context) {
         return enrichment.fetch(context)
+            .doOnSuccess(response -> recordEnrichmentFetch(enrichment.name(), "SUCCESS"))
             .map(response -> EnrichmentFetchResult.success(enrichment, response))
             .onErrorResume(ex -> {
+                recordEnrichmentFetch(enrichment.name(), "ERROR");
                 log.warn("Optional aggregation enrichment '{}' failed and will be skipped", enrichment.name(), ex);
                 return Mono.just(EnrichmentFetchResult.failed(enrichment, ex));
             });
+    }
+
+    private void recordEnrichmentFetch(String enrichmentName, String outcome) {
+        Counter.builder("aggregation.enrichment.requests")
+            .tag("enrichment", enrichmentName)
+            .tag("outcome", outcome)
+            .register(meterRegistry)
+            .increment();
     }
 
     private JsonNode merge(ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentFetchResult> results) {

@@ -12,6 +12,7 @@ import com.example.aggregation.client.ClientRequestContext;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.Owners;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,13 +38,16 @@ class AggregateServiceTest {
     @Mock
     private Owners ownersClient;
 
+    private SimpleMeterRegistry meterRegistry;
     private AggregateService aggregateService;
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
         aggregateService = new AggregateService(
             accountGroupClient,
-            List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient))
+            List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient)),
+            meterRegistry
         );
     }
 
@@ -85,6 +89,7 @@ class AggregateServiceTest {
                     .isFalse();
             })
             .verifyComplete();
+        assertEnrichmentMetric("account", "ERROR", 1);
 
         JsonNode accountResponse = json("""
             {
@@ -110,6 +115,7 @@ class AggregateServiceTest {
                 org.assertj.core.api.Assertions.assertThat(root.has("account1")).isFalse();
             })
             .verifyComplete();
+        assertEnrichmentMetric("account", "SUCCESS", 1);
     }
 
     @Test
@@ -399,5 +405,13 @@ class AggregateServiceTest {
 
     private ClientRequestContext clientRequestContext() {
         return new ClientRequestContext(ForwardedHeaders.builder().build(), null);
+    }
+
+    private void assertEnrichmentMetric(String enrichment, String outcome, double count) {
+        org.assertj.core.api.Assertions.assertThat(meterRegistry.get("aggregation.enrichment.requests")
+            .tag("enrichment", enrichment)
+            .tag("outcome", outcome)
+            .counter()
+            .count()).isEqualTo(count);
     }
 }
