@@ -6,6 +6,7 @@
 [![Gradle](https://img.shields.io/badge/Gradle-version%20catalog-02303A?logo=gradle&logoColor=white)](https://docs.gradle.org/current/userguide/version_catalogs.html)
 [![Jackson 3](https://img.shields.io/badge/Jackson-3.x-2F6DB3)](https://github.com/FasterXML/jackson)
 [![Renovate](https://img.shields.io/badge/Renovate-enabled-1A1F6C?logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
+[![SonarQube Cloud](https://img.shields.io/badge/SonarQube%20Cloud-ready-4E9BCD?logo=sonarqubecloud&logoColor=white)](https://sonarcloud.io/)
 
 Reactive Spring Boot service that calls a main downstream service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the main JSON document.
 
@@ -18,6 +19,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 - Declarative path-based enrichment rules
 - Fallback key paths for inconsistent downstream schemas
 - Header and query parameter forwarding for downstream calls
+- CI-ready test, coverage, and SonarQube Cloud analysis
 - Renovate-ready dependency maintenance
 
 ## Stack
@@ -51,6 +53,12 @@ Override them with Spring configuration when running in another environment.
 
 ```bash
 ./gradlew test
+```
+
+Generate the JaCoCo XML and HTML coverage reports:
+
+```bash
+./gradlew jacocoTestReport
 ```
 
 ## API
@@ -238,3 +246,34 @@ Renovate is configured in [renovate.json](renovate.json):
 - Lombok updates grouped together
 
 Enable the Renovate GitHub App for the repository to start receiving dependency update PRs.
+
+## SonarQube Cloud
+
+SonarQube Cloud is wired through Gradle and GitHub Actions.
+
+Gradle tasks:
+
+```bash
+./gradlew test jacocoTestReport
+./gradlew sonar
+```
+
+Default project settings are in [build.gradle](build.gradle):
+
+```properties
+sonar.projectKey=mabramenka_webflux
+sonar.organization=mabramenka
+sonar.host.url=https://sonarcloud.io
+```
+
+GitHub Actions runs tests on every pull request and push to `main`. The Sonar step runs when the repository has this secret:
+
+```text
+SONAR_TOKEN
+```
+
+Create the token in SonarQube Cloud, then add it in GitHub:
+
+```text
+Repository -> Settings -> Secrets and variables -> Actions -> New repository secret
+```
