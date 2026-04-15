@@ -3,7 +3,7 @@ package com.example.aggregation.enrichment;
 import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.enrichment.keyed.EnrichmentRule;
 import com.example.aggregation.enrichment.keyed.KeyedArrayEnrichment;
-import com.example.aggregation.client.WebClientAccountClient;
+import com.example.aggregation.client.Accounts;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -23,9 +23,9 @@ public class AccountEnrichment extends KeyedArrayEnrichment {
         .targetField("account1")
         .build();
 
-    private final WebClientAccountClient accountClient;
+    private final Accounts accountClient;
 
-    public AccountEnrichment(WebClientAccountClient accountClient) {
+    public AccountEnrichment(Accounts accountClient) {
         super(ENRICHMENT_RULE);
         this.accountClient = accountClient;
     }
@@ -44,6 +44,6 @@ public class AccountEnrichment extends KeyedArrayEnrichment {
                 .asString(context.inboundRequest().path(CURRENCY_FIELD).asString("USD"))
         );
 
-        return accountClient.postAccount(request, context.clientRequestContext());
+        return accountClient.fetchAccounts(request, context.clientRequestContext());
     }
 }

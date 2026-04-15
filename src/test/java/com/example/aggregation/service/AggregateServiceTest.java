@@ -9,9 +9,9 @@ import com.example.aggregation.enrichment.AccountEnrichment;
 import com.example.aggregation.enrichment.OwnersEnrichment;
 import com.example.aggregation.client.ForwardedHeaders;
 import com.example.aggregation.client.ClientRequestContext;
-import com.example.aggregation.client.WebClientAccountClient;
-import com.example.aggregation.client.WebClientAccountGroupClient;
-import com.example.aggregation.client.WebClientOwnersClient;
+import com.example.aggregation.client.AccountGroups;
+import com.example.aggregation.client.Accounts;
+import com.example.aggregation.client.Owners;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,11 +31,11 @@ class AggregateServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Mock
-    private WebClientAccountGroupClient accountGroupClient;
+    private AccountGroups accountGroupClient;
     @Mock
-    private WebClientAccountClient accountClient;
+    private Accounts accountClient;
     @Mock
-    private WebClientOwnersClient ownersClient;
+    private Owners ownersClient;
 
     private AggregateService aggregateService;
 
@@ -73,8 +73,8 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
-        when(accountClient.postAccount(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.error(new RuntimeException("account down")));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext))
@@ -95,7 +95,7 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountClient.postAccount(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext))
@@ -141,8 +141,8 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
-        when(accountClient.postAccount(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
@@ -155,7 +155,7 @@ class AggregateServiceTest {
             })
             .verifyComplete();
 
-        verify(ownersClient, never()).postOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
@@ -170,7 +170,7 @@ class AggregateServiceTest {
                 .hasMessageContaining("unknown"))
             .verify();
 
-        verify(accountGroupClient, never()).postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
@@ -185,7 +185,7 @@ class AggregateServiceTest {
                 .hasMessageContaining("non-blank strings"))
             .verify();
 
-        verify(accountGroupClient, never()).postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
@@ -224,8 +224,8 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
-        when(accountClient.postAccount(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
@@ -256,7 +256,7 @@ class AggregateServiceTest {
             .verifyComplete();
 
         ArgumentCaptor<ObjectNode> accountRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(accountClient).postAccount(accountRequestCaptor.capture(), any(ClientRequestContext.class));
+        verify(accountClient).fetchAccounts(accountRequestCaptor.capture(), any(ClientRequestContext.class));
         org.assertj.core.api.Assertions.assertThat(accountRequestCaptor.getValue().path("ids").values())
             .extracting(JsonNode::asString)
             .containsExactly("acc-a", "acc-b", "acc-c");
@@ -295,8 +295,8 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
-        when(accountClient.postAccount(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
@@ -310,11 +310,11 @@ class AggregateServiceTest {
             .verifyComplete();
 
         ArgumentCaptor<ObjectNode> accountRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(accountClient).postAccount(accountRequestCaptor.capture(), any(ClientRequestContext.class));
+        verify(accountClient).fetchAccounts(accountRequestCaptor.capture(), any(ClientRequestContext.class));
         org.assertj.core.api.Assertions.assertThat(accountRequestCaptor.getValue().path("ids").values())
             .extracting(JsonNode::asString)
             .containsExactly("shared-account");
-        verify(ownersClient, never()).postOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
@@ -357,8 +357,8 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.postAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
-        when(ownersClient.postOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.just(ownersResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
@@ -382,11 +382,11 @@ class AggregateServiceTest {
             .verifyComplete();
 
         ArgumentCaptor<ObjectNode> ownersRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(ownersClient).postOwners(ownersRequestCaptor.capture(), any(ClientRequestContext.class));
+        verify(ownersClient).fetchOwners(ownersRequestCaptor.capture(), any(ClientRequestContext.class));
         org.assertj.core.api.Assertions.assertThat(ownersRequestCaptor.getValue().path("ids").values())
             .extracting(JsonNode::asString)
             .containsExactly("owner-a", "owner-b", "owner-c");
-        verify(accountClient, never()).postAccount(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     private JsonNode json(String raw) {
