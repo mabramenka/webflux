@@ -34,9 +34,7 @@ final class ItemKeyExtractor {
         itemExpression.select(root).stream()
             .filter(ObjectNode.class::isInstance)
             .map(ObjectNode.class::cast)
-            .forEach(entry -> {
-                keyGroups.firstKey(entry).ifPresent(key -> entriesByKey.put(key, entry));
-            });
+            .forEach(entry -> keyGroups.firstKey(entry).ifPresent(key -> entriesByKey.put(key, entry)));
         return entriesByKey;
     }
 

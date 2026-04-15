@@ -3,6 +3,7 @@ package com.example.aggregation.client.impl;
 import com.example.aggregation.client.ProfileClient;
 import com.example.aggregation.web.DownstreamRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -27,7 +28,7 @@ public class WebClientProfileClient implements ProfileClient {
             .headers(downstreamRequest.headers()::applyTo)
             .bodyValue(request)
             .retrieve()
-            .onStatus(status -> status.isError(), response ->
+            .onStatus(HttpStatusCode::isError, response ->
                 response.bodyToMono(String.class)
                     .defaultIfEmpty("profile downstream request failed")
                     .map(message -> new IllegalStateException("Profile downstream failed: " + message))
