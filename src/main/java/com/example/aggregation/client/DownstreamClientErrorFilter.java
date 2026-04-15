@@ -14,10 +14,11 @@ public final class DownstreamClientErrorFilter {
                 if (!response.statusCode().isError()) {
                     return Mono.just(response);
                 }
+                var statusCode = response.statusCode();
                 return response.bodyToMono(String.class)
                     .filter(message -> !message.isBlank())
                     .defaultIfEmpty(defaultErrorMessage(clientName))
-                    .flatMap(message -> Mono.error(new IllegalStateException(clientName + " client failed: " + message)));
+                    .flatMap(message -> Mono.error(new DownstreamClientException(clientName, statusCode, message)));
             });
     }
 

@@ -68,9 +68,15 @@ class HttpServiceExternalClientsTest {
             .build());
 
         StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
-            .expectErrorSatisfies(error -> assertThat(error)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable"))
+            .expectErrorSatisfies(error -> {
+                assertThat(error)
+                    .isInstanceOf(DownstreamClientException.class)
+                    .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable");
+                DownstreamClientException clientException = (DownstreamClientException) error;
+                assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
+                assertThat(clientException.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                assertThat(clientException.responseBody()).isEqualTo("client unavailable");
+            })
             .verify();
     }
 
@@ -83,7 +89,7 @@ class HttpServiceExternalClientsTest {
 
         StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
             .expectErrorSatisfies(error -> assertThat(error)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(DownstreamClientException.class)
                 .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage()))
             .verify();
     }
