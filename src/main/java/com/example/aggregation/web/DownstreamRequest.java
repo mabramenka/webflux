@@ -1,5 +1,6 @@
 package com.example.aggregation.web;
 
+import java.util.Optional;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.MultiValueMap;
@@ -11,32 +12,32 @@ public record DownstreamRequest(
     Boolean detokenize
 ) {
 
-    private static final String DETOKENIZE = "detokenize";
+    private static final String DETOKENIZE_QUERY_PARAM = "detokenize";
 
     public static DownstreamRequest from(HttpHeaders headers, MultiValueMap<String, String> queryParams) {
         return new DownstreamRequest(
             DownstreamHeaders.from(headers),
-            booleanQueryParam(queryParams, DETOKENIZE)
+            booleanQueryParam(queryParams, DETOKENIZE_QUERY_PARAM).orElse(null)
         );
     }
 
     public UriBuilder applyQueryParams(UriBuilder builder) {
         if (detokenize != null) {
-            builder.queryParam(DETOKENIZE, detokenize);
+            builder.queryParam(DETOKENIZE_QUERY_PARAM, detokenize);
         }
         return builder;
     }
 
-    private static Boolean booleanQueryParam(MultiValueMap<String, String> queryParams, String name) {
+    private static Optional<Boolean> booleanQueryParam(MultiValueMap<String, String> queryParams, String name) {
         String rawValue = queryParams.getFirst(name);
         if (rawValue == null || rawValue.isBlank()) {
-            return null;
+            return Optional.empty();
         }
         if ("true".equalsIgnoreCase(rawValue)) {
-            return true;
+            return Optional.of(true);
         }
         if ("false".equalsIgnoreCase(rawValue)) {
-            return false;
+            return Optional.of(false);
         }
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "'" + name + "' must be either true or false");
     }

@@ -15,6 +15,8 @@ import tools.jackson.databind.node.ObjectNode;
 @RequiredArgsConstructor
 public class ProfilePart extends EmbeddedJsonPart {
 
+    private static final String CUSTOMER_ID_FIELD = "customerId";
+
     private final ProfileClient profileClient;
 
     @Override
@@ -29,13 +31,13 @@ public class ProfilePart extends EmbeddedJsonPart {
 
     @Override
     public boolean supports(AggregationContext context) {
-        return !context.mainResponse().path("customerId").asString("").isBlank();
+        return !context.mainResponse().path(CUSTOMER_ID_FIELD).asString("").isBlank();
     }
 
     @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.put("customerId", context.mainResponse().path("customerId").asString());
+        request.put(CUSTOMER_ID_FIELD, context.mainResponse().path(CUSTOMER_ID_FIELD).asString());
         request.put("market", context.inboundRequest().path("market").asString("US"));
         return profileClient.postProfile(request, context.downstreamRequest());
     }

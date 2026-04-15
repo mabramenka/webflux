@@ -12,6 +12,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Order(200)
 public class PricingPart extends KeyedArrayEnrichmentPart {
 
+    private static final String CURRENCY_FIELD = "currency";
+
     private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
         .mainItems("$.data[*]", "accounts[*].id")
         .responseItems("$.data[*]", "id")
@@ -35,9 +37,9 @@ public class PricingPart extends KeyedArrayEnrichmentPart {
     public Mono<JsonNode> fetch(AggregationContext context) {
         ObjectNode request = requestWithKeys(context.mainResponse());
         request.put(
-            "currency",
-            context.mainResponse().path("currency")
-                .asString(context.inboundRequest().path("currency").asString("USD"))
+            CURRENCY_FIELD,
+            context.mainResponse().path(CURRENCY_FIELD)
+                .asString(context.inboundRequest().path(CURRENCY_FIELD).asString("USD"))
         );
 
         return pricingClient.postPricing(request, context.downstreamRequest());
