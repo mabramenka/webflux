@@ -3,6 +3,7 @@ package com.example.aggregation.client;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.aggregation.AggregationApplication;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,8 @@ class HttpServiceClientConfigIntegrationTest {
     private Accounts accounts;
     @Autowired
     private Owners owners;
+    @Autowired
+    private MeterRegistry meterRegistry;
 
     @DynamicPropertySource
     static void serviceClientProperties(DynamicPropertyRegistry registry) {
@@ -62,6 +65,10 @@ class HttpServiceClientConfigIntegrationTest {
         StepVerifier.create(owners.fetchOwners(REQUEST, clientRequestContext()))
             .assertNext(response -> assertClientResponse(response, "owners"))
             .verifyComplete();
+
+        assertRequestMetric("Account group");
+        assertRequestMetric("Account");
+        assertRequestMetric("Owners");
     }
 
     private static void startServer() {
@@ -103,5 +110,14 @@ class HttpServiceClientConfigIntegrationTest {
         assertThat(response.path("client").asString()).isEqualTo(client);
         assertThat(response.path("requestId").asString()).isEqualTo("req-1");
         assertThat(response.path("uri").asString()).endsWith("?detokenize=true");
+    }
+
+    private void assertRequestMetric(String client) {
+        assertThat(meterRegistry.get("aggregation.downstream.requests")
+            .tag("client", client)
+            .tag("status", "200")
+            .tag("outcome", "SUCCESS")
+            .counter()
+            .count()).isEqualTo(1);
     }
 }

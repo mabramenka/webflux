@@ -5,6 +5,7 @@ import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.ClientRequestContextArgumentResolver;
 import com.example.aggregation.client.DownstreamClientErrorFilter;
 import com.example.aggregation.client.Owners;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.support.WebClientHttpServiceGroupConfigurer;
@@ -30,11 +31,11 @@ import org.springframework.web.service.registry.ImportHttpServices;
 public class HttpServiceClientConfig {
 
     @Bean
-    WebClientHttpServiceGroupConfigurer downstreamHttpServiceConfigurer() {
+    WebClientHttpServiceGroupConfigurer downstreamHttpServiceConfigurer(MeterRegistry meterRegistry) {
         ClientRequestContextArgumentResolver resolver = new ClientRequestContextArgumentResolver();
         return groups -> groups.forEachGroup((group, clientBuilder, factoryBuilder) -> {
             factoryBuilder.customArgumentResolver(resolver);
-            clientBuilder.filter(DownstreamClientErrorFilter.forClient(clientName(group.name())));
+            clientBuilder.filter(DownstreamClientErrorFilter.forClient(clientName(group.name()), meterRegistry));
         });
     }
 

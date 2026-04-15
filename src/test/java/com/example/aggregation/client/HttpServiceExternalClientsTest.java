@@ -2,6 +2,7 @@ package com.example.aggregation.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -92,6 +93,29 @@ class HttpServiceExternalClientsTest {
                 .isInstanceOf(DownstreamClientException.class)
                 .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage()))
             .verify();
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
+    void fetch_recordsErrorMetric(WebClientCase clientCase) {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        WebClient webClient = webClient(new AtomicReference<>(), ClientResponse.create(HttpStatus.BAD_GATEWAY)
+            .body("client unavailable")
+            .build())
+            .mutate()
+            .filter(DownstreamClientErrorFilter.forClient(clientCase.errorPrefix(), meterRegistry))
+            .build();
+
+        StepVerifier.create(webClient.post().uri(clientCase.path()).retrieve().bodyToMono(String.class))
+            .expectError(DownstreamClientException.class)
+            .verify();
+
+        assertThat(meterRegistry.get("aggregation.downstream.requests")
+            .tag("client", clientCase.errorPrefix())
+            .tag("status", "502")
+            .tag("outcome", "ERROR")
+            .counter()
+            .count()).isEqualTo(1);
     }
 
     private static Stream<WebClientCase> clients() {
