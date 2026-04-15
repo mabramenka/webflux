@@ -23,6 +23,8 @@ The service keeps external service payloads dynamic by working with Jackson `Jso
 - Declarative path-based enrichment rules
 - Fallback key paths for inconsistent external schemas
 - Header and query parameter forwarding for client calls
+- Actuator health and metrics endpoints
+- Downstream and enrichment outcome metrics
 - CI-ready test, coverage, and SonarQube Cloud analysis
 - Renovate-ready dependency maintenance
 
@@ -59,6 +61,12 @@ Override them with Spring configuration when running in another environment.
 
 ```bash
 ./gradlew test
+```
+
+Verify that runtime classpaths stay on the Spring Boot 4 / Jackson 3 line:
+
+```bash
+./gradlew verifyBoot4Classpath
 ```
 
 Generate the JaCoCo XML and HTML coverage reports:
@@ -114,6 +122,19 @@ The service forwards selected inbound headers to external services:
 - `X-Request-Id`
 - `X-Correlation-Id`
 - `Accept-Language`
+
+## Operations
+
+The service exposes selected Actuator endpoints:
+
+- `/actuator/health`
+- `/actuator/info`
+- `/actuator/metrics`
+
+Custom metric names:
+
+- `aggregation.downstream.requests`, tagged by `client`, `status`, and `outcome`
+- `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome`
 
 ## Aggregation Flow
 
