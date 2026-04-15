@@ -18,10 +18,7 @@ class DownstreamRequestTest {
         DownstreamRequest request = DownstreamRequest.from(new HttpHeaders(), queryParams);
 
         assertThat(request.detokenize()).isFalse();
-        assertThat(request.applyQueryParams(UriComponentsBuilder.fromPath("/main"))
-            .build()
-            .toString())
-            .isEqualTo("/main?detokenize=false");
+        assertThat(request.applyQueryParams(UriComponentsBuilder.fromPath("/main")).build()).hasToString("/main?detokenize=false");
     }
 
     @Test
@@ -34,9 +31,6 @@ class DownstreamRequestTest {
         DownstreamRequest request = DownstreamRequest.from(new HttpHeaders(), queryParams);
 
         assertThat(request.detokenize()).isNull();
-        assertThat(request.applyQueryParams(UriComponentsBuilder.fromPath("/main"))
-            .build()
-            .toString())
-            .isEqualTo("/main");
+        assertThat(request.applyQueryParams(UriComponentsBuilder.fromPath("/main")).build()).hasToString("/main");
     }
 }
