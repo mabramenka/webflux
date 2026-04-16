@@ -31,6 +31,23 @@ class ActuatorEndpointsTest {
     }
 
     @Test
+    void exposesHealthProbeEndpoints() {
+        webTestClient.get()
+            .uri("/actuator/health/liveness")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody()
+            .jsonPath("$.status").isEqualTo("UP");
+
+        webTestClient.get()
+            .uri("/actuator/health/readiness")
+            .exchange()
+            .expectStatus().isOk()
+            .expectBody()
+            .jsonPath("$.status").isEqualTo("UP");
+    }
+
+    @Test
     void doesNotExposeUnapprovedActuatorEndpoints() {
         webTestClient.get()
             .uri("/actuator/loggers")
