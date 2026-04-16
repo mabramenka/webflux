@@ -10,7 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -19,6 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @WebFluxTest(controllers = AggregateController.class)
+@Import(GlobalExceptionHandler.class)
 class AggregateControllerTest {
 
     @Autowired
@@ -78,5 +81,24 @@ class AggregateControllerTest {
                 """)
             .exchange()
             .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
+        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+            .thenReturn(Mono.error(new IllegalArgumentException("Unknown aggregation enrichment(s): foo")));
+
+        webTestClient.post()
+            .uri("/api/v1/aggregate")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {"customerId":"cust-1"}
+                """)
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectBody()
+            .jsonPath("$.status").isEqualTo(HttpStatus.BAD_REQUEST.value())
+            .jsonPath("$.detail").isEqualTo("Unknown aggregation enrichment(s): foo");
     }
 }
