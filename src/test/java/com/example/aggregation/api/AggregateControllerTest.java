@@ -1,5 +1,6 @@
 package com.example.aggregation.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,9 +98,12 @@ class AggregateControllerTest {
                 """)
             .exchange()
             .expectStatus().isBadRequest()
-            .expectHeader().contentType(MediaType.APPLICATION_PROBLEM_JSON)
-            .expectBody()
-            .jsonPath("$.status").isEqualTo(HttpStatus.BAD_REQUEST.value())
-            .jsonPath("$.detail").isEqualTo("Unknown aggregation enrichment(s): foo");
+            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectBody(String.class)
+            .value(body -> assertThat(body)
+                .contains("\"status\":" + HttpStatus.BAD_REQUEST.value())
+                .contains("Unknown aggregation enrichment(s): foo")
+                .contains("/problems/invalid-aggregation-request")
+                .contains("/api/v1/aggregate"));
     }
 }
