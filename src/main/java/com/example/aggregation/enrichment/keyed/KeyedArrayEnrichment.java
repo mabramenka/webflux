@@ -52,5 +52,4 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
             target.node().withArrayProperty(rule.responseRule().targetField()).add(entry.deepCopy());
         }
     }
-
 }

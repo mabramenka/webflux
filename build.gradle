@@ -127,6 +127,11 @@ tasks.register('verifyBoot4Classpath') {
 tasks.named('check') {
     dependsOn tasks.named('verifyBoot4Classpath')
     dependsOn tasks.named('spotlessCheck')
+}
+
+tasks.register('securityCheck') {
+    description = 'Runs OWASP Dependency Check. Set NVD_API_KEY before using it to avoid slow NVD API updates.'
+    group = 'verification'
     dependsOn tasks.named('dependencyCheckAnalyze')
 }
 
