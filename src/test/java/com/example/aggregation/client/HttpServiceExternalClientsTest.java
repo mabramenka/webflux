@@ -1,6 +1,7 @@
 package com.example.aggregation.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
@@ -94,6 +95,19 @@ class HttpServiceExternalClientsTest {
                 .isInstanceOf(DownstreamClientException.class)
                 .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage()))
             .verify();
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
+    void fetch_rejectsNullClientRequestContext(WebClientCase clientCase) {
+        WebClient webClient = webClient(new AtomicReference<>(), ClientResponse.create(HttpStatus.OK)
+            .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .body("{\"status\":\"ok\"}")
+            .build());
+
+        assertThatThrownBy(() -> clientCase.invocationFactory().apply(webClient).fetch(REQUEST, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("ClientRequestContext must not be null");
     }
 
     @ParameterizedTest

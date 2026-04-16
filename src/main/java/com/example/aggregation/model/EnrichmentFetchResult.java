@@ -28,7 +28,7 @@ public record EnrichmentFetchResult(
     }
 
     public void mergeInto(ObjectNode root) {
-        if (successful()) {
+        if (response != null && error == null) {
             enrichment.merge(root, response);
         }
     }

@@ -25,7 +25,7 @@ The service keeps external service payloads dynamic by working with Jackson `Jso
 - Header and query parameter forwarding for client calls
 - Actuator health and metrics endpoints
 - Downstream and enrichment outcome metrics
-- JSpecify nullability annotations
+- JSpecify nullability annotations checked by NullAway
 - CI-ready test, coverage, and SonarQube Cloud analysis
 - Renovate-ready dependency maintenance
 

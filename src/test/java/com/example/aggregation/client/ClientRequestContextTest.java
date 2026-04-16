@@ -1,6 +1,7 @@
 package com.example.aggregation.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -20,15 +21,17 @@ class ClientRequestContextTest {
     }
 
     @Test
-    void from_omitsMissingOrBlankDetokenizeQueryParam() {
+    void from_omitsMissingDetokenizeQueryParam() {
         assertThat(ClientRequestContext.from(new HttpHeaders(), new LinkedMultiValueMap<>()).detokenize()).isNull();
+    }
 
+    @Test
+    void from_rejectsBlankDetokenizeQueryParam() {
         MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
         queryParams.add("detokenize", " ");
 
-        ClientRequestContext request = ClientRequestContext.from(new HttpHeaders(), queryParams);
-
-        assertThat(request.detokenize()).isNull();
+        assertThatThrownBy(() -> ClientRequestContext.from(new HttpHeaders(), queryParams))
+            .hasMessageContaining("'detokenize' must be either true or false");
     }
 
     @Test

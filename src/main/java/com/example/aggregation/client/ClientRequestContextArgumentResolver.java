@@ -14,7 +14,7 @@ public final class ClientRequestContextArgumentResolver implements HttpServiceAr
             return false;
         }
         if (argument == null) {
-            return true;
+            throw new IllegalArgumentException("ClientRequestContext must not be null");
         }
 
         ClientRequestContext context = (ClientRequestContext) argument;

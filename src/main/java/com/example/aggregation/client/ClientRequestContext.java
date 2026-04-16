@@ -23,7 +23,7 @@ public record ClientRequestContext(
 
     private static Optional<Boolean> booleanQueryParam(MultiValueMap<String, String> queryParams, String name) {
         String rawValue = queryParams.getFirst(name);
-        if (rawValue == null || rawValue.isBlank()) {
+        if (rawValue == null) {
             return Optional.empty();
         }
         if ("true".equalsIgnoreCase(rawValue)) {
