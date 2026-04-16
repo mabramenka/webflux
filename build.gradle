@@ -12,7 +12,9 @@ plugins {
 }
 
 group = 'com.example'
-version = '0.0.1-SNAPSHOT'
+version = providers.gradleProperty('revision')
+    .orElse(providers.fileContents(layout.projectDirectory.file('version.txt')).asText.map { it.trim() })
+    .get()
 
 java {
     toolchain {

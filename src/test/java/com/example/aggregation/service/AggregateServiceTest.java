@@ -172,7 +172,8 @@ class AggregateServiceTest {
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
 
         ArgumentCaptor<ObjectNode> accountGroupRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(accountGroupClient).fetchAccountGroup(accountGroupRequestCaptor.capture(), any(ClientRequestContext.class));
+        verify(accountGroupClient)
+                .fetchAccountGroup(accountGroupRequestCaptor.capture(), any(ClientRequestContext.class));
         assertThat(accountGroupRequestCaptor.getValue().path("ids").values())
                 .extracting(JsonNode::asString)
                 .containsExactly("id-x19");
