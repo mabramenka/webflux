@@ -1,6 +1,6 @@
-package com.example.aggregation.api;
+package com.example.aggregation.config;
 
-import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.model.ClientRequestContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;

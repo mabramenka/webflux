@@ -1,6 +1,6 @@
 package com.example.aggregation.api;
 
-import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.model.ClientRequestContext;
 import com.example.aggregation.service.AggregateService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;

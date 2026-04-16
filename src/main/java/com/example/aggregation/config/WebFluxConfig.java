@@ -1,6 +1,5 @@
 package com.example.aggregation.config;
 
-import com.example.aggregation.api.ServerClientRequestContextArgumentResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.config.WebFluxConfigurer;

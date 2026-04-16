@@ -1,11 +1,11 @@
-package com.example.aggregation.api;
+package com.example.aggregation.config;
 
-import static com.example.aggregation.client.ForwardedHeaders.CORRELATION_ID_HEADER;
-import static com.example.aggregation.client.ForwardedHeaders.REQUEST_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.CORRELATION_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.REQUEST_ID_HEADER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.model.ClientRequestContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.util.LinkedMultiValueMap;
