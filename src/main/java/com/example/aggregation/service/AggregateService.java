@@ -2,6 +2,7 @@ package com.example.aggregation.service;
 
 import com.example.aggregation.enrichment.AggregationEnrichment;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.client.DownstreamClientException;
 import com.example.aggregation.error.InvalidAggregationRequestException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.model.AggregationContext;
@@ -10,12 +11,15 @@ import com.example.aggregation.model.EnrichmentSelection;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.observation.contextpropagation.ObservationThreadLocalAccessor;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -28,6 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class AggregateService {
 
     private static final String CUSTOMER_ID_FIELD = "customerId";
+    private static final String ACCOUNT_GROUP_CLIENT_NAME = "Account group";
 
     private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
@@ -58,7 +63,7 @@ public class AggregateService {
 
             ObjectNode accountGroupRequest = buildAccountGroupRequest(inboundRequest);
 
-            return accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext)
+            return fetchAccountGroup(accountGroupRequest, clientRequestContext)
                 .flatMap(accountGroupResponse -> {
                     AggregationContext context = new AggregationContext(
                         inboundRequest,
@@ -72,28 +77,89 @@ public class AggregateService {
                         .filter(enrichment -> enrichment.supports(context))
                         .toList();
 
-                    ObjectNode root = (ObjectNode) accountGroupResponse.deepCopy();
+                    ObjectNode root = mutableAccountGroupResponse(accountGroupResponse);
 
                     return Flux.fromIterable(enabledEnrichments)
                         .flatMap(enrichment -> fetchEnrichment(enrichment, context))
                         .collectList()
                         .map(results -> merge(root, enabledEnrichments, results));
                 })
+                .contextWrite(context -> context.put(ObservationThreadLocalAccessor.KEY, observation))
                 .doOnError(observation::error)
                 .doFinally(signalType -> observation.stop());
         });
     }
 
+    private Mono<JsonNode> fetchAccountGroup(ObjectNode accountGroupRequest, ClientRequestContext clientRequestContext) {
+        return accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext)
+            .onErrorMap(
+                ex -> !(ex instanceof DownstreamClientException),
+                ex -> new DownstreamClientException(
+                    ACCOUNT_GROUP_CLIENT_NAME,
+                    HttpStatus.BAD_GATEWAY,
+                    "account group client returned an unreadable response",
+                    ex
+                )
+            );
+    }
+
+    private ObjectNode mutableAccountGroupResponse(JsonNode accountGroupResponse) {
+        if (!accountGroupResponse.isObject()) {
+            throw new DownstreamClientException(
+                ACCOUNT_GROUP_CLIENT_NAME,
+                HttpStatus.BAD_GATEWAY,
+                "account group client returned a non-object JSON response"
+            );
+        }
+        return (ObjectNode) accountGroupResponse.deepCopy();
+    }
+
     private ObjectNode buildAccountGroupRequest(ObjectNode inboundRequest) {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.put(CUSTOMER_ID_FIELD, inboundRequest.path(CUSTOMER_ID_FIELD).asString());
-        request.put("market", inboundRequest.path("market").asString("US"));
-        request.put("includeItems", inboundRequest.path("includeItems").asBoolean(true));
+        request.put(CUSTOMER_ID_FIELD, requiredString(inboundRequest, CUSTOMER_ID_FIELD));
+        request.put("market", optionalString(inboundRequest, "market", "US"));
+        request.put("includeItems", optionalBoolean(inboundRequest, "includeItems", true));
         return request;
+    }
+
+    private String requiredString(ObjectNode request, String fieldName) {
+        JsonNode field = request.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            throw new InvalidAggregationRequestException("'" + fieldName + "' is required");
+        }
+        return stringValue(field)
+            .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a non-blank string"));
+    }
+
+    private String optionalString(ObjectNode request, String fieldName, String defaultValue) {
+        JsonNode field = request.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            return defaultValue;
+        }
+        return stringValue(field)
+            .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a non-blank string"));
+    }
+
+    private Optional<String> stringValue(JsonNode field) {
+        return field.stringValueOpt()
+            .map(String::trim)
+            .filter(value -> !value.isBlank());
+    }
+
+    private boolean optionalBoolean(ObjectNode request, String fieldName, boolean defaultValue) {
+        JsonNode field = request.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            return defaultValue;
+        }
+        return field.booleanValueOpt()
+            .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a boolean"));
     }
 
     private Mono<EnrichmentFetchResult> fetchEnrichment(AggregationEnrichment enrichment, AggregationContext context) {
         return enrichment.fetch(context)
+            .switchIfEmpty(Mono.error(() -> new IllegalStateException(
+                "Optional aggregation enrichment '" + enrichment.name() + "' returned an empty response"
+            )))
             .doOnSuccess(response -> recordEnrichmentFetch(enrichment.name(), "SUCCESS"))
             .map(response -> EnrichmentFetchResult.success(enrichment, response))
             .onErrorResume(ex -> {

@@ -3,6 +3,7 @@ plugins {
     id 'jacoco'
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.sonarqube)
+    alias(libs.plugins.errorprone)
 }
 
 group = 'com.example'
@@ -31,9 +32,12 @@ dependencies {
     implementation libs.spring.boot.starter.actuator
     implementation libs.spring.boot.starter.webflux
     implementation libs.spring.boot.webclient
+    implementation libs.micrometer.context.propagation
 
     compileOnly libs.lombok
     annotationProcessor libs.lombok
+    errorprone libs.errorprone.core
+    errorprone libs.nullaway
 
     testImplementation libs.spring.boot.starter.test
     testImplementation libs.spring.boot.starter.webflux.test
@@ -41,6 +45,17 @@ dependencies {
     testCompileOnly libs.lombok
     testAnnotationProcessor libs.lombok
     testRuntimeOnly libs.junit.platform.launcher
+}
+
+tasks.named('compileJava') {
+    options.errorprone {
+        check('NullAway', net.ltgt.gradle.errorprone.CheckSeverity.ERROR)
+        option('NullAway:AnnotatedPackages', 'com.example.aggregation')
+    }
+}
+
+tasks.named('compileTestJava') {
+    options.errorprone.enabled = false
 }
 
 tasks.register('verifyBoot4Classpath') {

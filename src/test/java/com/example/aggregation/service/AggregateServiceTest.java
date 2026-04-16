@@ -10,9 +10,12 @@ import com.example.aggregation.enrichment.AccountEnrichment;
 import com.example.aggregation.enrichment.OwnersEnrichment;
 import com.example.aggregation.client.ForwardedHeaders;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.client.DownstreamClientException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.Owners;
+import com.example.aggregation.enrichment.AggregationEnrichment;
+import com.example.aggregation.model.AggregationContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
@@ -22,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.codec.DecodingException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
@@ -67,7 +71,6 @@ class AggregateServiceTest {
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1",
-              "currency": "USD",
               "data": [
                 {
                   "id": "customer-data-1",
@@ -131,7 +134,6 @@ class AggregateServiceTest {
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1",
-              "currency": "USD",
               "data": [
                 {
                   "id": "customer-data-1",
@@ -195,6 +197,119 @@ class AggregateServiceTest {
             .verify();
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_rejectsInvalidAccountGroupRequestFieldsBeforeCallingAccountGroup() {
+        List<ObjectNode> invalidRequests = List.of(
+            objectMapper.createObjectNode(),
+            objectMapper.createObjectNode().put("customerId", " "),
+            objectMapper.createObjectNode().put("customerId", 123),
+            objectMapper.createObjectNode().put("customerId", "cust-1").put("market", " "),
+            objectMapper.createObjectNode().put("customerId", "cust-1").put("market", 123),
+            objectMapper.createObjectNode().put("customerId", "cust-1").put("includeItems", "true")
+        );
+
+        invalidRequests.forEach(invalidRequest ->
+            StepVerifier.create(aggregateService.aggregate(invalidRequest, clientRequestContext()))
+                .expectError(InvalidAggregationRequestException.class)
+                .verify()
+        );
+
+        verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_rejectsNonObjectAccountGroupResponse() {
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        JsonNode accountGroupResponse = json("""
+            [
+              {"id": "unexpected-array"}
+            ]
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+            .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
+                .isInstanceOf(DownstreamClientException.class)
+                .hasMessageContaining("non-object JSON response"))
+            .verify();
+
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        DecodingException decodingException = new DecodingException("Invalid JSON");
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+            .thenReturn(Mono.error(decodingException));
+
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+            .expectErrorSatisfies(error -> {
+                org.assertj.core.api.Assertions.assertThat(error)
+                    .isInstanceOf(DownstreamClientException.class)
+                    .hasMessageContaining("unreadable response")
+                    .hasCause(decodingException);
+                DownstreamClientException clientException = (DownstreamClientException) error;
+                org.assertj.core.api.Assertions.assertThat(clientException.statusCode().value()).isEqualTo(502);
+            })
+            .verify();
+
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
+        AggregationEnrichment emptyEnrichment = new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return "empty";
+            }
+
+            @Override
+            public boolean supports(AggregationContext context) {
+                return true;
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.empty();
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                throw new IllegalStateException("Empty enrichment should not be merged");
+            }
+        };
+        AggregateService service = new AggregateService(
+            accountGroupClient,
+            List.of(emptyEnrichment),
+            meterRegistry,
+            ObservationRegistry.create()
+        );
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(inboundRequest, clientRequestContext()))
+            .assertNext(aggregated -> org.assertj.core.api.Assertions.assertThat(aggregated.path("customerId").asString())
+                .isEqualTo("cust-1"))
+            .verifyComplete();
+
+        assertEnrichmentMetric("empty", "ERROR", 1);
     }
 
     @Test
@@ -315,6 +430,8 @@ class AggregateServiceTest {
                     .isEqualByComparingTo("15.0");
                 org.assertj.core.api.Assertions.assertThat(data.get(1).path("account1").get(0).path("amount").decimalValue())
                     .isEqualByComparingTo("15.0");
+                org.assertj.core.api.Assertions.assertThat(data.get(0).path("account1").get(0))
+                    .isNotSameAs(data.get(1).path("account1").get(0));
             })
             .verifyComplete();
 

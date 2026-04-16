@@ -52,7 +52,7 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
     private void attachMatchingEntry(EnrichmentTarget target, Map<String, JsonNode> entriesByKey) {
         JsonNode entry = entriesByKey.get(target.key());
         if (entry != null) {
-            target.node().withArrayProperty(rule.responseRule().targetField()).add(entry);
+            target.node().withArrayProperty(rule.responseRule().targetField()).add(entry.deepCopy());
         }
     }
 

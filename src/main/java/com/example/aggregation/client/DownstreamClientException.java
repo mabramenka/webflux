@@ -15,6 +15,13 @@ public final class DownstreamClientException extends IllegalStateException {
         this.responseBody = responseBody;
     }
 
+    public DownstreamClientException(String clientName, HttpStatusCode statusCode, String responseBody, Throwable cause) {
+        super(clientName + " client failed: " + responseBody, cause);
+        this.clientName = clientName;
+        this.statusCode = statusCode;
+        this.responseBody = responseBody;
+    }
+
     public String clientName() {
         return clientName;
     }

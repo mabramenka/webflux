@@ -1,6 +1,8 @@
 package com.example.aggregation.client;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.Locale;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import reactor.core.publisher.Mono;
@@ -21,7 +23,15 @@ public final class DownstreamClientErrorFilter {
 
     private static ExchangeFilterFunction forClient(String clientName, MetricRecorder metricRecorder) {
         return (request, next) -> next.exchange(request)
-            .doOnError(ex -> metricRecorder.capture("IO_ERROR", "ERROR"))
+            .onErrorMap(ex -> {
+                metricRecorder.capture("IO_ERROR", "ERROR");
+                return new DownstreamClientException(
+                    clientName,
+                    HttpStatus.BAD_GATEWAY,
+                    defaultErrorMessage(clientName),
+                    ex
+                );
+            })
             .flatMap(response -> {
                 metricRecorder.capture(status(response.statusCode()), outcome(response.statusCode()));
                 if (!response.statusCode().isError()) {
@@ -53,7 +63,7 @@ public final class DownstreamClientErrorFilter {
     }
 
     private static String defaultErrorMessage(String clientName) {
-        return clientName.substring(0, 1).toLowerCase() + clientName.substring(1) + " client request failed";
+        return clientName.substring(0, 1).toLowerCase(Locale.ROOT) + clientName.substring(1) + " client request failed";
     }
 
     @FunctionalInterface

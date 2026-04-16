@@ -86,6 +86,18 @@ class AggregateControllerTest {
     }
 
     @Test
+    void aggregate_rejectsBlankDetokenizeQueryParam() {
+        webTestClient.post()
+            .uri("/api/v1/aggregate?detokenize=")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {"customerId":"cust-1"}
+                """)
+            .exchange()
+            .expectStatus().isBadRequest();
+    }
+
+    @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
         when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
             .thenReturn(Mono.error(new InvalidAggregationRequestException("Unknown aggregation enrichment(s): foo")));

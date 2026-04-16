@@ -14,8 +14,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Order(200)
 public class AccountEnrichment extends KeyedArrayEnrichment {
 
-    private static final String CURRENCY_FIELD = "currency";
-
     private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
         .mainItems("$.data[*]", "accounts[*].id")
         .responseItems("$.data[*]", "id")
@@ -38,12 +36,6 @@ public class AccountEnrichment extends KeyedArrayEnrichment {
     @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
         ObjectNode request = requestWithKeys(context.accountGroupResponse());
-        request.put(
-            CURRENCY_FIELD,
-            context.accountGroupResponse().path(CURRENCY_FIELD)
-                .asString(context.inboundRequest().path(CURRENCY_FIELD).asString("USD"))
-        );
-
         return accountClient.fetchAccounts(request, context.clientRequestContext());
     }
 }
