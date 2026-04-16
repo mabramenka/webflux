@@ -1,6 +1,5 @@
 package com.example.aggregation.client;
 
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
@@ -35,12 +34,12 @@ public final class DownstreamClientErrorFilter {
         if (meterRegistry == null) {
             return;
         }
-        Counter.builder("aggregation.downstream.requests")
-            .tag("client", clientName)
-            .tag("status", status)
-            .tag("outcome", outcome)
-            .register(meterRegistry)
-            .increment();
+        meterRegistry.counter(
+            "aggregation.downstream.requests",
+            "client", clientName,
+            "status", status,
+            "outcome", outcome
+        ).increment();
     }
 
     private static String status(HttpStatusCode statusCode) {

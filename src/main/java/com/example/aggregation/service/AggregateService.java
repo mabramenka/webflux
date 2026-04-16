@@ -6,7 +6,6 @@ import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.model.EnrichmentFetchResult;
 import com.example.aggregation.model.EnrichmentSelection;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,11 +93,11 @@ public class AggregateService {
     }
 
     private void recordEnrichmentFetch(String enrichmentName, String outcome) {
-        Counter.builder("aggregation.enrichment.requests")
-            .tag("enrichment", enrichmentName)
-            .tag("outcome", outcome)
-            .register(meterRegistry)
-            .increment();
+        meterRegistry.counter(
+            "aggregation.enrichment.requests",
+            "enrichment", enrichmentName,
+            "outcome", outcome
+        ).increment();
     }
 
     private JsonNode merge(ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentFetchResult> results) {
