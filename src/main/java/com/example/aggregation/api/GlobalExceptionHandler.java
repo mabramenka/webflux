@@ -54,7 +54,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
     public Mono<ResponseEntity<ProblemDetail>> handleInternalAggregationError(Exception ex, ServerWebExchange exchange) {
-        log.error("Internal aggregation error", ex);
+        log.error(INTERNAL_ERROR_DETAIL, ex);
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(
             HttpStatus.INTERNAL_SERVER_ERROR,
             INTERNAL_ERROR_DETAIL

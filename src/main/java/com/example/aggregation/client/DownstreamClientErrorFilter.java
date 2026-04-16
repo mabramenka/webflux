@@ -11,14 +11,19 @@ public final class DownstreamClientErrorFilter {
     }
 
     public static ExchangeFilterFunction forClient(String clientName) {
-        return forClient(clientName, null);
+        return forClient(clientName, (status, outcome) -> {
+        });
     }
 
     public static ExchangeFilterFunction forClient(String clientName, MeterRegistry meterRegistry) {
+        return forClient(clientName, (status, outcome) -> incrementCounter(meterRegistry, clientName, status, outcome));
+    }
+
+    private static ExchangeFilterFunction forClient(String clientName, MetricRecorder metricRecorder) {
         return (request, next) -> next.exchange(request)
-            .doOnError(ex -> record(meterRegistry, clientName, "IO_ERROR", "ERROR"))
+            .doOnError(ex -> metricRecorder.capture("IO_ERROR", "ERROR"))
             .flatMap(response -> {
-                record(meterRegistry, clientName, status(response.statusCode()), outcome(response.statusCode()));
+                metricRecorder.capture(status(response.statusCode()), outcome(response.statusCode()));
                 if (!response.statusCode().isError()) {
                     return Mono.just(response);
                 }
@@ -30,10 +35,7 @@ public final class DownstreamClientErrorFilter {
             });
     }
 
-    private static void record(MeterRegistry meterRegistry, String clientName, String status, String outcome) {
-        if (meterRegistry == null) {
-            return;
-        }
+    private static void incrementCounter(MeterRegistry meterRegistry, String clientName, String status, String outcome) {
         meterRegistry.counter(
             "aggregation.downstream.requests",
             "client", clientName,
@@ -52,5 +54,10 @@ public final class DownstreamClientErrorFilter {
 
     private static String defaultErrorMessage(String clientName) {
         return clientName.substring(0, 1).toLowerCase() + clientName.substring(1) + " client request failed";
+    }
+
+    @FunctionalInterface
+    private interface MetricRecorder {
+        void capture(String status, String outcome);
     }
 }
