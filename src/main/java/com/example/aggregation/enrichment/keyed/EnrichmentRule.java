@@ -1,6 +1,5 @@
 package com.example.aggregation.enrichment.keyed;
 
-import com.example.aggregation.enrichment.keyed.KeyedArrayEnrichment.EnrichmentTarget;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

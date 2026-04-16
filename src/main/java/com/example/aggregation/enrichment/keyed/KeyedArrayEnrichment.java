@@ -53,5 +53,4 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
         }
     }
 
-    protected record EnrichmentTarget(String key, ObjectNode node) {}
 }
