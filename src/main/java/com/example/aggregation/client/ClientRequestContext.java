@@ -12,7 +12,7 @@ public record ClientRequestContext(
     @Nullable Boolean detokenize
 ) {
 
-    private static final String DETOKENIZE_QUERY_PARAM = "detokenize";
+    public static final String DETOKENIZE_QUERY_PARAM = "detokenize";
 
     public static ClientRequestContext from(HttpHeaders headers, MultiValueMap<String, String> queryParams) {
         return new ClientRequestContext(

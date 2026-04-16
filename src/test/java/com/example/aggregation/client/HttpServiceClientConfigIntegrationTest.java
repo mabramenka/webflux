@@ -40,9 +40,18 @@ class HttpServiceClientConfigIntegrationTest {
     @DynamicPropertySource
     static void serviceClientProperties(DynamicPropertyRegistry registry) {
         startServer();
-        registry.add("spring.http.serviceclient.account-group.base-url", HttpServiceClientConfigIntegrationTest::serverUrl);
-        registry.add("spring.http.serviceclient.account.base-url", HttpServiceClientConfigIntegrationTest::serverUrl);
-        registry.add("spring.http.serviceclient.owners.base-url", HttpServiceClientConfigIntegrationTest::serverUrl);
+        registry.add(
+            "spring.http.serviceclient." + HttpServiceGroups.ACCOUNT_GROUP + ".base-url",
+            HttpServiceClientConfigIntegrationTest::serverUrl
+        );
+        registry.add(
+            "spring.http.serviceclient." + HttpServiceGroups.ACCOUNT + ".base-url",
+            HttpServiceClientConfigIntegrationTest::serverUrl
+        );
+        registry.add(
+            "spring.http.serviceclient." + HttpServiceGroups.OWNERS + ".base-url",
+            HttpServiceClientConfigIntegrationTest::serverUrl
+        );
     }
 
     @AfterAll
