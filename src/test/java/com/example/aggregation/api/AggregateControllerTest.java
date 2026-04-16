@@ -106,4 +106,26 @@ class AggregateControllerTest {
                 .contains("/problems/invalid-aggregation-request")
                 .contains("/api/v1/aggregate"));
     }
+
+    @Test
+    void aggregate_returnsInternalProblemDetailWhenServiceFailsInternally() {
+        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+            .thenReturn(Mono.error(new IllegalStateException("Duplicate aggregation enrichment name: account")));
+
+        webTestClient.post()
+            .uri("/api/v1/aggregate")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {"customerId":"cust-1"}
+                """)
+            .exchange()
+            .expectStatus().isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectBody(String.class)
+            .value(body -> assertThat(body)
+                .contains("\"status\":" + HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .contains("Internal aggregation error")
+                .contains("/problems/internal-aggregation-error")
+                .contains("/api/v1/aggregate"));
+    }
 }
