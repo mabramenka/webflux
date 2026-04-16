@@ -1,9 +1,11 @@
 package com.example.aggregation.client;
 
-import static com.example.aggregation.client.ForwardedHeaders.REQUEST_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.REQUEST_ID_HEADER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.example.aggregation.AggregationApplication;
+import com.example.aggregation.model.ClientRequestContext;
+import com.example.aggregation.model.ForwardedHeaders;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

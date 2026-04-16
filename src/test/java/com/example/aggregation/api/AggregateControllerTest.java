@@ -1,15 +1,17 @@
 package com.example.aggregation.api;
 
-import static com.example.aggregation.client.ForwardedHeaders.CORRELATION_ID_HEADER;
-import static com.example.aggregation.client.ForwardedHeaders.REQUEST_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.CORRELATION_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.REQUEST_ID_HEADER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.config.ClientRequestContextFactory;
+import com.example.aggregation.config.ServerClientRequestContextArgumentResolver;
 import com.example.aggregation.config.WebFluxConfig;
 import com.example.aggregation.error.InvalidAggregationRequestException;
+import com.example.aggregation.model.ClientRequestContext;
 import com.example.aggregation.service.AggregateService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;

@@ -8,8 +8,6 @@ import static org.mockito.Mockito.when;
 
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
-import com.example.aggregation.client.ClientRequestContext;
-import com.example.aggregation.client.ForwardedHeaders;
 import com.example.aggregation.client.Owners;
 import com.example.aggregation.enrichment.AccountEnrichment;
 import com.example.aggregation.enrichment.AggregationEnrichment;
@@ -17,6 +15,8 @@ import com.example.aggregation.enrichment.OwnersEnrichment;
 import com.example.aggregation.error.DownstreamClientException;
 import com.example.aggregation.error.InvalidAggregationRequestException;
 import com.example.aggregation.model.AggregationContext;
+import com.example.aggregation.model.ClientRequestContext;
+import com.example.aggregation.model.ForwardedHeaders;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;

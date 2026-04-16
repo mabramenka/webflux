@@ -1,8 +1,8 @@
-package com.example.aggregation.api;
+package com.example.aggregation.config;
 
-import com.example.aggregation.client.ClientRequestContext;
-import com.example.aggregation.client.ForwardedHeaders;
 import com.example.aggregation.error.InvalidAggregationRequestException;
+import com.example.aggregation.model.ClientRequestContext;
+import com.example.aggregation.model.ForwardedHeaders;
 import java.util.Optional;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;

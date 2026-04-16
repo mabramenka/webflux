@@ -1,4 +1,4 @@
-package com.example.aggregation.client;
+package com.example.aggregation.model;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

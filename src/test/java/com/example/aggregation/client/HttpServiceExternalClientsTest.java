@@ -1,11 +1,13 @@
 package com.example.aggregation.client;
 
-import static com.example.aggregation.client.ForwardedHeaders.CORRELATION_ID_HEADER;
-import static com.example.aggregation.client.ForwardedHeaders.REQUEST_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.CORRELATION_ID_HEADER;
+import static com.example.aggregation.model.ForwardedHeaders.REQUEST_ID_HEADER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.example.aggregation.error.DownstreamClientException;
+import com.example.aggregation.model.ClientRequestContext;
+import com.example.aggregation.model.ForwardedHeaders;
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
