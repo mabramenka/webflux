@@ -104,8 +104,9 @@ class HttpServiceExternalClientsTest {
             .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
             .body("{\"status\":\"ok\"}")
             .build());
+        WebClientInvocation invocation = clientCase.invocationFactory().apply(webClient);
 
-        assertThatThrownBy(() -> clientCase.invocationFactory().apply(webClient).fetch(REQUEST, null))
+        assertThatThrownBy(() -> invocation.fetch(REQUEST, null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("ClientRequestContext must not be null");
     }
