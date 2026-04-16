@@ -1,6 +1,7 @@
 package com.example.aggregation.enrichment.keyed;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,16 @@ class PathExpressionTest {
             """);
 
         assertThat(PathExpression.parse("$.data[*].id").select(root)).isEmpty();
+    }
+
+    @Test
+    void parse_rejectsMalformedAbsolutePaths() {
+        assertThatThrownBy(() -> PathExpression.parse("$."))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PathExpression.parse("$.data."))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PathExpression.parse("$data"))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

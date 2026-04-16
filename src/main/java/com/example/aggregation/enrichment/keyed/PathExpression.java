@@ -13,15 +13,18 @@ record PathExpression(List<PathSegment> segments) {
         if (normalized.equals("$")) {
             return new PathExpression(List.of());
         }
+        if (normalized.startsWith("$") && !normalized.startsWith("$.")) {
+            throw new IllegalArgumentException("Unsupported path expression: " + rawPath);
+        }
         if (normalized.startsWith("$.")) {
             normalized = normalized.substring(2);
         }
         if (normalized.isEmpty()) {
-            return new PathExpression(List.of());
+            throw new IllegalArgumentException("Path must not be empty: " + rawPath);
         }
 
         List<PathSegment> segments = new ArrayList<>();
-        for (String rawSegment : normalized.split("\\.")) {
+        for (String rawSegment : normalized.split("\\.", -1)) {
             segments.add(PathSegment.parse(rawSegment, rawPath));
         }
         return new PathExpression(List.copyOf(segments));
