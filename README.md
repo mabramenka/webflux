@@ -1,10 +1,10 @@
 # WebFlux JSON Aggregation
 
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
-[![Spring Boot 4](https://img.shields.io/badge/Spring%20Boot-4.0-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring Boot 4.0.5](https://img.shields.io/badge/Spring%20Boot-4.0.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Spring WebFlux](https://img.shields.io/badge/WebFlux-reactive-6DB33F?logo=spring&logoColor=white)](https://docs.spring.io/spring-framework/reference/web/webflux.html)
-[![Gradle](https://img.shields.io/badge/Gradle-version%20catalog-02303A?logo=gradle&logoColor=white)](https://docs.gradle.org/current/userguide/version_catalogs.html)
-[![Jackson 3](https://img.shields.io/badge/Jackson-3.x-2F6DB3)](https://github.com/FasterXML/jackson)
+[![Gradle 9.4.1](https://img.shields.io/badge/Gradle-9.4.1-02303A?logo=gradle&logoColor=white)](https://gradle.org/)
+[![Jackson 3.1.2](https://img.shields.io/badge/Jackson-3.1.2-2F6DB3)](https://github.com/FasterXML/jackson)
 [![Renovate](https://img.shields.io/badge/Renovate-enabled-1A1F6C?logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=alert_status&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=coverage&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
@@ -14,30 +14,35 @@
 
 Reactive Spring Boot service that calls an account group service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the account group JSON document.
 
-The service keeps external service payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
+The service keeps downstream payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
 
 ## Highlights
 
-- Dynamic JSON aggregation without fixed external response DTOs
-- Parallel optional enrichment parts with failure isolation
-- Declarative path-based enrichment rules
-- Fallback key paths for inconsistent external schemas
-- Header and query parameter forwarding for client calls
-- Actuator health and metrics endpoints
+- Dynamic JSON aggregation without fixed downstream response DTOs
+- Spring Boot 4 HTTP service clients backed by reactive `WebClient`
+- Parallel optional enrichment parts with per-part failure isolation
+- Declarative path-based enrichment rules for keyed array joins
+- Fallback key paths for inconsistent downstream schemas
+- Header and query parameter forwarding to downstream calls
+- RFC 9457-style problem responses for validation and downstream failures
+- Actuator health, readiness, liveness, info, and metrics endpoints
 - Enrichment outcome metrics
 - JSpecify nullability annotations checked by NullAway
-- CI-ready test, coverage, and SonarQube Cloud analysis
+- Spotless, JaCoCo, OWASP Dependency Check, and SonarQube Cloud wiring
 - Renovate-ready dependency maintenance
 
 ## Stack
 
 - Java 21
-- Spring Boot 4
+- Spring Boot 4.0.5
 - Spring WebFlux
-- Jackson 3
-- Gradle version catalog
+- Spring HTTP service clients
+- Jackson 3.1.2
+- Gradle 9.4.1 with version catalog
 - JUnit 5, Reactor Test, Mockito, AssertJ
-- Renovate
+- Lombok, Error Prone, NullAway
+- Spotless, JaCoCo, OWASP Dependency Check
+- Renovate and SonarQube Cloud
 
 ## Run
 
@@ -50,6 +55,8 @@ Default client settings are configured in [application.properties](src/main/reso
 ```properties
 spring.http.clients.connect-timeout=2s
 spring.http.clients.read-timeout=5s
+spring.http.clients.reactive.connector=reactor
+spring.webflux.problemdetails.enabled=true
 spring.reactor.context-propagation=auto
 
 spring.http.serviceclient.account-group.base-url=http://localhost:8081
@@ -60,31 +67,26 @@ spring.http.serviceclient.owners.base-url=http://localhost:8084
 spring.http.serviceclient.owners.read-timeout=3s
 ```
 
-Override them with Spring configuration when running in another environment.
+Override these properties with standard Spring configuration when running in another environment.
 
-## Test
+## Downstream Services
 
-```bash
-./gradlew test
-```
+The application registers three HTTP service client groups:
 
-Verify that runtime classpaths stay on the Spring Boot 4 / Jackson 3 line:
+| Group | Interface | Method | Path | Default base URL |
+| --- | --- | --- | --- | --- |
+| `account-group` | `AccountGroups` | `POST` | `/account-groups` | `http://localhost:8081` |
+| `account` | `Accounts` | `POST` | `/accounts` | `http://localhost:8083` |
+| `owners` | `Owners` | `POST` | `/owners` | `http://localhost:8084` |
 
-```bash
-./gradlew verifyBoot4Classpath
-```
-
-Generate the JaCoCo XML and HTML coverage reports:
-
-```bash
-./gradlew jacocoTestReport
-```
+All downstream clients send and accept JSON. Downstream 4xx/5xx responses, transport failures, and unreadable account group responses are mapped to `502 Bad Gateway` problem responses.
 
 ## API
 
 ```http
 POST /api/v1/aggregate
 Content-Type: application/json
+Accept: application/json
 ```
 
 ### Request Body
@@ -100,9 +102,9 @@ Content-Type: application/json
 
 Fields sent to the account group service:
 
-- `customerId`
-- `market`, default `US`
-- `includeItems`, default `true`
+- `customerId`: required non-blank string
+- `market`: optional non-blank string, defaults to `US`
+- `includeItems`: optional boolean, defaults to `true`
 
 `include` controls optional aggregation parts:
 
@@ -121,37 +123,53 @@ POST /api/v1/aggregate?detokenize=true
 
 ### Forwarded Headers
 
-The service forwards selected inbound headers to external services:
+The service forwards selected inbound headers to downstream services:
 
 - `Authorization`
 - `X-Request-Id`
 - `X-Correlation-Id`
 - `Accept-Language`
 
-## Operations
+## Error Responses
 
-The service exposes selected Actuator endpoints:
+Validation failures return `400 Bad Request` with `application/problem+json`.
 
-- `/actuator/health`
-- `/actuator/health/liveness`
-- `/actuator/health/readiness`
-- `/actuator/info`
-- `/actuator/metrics`
+Example:
 
-Custom metric names:
+```json
+{
+  "type": "/problems/invalid-aggregation-request",
+  "title": "Invalid aggregation request",
+  "status": 400,
+  "detail": "'customerId' is required"
+}
+```
 
-- `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome`
+Downstream failures return `502 Bad Gateway` with client metadata.
 
-The Java compile tasks fail on deprecation and removal warnings, keeping major-version migration issues visible during normal builds.
+Example:
+
+```json
+{
+  "type": "/problems/downstream-client-error",
+  "title": "Downstream client error",
+  "status": 502,
+  "detail": "Account group client failed: account group client returned an unreadable response",
+  "client": "Account group"
+}
+```
+
+Internal aggregation errors return `500 Internal Server Error`.
 
 ## Aggregation Flow
 
-1. Build and send the account group request to `/account-groups`.
-2. Read `include` and select registered optional parts.
-3. Skip optional parts that do not support the account group response shape.
-4. Fetch enabled optional parts in parallel.
-5. Ignore failed optional parts and keep the account group response.
-6. Merge successful optional responses in registered order.
+1. Validate the inbound request and `include` selection.
+2. Build and send the account group request to `/account-groups`.
+3. Select registered optional parts requested by `include`.
+4. Skip optional parts that do not support the returned account group shape.
+5. Fetch enabled optional parts in parallel.
+6. Ignore failed optional parts and keep the account group response.
+7. Merge successful optional responses in registered order.
 
 Optional part order:
 
@@ -168,7 +186,7 @@ Reads account ids from the account group response:
 $.data[*].accounts[*].id
 ```
 
-Calls account with:
+Calls `/accounts` with:
 
 ```json
 {
@@ -197,7 +215,7 @@ $.data[*].basicDetails.owners[*].id
 $.data[*].basicDetails.owners[*].number
 ```
 
-Calls owners with:
+Calls `/owners` with:
 
 ```json
 {
@@ -233,11 +251,11 @@ private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
 
 Rule semantics:
 
-- `mainItems` selects the owner item level in the account group response.
-- main key paths are relative to each selected owner item.
+- `mainItems` selects the item level in the account group response.
+- main key paths are relative to each selected item.
 - response key paths are relative to each selected response item.
 - key paths are tried in order, so later paths are fallback values.
-- request ids are deduplicated while merge still runs for every matching owner item.
+- request ids are deduplicated while merge still runs for every matching item.
 - matched response entries are appended as whole JSON elements.
 
 Supported path syntax is intentionally small:
@@ -250,6 +268,66 @@ $.field[*].nested.field
 ```
 
 This is JSONPath-like syntax, not a full JSONPath engine. Filters, slices, indexes, bracket notation, and recursive descent are not supported.
+
+## Operations
+
+The service exposes selected Actuator endpoints:
+
+- `/actuator/health`
+- `/actuator/health/liveness`
+- `/actuator/health/readiness`
+- `/actuator/info`
+- `/actuator/metrics`
+
+All other Actuator endpoints are disabled by default.
+
+Custom metric names:
+
+- `aggregation.request`, tagged by `enrichment_selection` and `requested_enrichments`
+- `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome`
+
+## Quality Gates
+
+Run unit and integration tests:
+
+```bash
+./gradlew test
+```
+
+Run formatting checks, tests, classpath verification, and JaCoCo:
+
+```bash
+./gradlew check
+```
+
+OWASP Dependency Check is intentionally not part of the default `check` task because it is slow and rate-limited without an NVD API key. Run it explicitly when `NVD_API_KEY` is available:
+
+```bash
+export NVD_API_KEY=...
+./gradlew securityCheck
+```
+
+Verify that runtime classpaths stay on the Spring Boot 4 / Jackson 3 line:
+
+```bash
+./gradlew verifyBoot4Classpath
+```
+
+Apply formatting:
+
+```bash
+./gradlew spotlessApply
+```
+
+Generate JaCoCo XML and HTML coverage reports:
+
+```bash
+./gradlew jacocoTestReport
+```
+
+Reports are written under `build/reports/`.
+
+The Java compile tasks fail on deprecation and removal warnings, keeping major-version migration issues visible during normal builds.
 
 ## Renovate
 
@@ -265,7 +343,7 @@ Enable the Renovate GitHub App for the repository to start receiving dependency 
 
 ## SonarQube Cloud
 
-SonarQube Cloud is wired through Gradle and GitHub Actions.
+SonarQube Cloud is wired through Gradle.
 
 Gradle tasks:
 
@@ -282,14 +360,10 @@ sonar.organization=mabramenka
 sonar.host.url=https://sonarcloud.io
 ```
 
-GitHub Actions runs tests on every pull request and push to `main`. The Sonar step runs when the repository has this secret:
+The Sonar task requires a token:
 
 ```text
 SONAR_TOKEN
 ```
 
-Create the token in SonarQube Cloud, then add it in GitHub:
-
-```text
-Repository -> Settings -> Secrets and variables -> Actions -> New repository secret
-```
+Create the token in SonarQube Cloud, then add it to the environment used by CI or local analysis.
