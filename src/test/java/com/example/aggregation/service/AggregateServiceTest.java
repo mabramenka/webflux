@@ -1,24 +1,26 @@
 package com.example.aggregation.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.aggregation.error.InvalidAggregationRequestException;
-import com.example.aggregation.enrichment.AccountEnrichment;
-import com.example.aggregation.enrichment.OwnersEnrichment;
-import com.example.aggregation.client.ForwardedHeaders;
-import com.example.aggregation.client.ClientRequestContext;
-import com.example.aggregation.client.DownstreamClientException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
+import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.client.ForwardedHeaders;
 import com.example.aggregation.client.Owners;
+import com.example.aggregation.enrichment.AccountEnrichment;
 import com.example.aggregation.enrichment.AggregationEnrichment;
+import com.example.aggregation.enrichment.OwnersEnrichment;
+import com.example.aggregation.error.DownstreamClientException;
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import com.example.aggregation.model.AggregationContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
+import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,8 +41,10 @@ class AggregateServiceTest {
 
     @Mock
     private AccountGroups accountGroupClient;
+
     @Mock
     private Accounts accountClient;
+
     @Mock
     private Owners ownersClient;
 
@@ -51,22 +55,20 @@ class AggregateServiceTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         aggregateService = new AggregateService(
-            accountGroupClient,
-            List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient)),
-            meterRegistry,
-            ObservationRegistry.create()
-        );
+                accountGroupClient,
+                List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient)),
+                ObservationRegistry.create(),
+                new AccountGroupRequestFactory(),
+                new EnrichmentExecutor(meterRegistry),
+                new AggregationMerger());
     }
 
     @Test
     void aggregate_handlesOptionalFailuresAndMergesSuccessfulOptionalResults() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1")
-            .put("market", "US");
+        ObjectNode inboundRequest =
+                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", "US");
         ClientRequestContext clientRequestContext = new ClientRequestContext(
-            ForwardedHeaders.builder().authorization("Bearer token").build(),
-            true
-        );
+                ForwardedHeaders.builder().authorization("Bearer token").build(), true);
 
         JsonNode accountGroupResponse = json("""
             {
@@ -83,18 +85,19 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.error(new RuntimeException("account down")));
+                .thenReturn(Mono.error(new RuntimeException("account down")));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext))
-            .assertNext(aggregated -> {
-                ObjectNode root = (ObjectNode) aggregated;
-                org.assertj.core.api.Assertions.assertThat(root.path("customerId").asString()).isEqualTo("cust-1");
-                org.assertj.core.api.Assertions.assertThat(root.path("data").get(0).path("accounts").get(0).has("account1"))
-                    .isFalse();
-            })
-            .verifyComplete();
+                .assertNext(aggregated -> {
+                    ObjectNode root = (ObjectNode) aggregated;
+                    assertThat(root.path("customerId").asString()).isEqualTo("cust-1");
+                    assertThat(root.path("data").get(0).path("accounts").get(0).has("account1"))
+                            .isFalse();
+                })
+                .verifyComplete();
         assertEnrichmentMetric("account", "ERROR", 1);
 
         JsonNode accountResponse = json("""
@@ -107,28 +110,28 @@ class AggregateServiceTest {
             """);
 
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.just(accountResponse));
+                .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext))
-            .assertNext(aggregated -> {
-                ObjectNode root = (ObjectNode) aggregated;
-                JsonNode dataEntry = root.path("data").get(0);
-                org.assertj.core.api.Assertions.assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
-                    .isEqualByComparingTo("10.5");
-                org.assertj.core.api.Assertions.assertThat(dataEntry.path("account1").get(1).path("amount").decimalValue())
-                    .isEqualByComparingTo("20.0");
-                org.assertj.core.api.Assertions.assertThat(dataEntry.path("accounts").get(0).has("account1")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(root.has("account1")).isFalse();
-            })
-            .verifyComplete();
+                .assertNext(aggregated -> {
+                    ObjectNode root = (ObjectNode) aggregated;
+                    JsonNode dataEntry = root.path("data").get(0);
+                    assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
+                            .isEqualByComparingTo("10.5");
+                    assertThat(dataEntry.path("account1").get(1).path("amount").decimalValue())
+                            .isEqualByComparingTo("20.0");
+                    assertThat(dataEntry.path("accounts").get(0).has("account1"))
+                            .isFalse();
+                    assertThat(root.has("account1")).isFalse();
+                })
+                .verifyComplete();
         assertEnrichmentMetric("account", "SUCCESS", 1);
     }
 
     @Test
     void aggregate_fetchesOnlyEnrichmentSelection() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1")
-            .put("market", "US");
+        ObjectNode inboundRequest =
+                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", "US");
         inboundRequest.putArray("include").add("account");
 
         JsonNode accountGroupResponse = json("""
@@ -152,49 +155,49 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.just(accountResponse));
+                .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .assertNext(aggregated -> {
-                ObjectNode root = (ObjectNode) aggregated;
-                JsonNode dataEntry = root.path("data").get(0);
-                org.assertj.core.api.Assertions.assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
-                    .isEqualByComparingTo("10.5");
-                org.assertj.core.api.Assertions.assertThat(dataEntry.path("accounts").get(0).has("account1")).isFalse();
-            })
-            .verifyComplete();
+                .assertNext(aggregated -> {
+                    ObjectNode root = (ObjectNode) aggregated;
+                    JsonNode dataEntry = root.path("data").get(0);
+                    assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
+                            .isEqualByComparingTo("10.5");
+                    assertThat(dataEntry.path("accounts").get(0).has("account1"))
+                            .isFalse();
+                })
+                .verifyComplete();
 
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
     void aggregate_rejectsUnknownEnrichmentSelectionBeforeCallingAccountGroup() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         inboundRequest.putArray("include").add("unknown");
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
-                .isInstanceOf(InvalidAggregationRequestException.class)
-                .hasMessageContaining("unknown"))
-            .verify();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(InvalidAggregationRequestException.class)
+                        .hasMessageContaining("unknown"))
+                .verify();
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
     void aggregate_rejectsNonStringEnrichmentSelectionBeforeCallingAccountGroup() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         inboundRequest.putArray("include").add(42);
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
-                .isInstanceOf(InvalidAggregationRequestException.class)
-                .hasMessageContaining("non-blank strings"))
-            .verify();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(InvalidAggregationRequestException.class)
+                        .hasMessageContaining("non-blank strings"))
+                .verify();
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
     }
@@ -202,40 +205,38 @@ class AggregateServiceTest {
     @Test
     void aggregate_rejectsInvalidAccountGroupRequestFieldsBeforeCallingAccountGroup() {
         List<ObjectNode> invalidRequests = List.of(
-            objectMapper.createObjectNode(),
-            objectMapper.createObjectNode().put("customerId", " "),
-            objectMapper.createObjectNode().put("customerId", 123),
-            objectMapper.createObjectNode().put("customerId", "cust-1").put("market", " "),
-            objectMapper.createObjectNode().put("customerId", "cust-1").put("market", 123),
-            objectMapper.createObjectNode().put("customerId", "cust-1").put("includeItems", "true")
-        );
+                objectMapper.createObjectNode(),
+                objectMapper.createObjectNode().put("customerId", " "),
+                objectMapper.createObjectNode().put("customerId", 123),
+                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", " "),
+                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", 123),
+                objectMapper.createObjectNode().put("customerId", "cust-1").put("includeItems", "true"));
 
-        invalidRequests.forEach(invalidRequest ->
-            StepVerifier.create(aggregateService.aggregate(invalidRequest, clientRequestContext()))
+        invalidRequests.forEach(invalidRequest -> StepVerifier.create(
+                        aggregateService.aggregate(invalidRequest, clientRequestContext()))
                 .expectError(InvalidAggregationRequestException.class)
-                .verify()
-        );
+                .verify());
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
     void aggregate_rejectsNonObjectAccountGroupResponse() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         JsonNode accountGroupResponse = json("""
             [
               {"id": "unexpected-array"}
             ]
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
-                .isInstanceOf(DownstreamClientException.class)
-                .hasMessageContaining("non-object JSON response"))
-            .verify();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .hasMessageContaining("non-object JSON response"))
+                .verify();
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
@@ -243,23 +244,22 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         DecodingException decodingException = new DecodingException("Invalid JSON");
 
         when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.error(decodingException));
+                .thenReturn(Mono.error(decodingException));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .expectErrorSatisfies(error -> {
-                org.assertj.core.api.Assertions.assertThat(error)
-                    .isInstanceOf(DownstreamClientException.class)
-                    .hasMessageContaining("unreadable response")
-                    .hasCause(decodingException);
-                DownstreamClientException clientException = (DownstreamClientException) error;
-                org.assertj.core.api.Assertions.assertThat(clientException.statusCode().value()).isEqualTo(502);
-            })
-            .verify();
+                .expectErrorSatisfies(error -> {
+                    assertThat(error)
+                            .isInstanceOf(DownstreamClientException.class)
+                            .hasMessageContaining("unreadable response")
+                            .hasCause(decodingException);
+                    DownstreamClientException clientException = (DownstreamClientException) error;
+                    assertThat(clientException.statusCode().value()).isEqualTo(502);
+                })
+                .verify();
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
@@ -267,55 +267,28 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
-        AggregationEnrichment emptyEnrichment = new AggregationEnrichment() {
-            @Override
-            public String name() {
-                return "empty";
-            }
-
-            @Override
-            public boolean supports(AggregationContext context) {
-                return true;
-            }
-
-            @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.empty();
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                throw new IllegalStateException("Empty enrichment should not be merged");
-            }
-        };
-        AggregateService service = new AggregateService(
-            accountGroupClient,
-            List.of(emptyEnrichment),
-            meterRegistry,
-            ObservationRegistry.create()
-        );
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        AggregateService service = aggregateServiceWith(emptyEnrichment());
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
             }
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(inboundRequest, clientRequestContext()))
-            .assertNext(aggregated -> org.assertj.core.api.Assertions.assertThat(aggregated.path("customerId").asString())
-                .isEqualTo("cust-1"))
-            .verifyComplete();
+                .assertNext(aggregated ->
+                        assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
+                .verifyComplete();
 
         assertEnrichmentMetric("empty", "ERROR", 1);
     }
 
     @Test
     void aggregate_embedsAccountEntriesIntoMatchingItems() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         inboundRequest.putArray("include").add("account");
 
         JsonNode accountGroupResponse = json("""
@@ -348,48 +321,54 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.just(accountResponse));
+                .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .assertNext(aggregated -> {
-                ObjectNode root = (ObjectNode) aggregated;
-                JsonNode firstData = root.path("data").get(0);
-                JsonNode secondData = root.path("data").get(1);
-                JsonNode firstAccounts = firstData.path("accounts");
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).has("price")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(1).has("price")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(0).has("account1")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstAccounts.get(1).has("account1")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(0).path("id").asString())
-                    .isEqualTo("acc-a");
-                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(0).path("amount").asString())
-                    .isEqualTo("not-a-number");
-                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(0).path("source").asString())
-                    .isEqualTo("account-service");
-                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(1).path("amount").decimalValue())
-                    .isEqualByComparingTo("20.0");
-                org.assertj.core.api.Assertions.assertThat(firstData.path("account1").get(1).path("discount").path("code").asString())
-                    .isEqualTo("SPRING");
-                org.assertj.core.api.Assertions.assertThat(secondData.path("accounts").get(0).has("account1")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(secondData.path("account1").get(0).path("amount").decimalValue())
-                    .isEqualByComparingTo("30.0");
-                org.assertj.core.api.Assertions.assertThat(root.has("account1")).isFalse();
-            })
-            .verifyComplete();
+                .assertNext(aggregated -> {
+                    ObjectNode root = (ObjectNode) aggregated;
+                    JsonNode firstData = root.path("data").get(0);
+                    JsonNode secondData = root.path("data").get(1);
+                    JsonNode firstAccounts = firstData.path("accounts");
+                    assertThat(firstAccounts.get(0).has("price")).isFalse();
+                    assertThat(firstAccounts.get(1).has("price")).isFalse();
+                    assertThat(firstAccounts.get(0).has("account1")).isFalse();
+                    assertThat(firstAccounts.get(1).has("account1")).isFalse();
+                    assertThat(firstData.path("account1").get(0).path("id").asString())
+                            .isEqualTo("acc-a");
+                    assertThat(firstData.path("account1").get(0).path("amount").asString())
+                            .isEqualTo("not-a-number");
+                    assertThat(firstData.path("account1").get(0).path("source").asString())
+                            .isEqualTo("account-service");
+                    assertThat(firstData.path("account1").get(1).path("amount").decimalValue())
+                            .isEqualByComparingTo("20.0");
+                    assertThat(firstData
+                                    .path("account1")
+                                    .get(1)
+                                    .path("discount")
+                                    .path("code")
+                                    .asString())
+                            .isEqualTo("SPRING");
+                    assertThat(secondData.path("accounts").get(0).has("account1"))
+                            .isFalse();
+                    assertThat(secondData.path("account1").get(0).path("amount").decimalValue())
+                            .isEqualByComparingTo("30.0");
+                    assertThat(root.has("account1")).isFalse();
+                })
+                .verifyComplete();
 
         ArgumentCaptor<ObjectNode> accountRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
         verify(accountClient).fetchAccounts(accountRequestCaptor.capture(), any(ClientRequestContext.class));
-        org.assertj.core.api.Assertions.assertThat(accountRequestCaptor.getValue().path("ids").values())
-            .extracting(JsonNode::asString)
-            .containsExactly("acc-a", "acc-b", "acc-c");
+        assertThat(accountRequestCaptor.getValue().path("ids").values())
+                .extracting(JsonNode::asString)
+                .containsExactly("acc-a", "acc-b", "acc-c");
     }
 
     @Test
     void aggregate_deduplicatesAccountRequestIdsButMergesAllMatchingItems() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         inboundRequest.putArray("include").add("account");
 
         JsonNode accountGroupResponse = json("""
@@ -419,34 +398,42 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.just(accountResponse));
+                .thenReturn(Mono.just(accountResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .assertNext(aggregated -> {
-                JsonNode data = aggregated.path("data");
-                org.assertj.core.api.Assertions.assertThat(data.get(0).path("account1").get(0).path("amount").decimalValue())
-                    .isEqualByComparingTo("15.0");
-                org.assertj.core.api.Assertions.assertThat(data.get(1).path("account1").get(0).path("amount").decimalValue())
-                    .isEqualByComparingTo("15.0");
-                org.assertj.core.api.Assertions.assertThat(data.get(0).path("account1").get(0))
-                    .isNotSameAs(data.get(1).path("account1").get(0));
-            })
-            .verifyComplete();
+                .assertNext(aggregated -> {
+                    JsonNode data = aggregated.path("data");
+                    assertThat(data.get(0)
+                                    .path("account1")
+                                    .get(0)
+                                    .path("amount")
+                                    .decimalValue())
+                            .isEqualByComparingTo("15.0");
+                    assertThat(data.get(1)
+                                    .path("account1")
+                                    .get(0)
+                                    .path("amount")
+                                    .decimalValue())
+                            .isEqualByComparingTo("15.0");
+                    assertThat(data.get(0).path("account1").get(0))
+                            .isNotSameAs(data.get(1).path("account1").get(0));
+                })
+                .verifyComplete();
 
         ArgumentCaptor<ObjectNode> accountRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
         verify(accountClient).fetchAccounts(accountRequestCaptor.capture(), any(ClientRequestContext.class));
-        org.assertj.core.api.Assertions.assertThat(accountRequestCaptor.getValue().path("ids").values())
-            .extracting(JsonNode::asString)
-            .containsExactly("shared-account");
+        assertThat(accountRequestCaptor.getValue().path("ids").values())
+                .extracting(JsonNode::asString)
+                .containsExactly("shared-account");
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
     void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode()
-            .put("customerId", "cust-1");
+        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
         inboundRequest.putArray("include").add("owners");
 
         JsonNode accountGroupResponse = json("""
@@ -483,35 +470,41 @@ class AggregateServiceTest {
             }
             """);
 
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
         when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.just(ownersResponse));
+                .thenReturn(Mono.just(ownersResponse));
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
-            .assertNext(aggregated -> {
-                ObjectNode root = (ObjectNode) aggregated;
-                JsonNode firstData = root.path("data").get(0);
-                JsonNode secondData = root.path("data").get(1);
-                JsonNode firstBasicDetails = firstData.path("basicDetails");
-                JsonNode secondBasicDetails = secondData.path("basicDetails");
-                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.path("owners").get(0).has("owners1"))
-                    .isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstBasicDetails.has("owners1")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(secondBasicDetails.has("owners1")).isFalse();
-                org.assertj.core.api.Assertions.assertThat(firstData.path("owners1").get(0).path("name").asString())
-                    .isEqualTo("Ada");
-                org.assertj.core.api.Assertions.assertThat(firstData.path("owners1").get(1).path("flags").get(0).asString())
-                    .isEqualTo("primary");
-                org.assertj.core.api.Assertions.assertThat(secondData.path("owners1").get(0).path("name").asString())
-                    .isEqualTo("Cid");
-            })
-            .verifyComplete();
+                .assertNext(aggregated -> {
+                    ObjectNode root = (ObjectNode) aggregated;
+                    JsonNode firstData = root.path("data").get(0);
+                    JsonNode secondData = root.path("data").get(1);
+                    JsonNode firstBasicDetails = firstData.path("basicDetails");
+                    JsonNode secondBasicDetails = secondData.path("basicDetails");
+                    assertThat(firstBasicDetails.path("owners").get(0).has("owners1"))
+                            .isFalse();
+                    assertThat(firstBasicDetails.has("owners1")).isFalse();
+                    assertThat(secondBasicDetails.has("owners1")).isFalse();
+                    assertThat(firstData.path("owners1").get(0).path("name").asString())
+                            .isEqualTo("Ada");
+                    assertThat(firstData
+                                    .path("owners1")
+                                    .get(1)
+                                    .path("flags")
+                                    .get(0)
+                                    .asString())
+                            .isEqualTo("primary");
+                    assertThat(secondData.path("owners1").get(0).path("name").asString())
+                            .isEqualTo("Cid");
+                })
+                .verifyComplete();
 
         ArgumentCaptor<ObjectNode> ownersRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
         verify(ownersClient).fetchOwners(ownersRequestCaptor.capture(), any(ClientRequestContext.class));
-        org.assertj.core.api.Assertions.assertThat(ownersRequestCaptor.getValue().path("ids").values())
-            .extracting(JsonNode::asString)
-            .containsExactly("owner-a", "owner-b", "owner-c");
+        assertThat(ownersRequestCaptor.getValue().path("ids").values())
+                .extracting(JsonNode::asString)
+                .containsExactly("owner-a", "owner-b", "owner-c");
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
@@ -527,11 +520,47 @@ class AggregateServiceTest {
         return new ClientRequestContext(ForwardedHeaders.builder().build(), null);
     }
 
+    private AggregateService aggregateServiceWith(AggregationEnrichment enrichment) {
+        return new AggregateService(
+                accountGroupClient,
+                List.of(enrichment),
+                ObservationRegistry.create(),
+                new AccountGroupRequestFactory(),
+                new EnrichmentExecutor(meterRegistry),
+                new AggregationMerger());
+    }
+
+    private AggregationEnrichment emptyEnrichment() {
+        return new AggregationEnrichment() {
+            @Override
+            public @NonNull String name() {
+                return "empty";
+            }
+
+            @Override
+            public boolean supports(@NonNull AggregationContext context) {
+                return true;
+            }
+
+            @Override
+            public @NonNull Mono<JsonNode> fetch(@NonNull AggregationContext context) {
+                return Mono.empty();
+            }
+
+            @Override
+            public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
+                throw new IllegalStateException("Empty enrichment should not be merged");
+            }
+        };
+    }
+
     private void assertEnrichmentMetric(String enrichment, String outcome, double count) {
-        org.assertj.core.api.Assertions.assertThat(meterRegistry.get("aggregation.enrichment.requests")
-            .tag("enrichment", enrichment)
-            .tag("outcome", outcome)
-            .counter()
-            .count()).isEqualTo(count);
+        assertThat(meterRegistry
+                        .get("aggregation.enrichment.requests")
+                        .tag("enrichment", enrichment)
+                        .tag("outcome", outcome)
+                        .counter()
+                        .count())
+                .isEqualTo(count);
     }
 }

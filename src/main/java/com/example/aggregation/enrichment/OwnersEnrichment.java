@@ -1,9 +1,9 @@
 package com.example.aggregation.enrichment;
 
-import com.example.aggregation.model.AggregationContext;
+import com.example.aggregation.client.Owners;
 import com.example.aggregation.enrichment.keyed.EnrichmentRule;
 import com.example.aggregation.enrichment.keyed.KeyedArrayEnrichment;
-import com.example.aggregation.client.Owners;
+import com.example.aggregation.model.AggregationContext;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -15,11 +15,11 @@ import tools.jackson.databind.node.ObjectNode;
 public class OwnersEnrichment extends KeyedArrayEnrichment {
 
     private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
-        .mainItems("$.data[*]", "basicDetails.owners[*].id", "basicDetails.owners[*].number")
-        .responseItems("$.data[*]", "individual.number", "id")
-        .requestKeysField("ids")
-        .targetField("owners1")
-        .build();
+            .mainItems("$.data[*]", "basicDetails.owners[*].id", "basicDetails.owners[*].number")
+            .responseItems("$.data[*]", "individual.number", "id")
+            .requestKeysField("ids")
+            .targetField("owners1")
+            .build();
 
     private final Owners ownersClient;
 

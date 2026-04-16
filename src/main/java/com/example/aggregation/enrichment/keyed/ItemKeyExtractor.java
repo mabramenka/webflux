@@ -23,24 +23,25 @@ final class ItemKeyExtractor {
 
     List<EnrichmentTarget> targetsFrom(JsonNode root) {
         return itemExpression.select(root).stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .flatMap(item -> targetsFromItem(item).stream())
-            .toList();
+                .filter(ObjectNode.class::isInstance)
+                .map(ObjectNode.class::cast)
+                .flatMap(item -> targetsFromItem(item).stream())
+                .toList();
     }
 
     Map<String, JsonNode> entriesByKey(JsonNode root) {
         Map<String, JsonNode> entriesByKey = new HashMap<>();
         itemExpression.select(root).stream()
-            .filter(ObjectNode.class::isInstance)
-            .map(ObjectNode.class::cast)
-            .forEach(entry -> keyGroups.firstKey(entry).ifPresent(key -> entriesByKey.putIfAbsent(key, entry)));
+                .filter(ObjectNode.class::isInstance)
+                .map(ObjectNode.class::cast)
+                .forEach(entry -> keyGroups.firstKey(entry).ifPresent(key -> entriesByKey.putIfAbsent(key, entry)));
         return entriesByKey;
     }
 
     private List<EnrichmentTarget> targetsFromItem(ObjectNode item) {
-        return keyGroups.keysFrom(item)
-            .map(key -> new EnrichmentTarget(key, item))
-            .toList();
+        return keyGroups
+                .keysFrom(item)
+                .map(key -> new EnrichmentTarget(key, item))
+                .toList();
     }
 }

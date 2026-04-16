@@ -18,34 +18,32 @@ record KeyPathGroups(List<KeyPathGroup> groups) {
         Map<PathExpression, List<String>> keyFieldsBySource = new LinkedHashMap<>();
         for (String keyPath : keyPaths) {
             KeyPath parsed = KeyPath.parse(keyPath);
-            keyFieldsBySource.computeIfAbsent(parsed.sourcePath(), ignored -> new ArrayList<>())
-                .add(parsed.keyField());
+            keyFieldsBySource
+                    .computeIfAbsent(parsed.sourcePath(), ignored -> new ArrayList<>())
+                    .add(parsed.keyField());
         }
 
         List<KeyPathGroup> groups = keyFieldsBySource.entrySet().stream()
-            .map(entry -> new KeyPathGroup(entry.getKey(), List.copyOf(entry.getValue())))
-            .toList();
+                .map(entry -> new KeyPathGroup(entry.getKey(), List.copyOf(entry.getValue())))
+                .toList();
         return new KeyPathGroups(groups);
     }
 
     Stream<String> keysFrom(ObjectNode root) {
-        return groups.stream()
-            .flatMap(group -> group.keysFrom(root));
+        return groups.stream().flatMap(group -> group.keysFrom(root));
     }
 
     Optional<String> firstKey(ObjectNode root) {
-        return groups.stream()
-            .flatMap(group -> group.keysFrom(root))
-            .findFirst();
+        return groups.stream().flatMap(group -> group.keysFrom(root)).findFirst();
     }
 
     private record KeyPathGroup(PathExpression sourcePath, List<String> keyFields) {
 
         private Stream<String> keysFrom(ObjectNode root) {
             return sourcePath.select(root).stream()
-                .filter(ObjectNode.class::isInstance)
-                .map(ObjectNode.class::cast)
-                .flatMap(source -> firstKeyFieldValue(source).stream());
+                    .filter(ObjectNode.class::isInstance)
+                    .map(ObjectNode.class::cast)
+                    .flatMap(source -> firstKeyFieldValue(source).stream());
         }
 
         private Optional<String> firstKeyFieldValue(ObjectNode source) {

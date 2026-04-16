@@ -29,12 +29,9 @@ class PathExpressionTest {
 
     @Test
     void parse_rejectsMalformedAbsolutePaths() {
-        assertThatThrownBy(() -> PathExpression.parse("$."))
-            .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> PathExpression.parse("$.data."))
-            .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> PathExpression.parse("$data"))
-            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PathExpression.parse("$.")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PathExpression.parse("$.data.")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> PathExpression.parse("$data")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -49,8 +46,8 @@ class PathExpressionTest {
             """);
 
         List<String> keys = KeyPathGroups.parse("owners[*].id", "owners[*].number")
-            .keysFrom(item)
-            .toList();
+                .keysFrom(item)
+                .toList();
 
         assertThat(keys).containsExactly("owner-a", "owner-b");
     }
@@ -64,7 +61,7 @@ class PathExpressionTest {
             """);
 
         assertThat(KeyPathGroups.parse("individual.number", "id").firstKey(entry))
-            .contains("fallback-id");
+                .contains("fallback-id");
     }
 
     @Test
@@ -78,8 +75,8 @@ class PathExpressionTest {
             }
             """);
 
-        Map<String, JsonNode> entriesByKey = ItemKeyExtractor.from("$.data[*]", "id")
-            .entriesByKey(response);
+        Map<String, JsonNode> entriesByKey =
+                ItemKeyExtractor.from("$.data[*]", "id").entriesByKey(response);
 
         assertThat(entriesByKey.get("duplicate").path("amount").intValue()).isEqualTo(10);
     }

@@ -10,12 +10,8 @@ import tools.jackson.databind.node.ObjectNode;
 public interface AccountGroups {
 
     @PostExchange(
-        value = "/account-groups",
-        contentType = MediaType.APPLICATION_JSON_VALUE,
-        accept = MediaType.APPLICATION_JSON_VALUE
-    )
-    Mono<JsonNode> fetchAccountGroup(
-        @RequestBody ObjectNode request,
-        ClientRequestContext clientRequestContext
-    );
+            value = "/account-groups",
+            contentType = MediaType.APPLICATION_JSON_VALUE,
+            accept = MediaType.APPLICATION_JSON_VALUE)
+    Mono<JsonNode> fetchAccountGroup(@RequestBody ObjectNode request, ClientRequestContext clientRequestContext);
 }

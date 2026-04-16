@@ -1,13 +1,16 @@
 package com.example.aggregation.api;
 
+import static com.example.aggregation.client.ForwardedHeaders.CORRELATION_ID_HEADER;
+import static com.example.aggregation.client.ForwardedHeaders.REQUEST_ID_HEADER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.example.aggregation.service.AggregateService;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.config.WebFluxConfig;
 import com.example.aggregation.error.InvalidAggregationRequestException;
+import com.example.aggregation.service.AggregateService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,7 +26,12 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @WebFluxTest(controllers = AggregateController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({
+    ClientRequestContextFactory.class,
+    GlobalExceptionHandler.class,
+    ServerClientRequestContextArgumentResolver.class,
+    WebFluxConfig.class
+})
 class AggregateControllerTest {
 
     @Autowired
@@ -41,103 +49,126 @@ class AggregateControllerTest {
         mergedResponse.put("status", "ok");
 
         when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.just(mergedResponse));
+                .thenReturn(Mono.just(mergedResponse));
 
-        webTestClient.post()
-            .uri("/api/v1/aggregate?detokenize=true")
-            .contentType(MediaType.APPLICATION_JSON)
-            .accept(MediaType.APPLICATION_JSON)
-            .header(HttpHeaders.AUTHORIZATION, "Bearer abc")
-            .header("X-Request-Id", "req-123")
-            .header("X-Correlation-Id", "corr-456")
-            .header(HttpHeaders.ACCEPT_LANGUAGE, "en-US")
-            .bodyValue("""
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate?detokenize=true")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer abc")
+                .header(REQUEST_ID_HEADER, "req-123")
+                .header(CORRELATION_ID_HEADER, "corr-456")
+                .header(HttpHeaders.ACCEPT_LANGUAGE, "en-US")
+                .bodyValue("""
                 {"customerId":"cust-1","market":"US"}
                 """)
-            .exchange()
-            .expectStatus().isOk()
-            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
-            .expectBody()
-            .jsonPath("$.status").isEqualTo("ok");
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectBody()
+                .jsonPath("$.status")
+                .isEqualTo("ok");
 
         ArgumentCaptor<ObjectNode> requestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        ArgumentCaptor<ClientRequestContext> clientRequestContextCaptor = ArgumentCaptor.forClass(ClientRequestContext.class);
+        ArgumentCaptor<ClientRequestContext> clientRequestContextCaptor =
+                ArgumentCaptor.forClass(ClientRequestContext.class);
         verify(aggregateService).aggregate(requestCaptor.capture(), clientRequestContextCaptor.capture());
 
-        org.assertj.core.api.Assertions.assertThat(requestCaptor.getValue().path("customerId").asString()).isEqualTo("cust-1");
+        assertThat(requestCaptor.getValue().path("customerId").asString()).isEqualTo("cust-1");
         ClientRequestContext clientRequestContext = clientRequestContextCaptor.getValue();
-        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().authorization()).isEqualTo("Bearer abc");
-        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().requestId()).isEqualTo("req-123");
-        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().correlationId()).isEqualTo("corr-456");
-        org.assertj.core.api.Assertions.assertThat(clientRequestContext.headers().acceptLanguage()).isEqualTo("en-US");
-        org.assertj.core.api.Assertions.assertThat(clientRequestContext.detokenize()).isTrue();
+        assertThat(clientRequestContext.headers().authorization()).isEqualTo("Bearer abc");
+        assertThat(clientRequestContext.headers().requestId()).isEqualTo("req-123");
+        assertThat(clientRequestContext.headers().correlationId()).isEqualTo("corr-456");
+        assertThat(clientRequestContext.headers().acceptLanguage()).isEqualTo("en-US");
+        assertThat(clientRequestContext.detokenize()).isTrue();
     }
 
     @Test
     void aggregate_rejectsInvalidDetokenizeQueryParam() {
-        webTestClient.post()
-            .uri("/api/v1/aggregate?detokenize=yes")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("""
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate?detokenize=yes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
                 {"customerId":"cust-1"}
                 """)
-            .exchange()
-            .expectStatus().isBadRequest();
+                .exchange()
+                .expectStatus()
+                .isBadRequest()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/invalid-aggregation-request")
+                .jsonPath("$.detail")
+                .isEqualTo("'detokenize' must be either true or false");
     }
 
     @Test
     void aggregate_rejectsBlankDetokenizeQueryParam() {
-        webTestClient.post()
-            .uri("/api/v1/aggregate?detokenize=")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("""
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate?detokenize=")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
                 {"customerId":"cust-1"}
                 """)
-            .exchange()
-            .expectStatus().isBadRequest();
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
     }
 
     @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
         when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.error(new InvalidAggregationRequestException("Unknown aggregation enrichment(s): foo")));
+                .thenReturn(
+                        Mono.error(new InvalidAggregationRequestException("Unknown aggregation enrichment(s): foo")));
 
-        webTestClient.post()
-            .uri("/api/v1/aggregate")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("""
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
                 {"customerId":"cust-1"}
                 """)
-            .exchange()
-            .expectStatus().isBadRequest()
-            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
-            .expectBody(String.class)
-            .value(body -> assertThat(body)
-                .contains("\"status\":" + HttpStatus.BAD_REQUEST.value())
-                .contains("Unknown aggregation enrichment(s): foo")
-                .contains("/problems/invalid-aggregation-request")
-                .contains("/api/v1/aggregate"));
+                .exchange()
+                .expectStatus()
+                .isBadRequest()
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody(String.class)
+                .value(body -> assertThat(body)
+                        .contains("\"status\":" + HttpStatus.BAD_REQUEST.value())
+                        .contains("Unknown aggregation enrichment(s): foo")
+                        .contains("/problems/invalid-aggregation-request")
+                        .contains("/api/v1/aggregate"));
     }
 
     @Test
     void aggregate_returnsInternalProblemDetailWhenServiceFailsInternally() {
         when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.error(new IllegalStateException("Duplicate aggregation enrichment name: account")));
+                .thenReturn(Mono.error(new IllegalStateException("Duplicate aggregation enrichment name: account")));
 
-        webTestClient.post()
-            .uri("/api/v1/aggregate")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("""
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
                 {"customerId":"cust-1"}
                 """)
-            .exchange()
-            .expectStatus().isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
-            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
-            .expectBody(String.class)
-            .value(body -> assertThat(body)
-                .contains("\"status\":" + HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .contains("Internal aggregation error")
-                .contains("/problems/internal-aggregation-error")
-                .contains("/api/v1/aggregate"));
+                .exchange()
+                .expectStatus()
+                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody(String.class)
+                .value(body -> assertThat(body)
+                        .contains("\"status\":" + HttpStatus.INTERNAL_SERVER_ERROR.value())
+                        .contains("Internal aggregation error")
+                        .contains("/problems/internal-aggregation-error")
+                        .contains("/api/v1/aggregate"));
     }
 }

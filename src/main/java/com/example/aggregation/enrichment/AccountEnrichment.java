@@ -1,9 +1,9 @@
 package com.example.aggregation.enrichment;
 
-import com.example.aggregation.model.AggregationContext;
+import com.example.aggregation.client.Accounts;
 import com.example.aggregation.enrichment.keyed.EnrichmentRule;
 import com.example.aggregation.enrichment.keyed.KeyedArrayEnrichment;
-import com.example.aggregation.client.Accounts;
+import com.example.aggregation.model.AggregationContext;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
@@ -15,11 +15,11 @@ import tools.jackson.databind.node.ObjectNode;
 public class AccountEnrichment extends KeyedArrayEnrichment {
 
     private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
-        .mainItems("$.data[*]", "accounts[*].id")
-        .responseItems("$.data[*]", "id")
-        .requestKeysField("ids")
-        .targetField("account1")
-        .build();
+            .mainItems("$.data[*]", "accounts[*].id")
+            .responseItems("$.data[*]", "id")
+            .requestKeysField("ids")
+            .targetField("account1")
+            .build();
 
     private final Accounts accountClient;
 

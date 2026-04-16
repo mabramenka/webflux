@@ -42,11 +42,11 @@ record PathExpression(List<PathSegment> segments) {
     }
 
     boolean endsWithArray() {
-        return segments.get(segments.size() - 1).array();
+        return segments.getLast().array();
     }
 
     String lastField() {
-        return segments.get(segments.size() - 1).field();
+        return segments.getLast().field();
     }
 
     PathExpression withoutLastSegment() {
@@ -55,17 +55,15 @@ record PathExpression(List<PathSegment> segments) {
 
     private static List<JsonNode> selectSegment(List<JsonNode> current, PathSegment segment) {
         List<JsonNode> selected = new ArrayList<>();
-        current.stream()
-            .map(node -> node.path(segment.field()))
-            .forEach(node -> {
-                if (segment.array()) {
-                    if (node.isArray()) {
-                        node.values().forEach(selected::add);
-                    }
-                } else {
-                    selected.add(node);
+        current.stream().map(node -> node.path(segment.field())).forEach(node -> {
+            if (segment.array()) {
+                if (node.isArray()) {
+                    selected.addAll(node.values());
                 }
-            });
+            } else {
+                selected.add(node);
+            }
+        });
         return selected;
     }
 
