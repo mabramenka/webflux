@@ -407,6 +407,8 @@ class AggregateServiceTest {
                     .isEqualByComparingTo("15.0");
                 org.assertj.core.api.Assertions.assertThat(data.get(1).path("account1").get(0).path("amount").decimalValue())
                     .isEqualByComparingTo("15.0");
+                org.assertj.core.api.Assertions.assertThat(data.get(0).path("account1").get(0))
+                    .isNotSameAs(data.get(1).path("account1").get(0));
             })
             .verifyComplete();
 
