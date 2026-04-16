@@ -29,4 +29,12 @@ class ActuatorEndpointsTest {
             .expectBody()
             .jsonPath("$.names").isArray();
     }
+
+    @Test
+    void doesNotExposeUnapprovedActuatorEndpoints() {
+        webTestClient.get()
+            .uri("/actuator/loggers")
+            .exchange()
+            .expectStatus().isNotFound();
+    }
 }
