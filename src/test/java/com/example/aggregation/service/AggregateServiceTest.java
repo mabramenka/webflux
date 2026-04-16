@@ -198,6 +198,26 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_rejectsInvalidAccountGroupRequestFieldsBeforeCallingAccountGroup() {
+        List<ObjectNode> invalidRequests = List.of(
+            objectMapper.createObjectNode(),
+            objectMapper.createObjectNode().put("customerId", " "),
+            objectMapper.createObjectNode().put("customerId", 123),
+            objectMapper.createObjectNode().put("customerId", "cust-1").put("market", " "),
+            objectMapper.createObjectNode().put("customerId", "cust-1").put("market", 123),
+            objectMapper.createObjectNode().put("customerId", "cust-1").put("includeItems", "true")
+        );
+
+        invalidRequests.forEach(invalidRequest ->
+            StepVerifier.create(aggregateService.aggregate(invalidRequest, clientRequestContext()))
+                .expectError(InvalidAggregationRequestException.class)
+                .verify()
+        );
+
+        verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
     void aggregate_embedsAccountEntriesIntoMatchingItems() {
         ObjectNode inboundRequest = objectMapper.createObjectNode()
             .put("customerId", "cust-1");

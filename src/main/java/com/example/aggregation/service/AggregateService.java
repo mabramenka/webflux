@@ -13,6 +13,7 @@ import io.micrometer.observation.ObservationRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -86,10 +87,43 @@ public class AggregateService {
 
     private ObjectNode buildAccountGroupRequest(ObjectNode inboundRequest) {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.put(CUSTOMER_ID_FIELD, inboundRequest.path(CUSTOMER_ID_FIELD).asString());
-        request.put("market", inboundRequest.path("market").asString("US"));
-        request.put("includeItems", inboundRequest.path("includeItems").asBoolean(true));
+        request.put(CUSTOMER_ID_FIELD, requiredString(inboundRequest, CUSTOMER_ID_FIELD));
+        request.put("market", optionalString(inboundRequest, "market", "US"));
+        request.put("includeItems", optionalBoolean(inboundRequest, "includeItems", true));
         return request;
+    }
+
+    private String requiredString(ObjectNode request, String fieldName) {
+        JsonNode field = request.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            throw new InvalidAggregationRequestException("'" + fieldName + "' is required");
+        }
+        return stringValue(field)
+            .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a non-blank string"));
+    }
+
+    private String optionalString(ObjectNode request, String fieldName, String defaultValue) {
+        JsonNode field = request.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            return defaultValue;
+        }
+        return stringValue(field)
+            .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a non-blank string"));
+    }
+
+    private Optional<String> stringValue(JsonNode field) {
+        return field.stringValueOpt()
+            .map(String::trim)
+            .filter(value -> !value.isBlank());
+    }
+
+    private boolean optionalBoolean(ObjectNode request, String fieldName, boolean defaultValue) {
+        JsonNode field = request.path(fieldName);
+        if (field.isMissingNode() || field.isNull()) {
+            return defaultValue;
+        }
+        return field.booleanValueOpt()
+            .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a boolean"));
     }
 
     private Mono<EnrichmentFetchResult> fetchEnrichment(AggregationEnrichment enrichment, AggregationContext context) {
