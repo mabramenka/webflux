@@ -11,8 +11,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  test:
-    name: Test and Analyze
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -33,9 +33,19 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
-      - name: Test
-        run: ./gradlew verifyBoot4Classpath test jacocoTestReport --no-daemon
+      - name: Check
+        run: ./gradlew check
 
       - name: SonarQube Cloud
         if: env.SONAR_TOKEN != ''
-        run: ./gradlew sonar --no-daemon
+        run: |
+          ./gradlew sonar 2> >(grep -v -E 'SLF4J\(W\): (No SLF4J providers were found\.|Defaulting to no-operation \(NOP\) logger implementation|See https://www\.slf4j\.org/codes\.html#noProviders for further details\.)' >&2)
+
+      - name: SonarQube Quality Gate
+        if: env.SONAR_TOKEN != ''
+        uses: SonarSource/sonarqube-quality-gate-action@d304d050d930b02a896b0f85935344f023928496 # v1
+        timeout-minutes: 5
+        with:
+          scanMetadataReportFile: build/sonar/report-task.txt
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
