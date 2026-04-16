@@ -8,6 +8,8 @@ import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.model.EnrichmentFetchResult;
 import com.example.aggregation.model.EnrichmentSelection;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,22 +33,28 @@ public class AggregateService {
     private final List<AggregationEnrichment> enrichments;
     private final Map<String, AggregationEnrichment> enrichmentByName;
     private final MeterRegistry meterRegistry;
+    private final ObservationRegistry observationRegistry;
 
     public AggregateService(
         AccountGroups accountGroupClient,
         List<AggregationEnrichment> enrichments,
-        MeterRegistry meterRegistry
+        MeterRegistry meterRegistry,
+        ObservationRegistry observationRegistry
     ) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
         this.enrichmentByName = buildEnrichmentIndex(enrichments);
         this.meterRegistry = meterRegistry;
+        this.observationRegistry = observationRegistry;
     }
 
     public Mono<JsonNode> aggregate(ObjectNode inboundRequest, ClientRequestContext clientRequestContext) {
         return Mono.defer(() -> {
+            Observation observation = Observation.start("aggregation.request", observationRegistry);
             EnrichmentSelection enrichmentSelection = EnrichmentSelection.from(inboundRequest);
             validateEnrichmentSelection(enrichmentSelection);
+            observation.lowCardinalityKeyValue("enrichment_selection", enrichmentSelection.all() ? "all" : "subset");
+            observation.lowCardinalityKeyValue("requested_enrichments", Integer.toString(enrichmentSelection.names().size()));
 
             ObjectNode accountGroupRequest = buildAccountGroupRequest(inboundRequest);
 
@@ -70,7 +78,9 @@ public class AggregateService {
                         .flatMap(enrichment -> fetchEnrichment(enrichment, context))
                         .collectList()
                         .map(results -> merge(root, enabledEnrichments, results));
-                });
+                })
+                .doOnError(observation::error)
+                .doFinally(signalType -> observation.stop());
         });
     }
 

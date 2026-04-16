@@ -14,6 +14,7 @@ import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.Owners;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +49,8 @@ class AggregateServiceTest {
         aggregateService = new AggregateService(
             accountGroupClient,
             List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient)),
-            meterRegistry
+            meterRegistry,
+            ObservationRegistry.create()
         );
     }
 
