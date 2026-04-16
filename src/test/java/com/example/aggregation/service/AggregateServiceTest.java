@@ -14,6 +14,8 @@ import com.example.aggregation.client.DownstreamClientException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.Owners;
+import com.example.aggregation.enrichment.AggregationEnrichment;
+import com.example.aggregation.model.AggregationContext;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
@@ -238,6 +240,53 @@ class AggregateServiceTest {
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
+        AggregationEnrichment emptyEnrichment = new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return "empty";
+            }
+
+            @Override
+            public boolean supports(AggregationContext context) {
+                return true;
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.empty();
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                throw new IllegalStateException("Empty enrichment should not be merged");
+            }
+        };
+        AggregateService service = new AggregateService(
+            accountGroupClient,
+            List.of(emptyEnrichment),
+            meterRegistry,
+            ObservationRegistry.create()
+        );
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(inboundRequest, clientRequestContext()))
+            .assertNext(aggregated -> org.assertj.core.api.Assertions.assertThat(aggregated.path("customerId").asString())
+                .isEqualTo("cust-1"))
+            .verifyComplete();
+
+        assertEnrichmentMetric("empty", "ERROR", 1);
     }
 
     @Test

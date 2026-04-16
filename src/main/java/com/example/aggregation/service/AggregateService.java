@@ -142,6 +142,9 @@ public class AggregateService {
 
     private Mono<EnrichmentFetchResult> fetchEnrichment(AggregationEnrichment enrichment, AggregationContext context) {
         return enrichment.fetch(context)
+            .switchIfEmpty(Mono.error(() -> new IllegalStateException(
+                "Optional aggregation enrichment '" + enrichment.name() + "' returned an empty response"
+            )))
             .doOnSuccess(response -> recordEnrichmentFetch(enrichment.name(), "SUCCESS"))
             .map(response -> EnrichmentFetchResult.success(enrichment, response))
             .onErrorResume(ex -> {
