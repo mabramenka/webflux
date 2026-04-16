@@ -3,6 +3,7 @@ package com.example.aggregation.client;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -113,6 +114,37 @@ class HttpServiceExternalClientsTest {
         assertThat(meterRegistry.get("aggregation.downstream.requests")
             .tag("client", clientCase.errorPrefix())
             .tag("status", "502")
+            .tag("outcome", "ERROR")
+            .counter()
+            .count()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
+    void fetch_mapsTransportErrorToDownstreamClientException(WebClientCase clientCase) {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        WebClient webClient = WebClient.builder()
+            .baseUrl("https://client.example")
+            .exchangeFunction(request -> Mono.error(new IOException("connection refused")))
+            .filter(DownstreamClientErrorFilter.forClient(clientCase.errorPrefix(), meterRegistry))
+            .build();
+
+        StepVerifier.create(webClient.post().uri(clientCase.path()).retrieve().bodyToMono(String.class))
+            .expectErrorSatisfies(error -> {
+                assertThat(error)
+                    .isInstanceOf(DownstreamClientException.class)
+                    .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage())
+                    .hasCauseInstanceOf(IOException.class);
+                DownstreamClientException clientException = (DownstreamClientException) error;
+                assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
+                assertThat(clientException.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                assertThat(clientException.responseBody()).isEqualTo(clientCase.defaultErrorMessage());
+            })
+            .verify();
+
+        assertThat(meterRegistry.get("aggregation.downstream.requests")
+            .tag("client", clientCase.errorPrefix())
+            .tag("status", "IO_ERROR")
             .tag("outcome", "ERROR")
             .counter()
             .count()).isEqualTo(1);
