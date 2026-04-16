@@ -65,8 +65,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_handlesOptionalFailuresAndMergesSuccessfulOptionalResults() {
-        ObjectNode inboundRequest =
-                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", "US");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         ClientRequestContext clientRequestContext = new ClientRequestContext(
                 ForwardedHeaders.builder().authorization("Bearer token").build(), true);
 
@@ -130,8 +129,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_fetchesOnlyEnrichmentSelection() {
-        ObjectNode inboundRequest =
-                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", "US");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         inboundRequest.putArray("include").add("account");
 
         JsonNode accountGroupResponse = json("""
@@ -172,11 +170,18 @@ class AggregateServiceTest {
                 .verifyComplete();
 
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+
+        ArgumentCaptor<ObjectNode> accountGroupRequestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(accountGroupClient).fetchAccountGroup(accountGroupRequestCaptor.capture(), any(ClientRequestContext.class));
+        assertThat(accountGroupRequestCaptor.getValue().path("ids").values())
+                .extracting(JsonNode::asString)
+                .containsExactly("id-x19");
+        assertThat(accountGroupRequestCaptor.getValue().has("include")).isFalse();
     }
 
     @Test
     void aggregate_rejectsUnknownEnrichmentSelectionBeforeCallingAccountGroup() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         inboundRequest.putArray("include").add("unknown");
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
@@ -190,7 +195,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_rejectsNonStringEnrichmentSelectionBeforeCallingAccountGroup() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         inboundRequest.putArray("include").add(42);
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
@@ -204,13 +209,19 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_rejectsInvalidAccountGroupRequestFieldsBeforeCallingAccountGroup() {
+        ObjectNode blankIdRequest = objectMapper.createObjectNode();
+        blankIdRequest.putArray("ids").add(" ");
+        ObjectNode nonStringIdRequest = objectMapper.createObjectNode();
+        nonStringIdRequest.putArray("ids").add(123);
+        ObjectNode emptyIdsRequest = objectMapper.createObjectNode();
+        emptyIdsRequest.putArray("ids");
+
         List<ObjectNode> invalidRequests = List.of(
                 objectMapper.createObjectNode(),
-                objectMapper.createObjectNode().put("customerId", " "),
-                objectMapper.createObjectNode().put("customerId", 123),
-                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", " "),
-                objectMapper.createObjectNode().put("customerId", "cust-1").put("market", 123),
-                objectMapper.createObjectNode().put("customerId", "cust-1").put("includeItems", "true"));
+                objectMapper.createObjectNode().put("ids", "id-x19"),
+                emptyIdsRequest,
+                blankIdRequest,
+                nonStringIdRequest);
 
         invalidRequests.forEach(invalidRequest -> StepVerifier.create(
                         aggregateService.aggregate(invalidRequest, clientRequestContext()))
@@ -222,7 +233,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_rejectsNonObjectAccountGroupResponse() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         JsonNode accountGroupResponse = json("""
             [
               {"id": "unexpected-array"}
@@ -244,7 +255,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         DecodingException decodingException = new DecodingException("Invalid JSON");
 
         when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
@@ -268,7 +279,7 @@ class AggregateServiceTest {
     @Test
     void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
         AggregateService service = aggregateServiceWith(emptyEnrichment());
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
@@ -288,7 +299,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_embedsAccountEntriesIntoMatchingItems() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         inboundRequest.putArray("include").add("account");
 
         JsonNode accountGroupResponse = json("""
@@ -368,7 +379,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_deduplicatesAccountRequestIdsButMergesAllMatchingItems() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         inboundRequest.putArray("include").add("account");
 
         JsonNode accountGroupResponse = json("""
@@ -433,7 +444,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
-        ObjectNode inboundRequest = objectMapper.createObjectNode().put("customerId", "cust-1");
+        ObjectNode inboundRequest = inboundRequest("id-x19");
         inboundRequest.putArray("include").add("owners");
 
         JsonNode accountGroupResponse = json("""
@@ -518,6 +529,15 @@ class AggregateServiceTest {
 
     private ClientRequestContext clientRequestContext() {
         return new ClientRequestContext(ForwardedHeaders.builder().build(), null);
+    }
+
+    private ObjectNode inboundRequest(String... ids) {
+        ObjectNode request = objectMapper.createObjectNode();
+        var requestIds = request.putArray("ids");
+        for (String id : ids) {
+            requestIds.add(id);
+        }
+        return request;
     }
 
     private AggregateService aggregateServiceWith(AggregationEnrichment enrichment) {

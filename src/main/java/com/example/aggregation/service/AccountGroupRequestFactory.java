@@ -4,52 +4,41 @@ import com.example.aggregation.error.InvalidAggregationRequestException;
 import java.util.Optional;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
 public class AccountGroupRequestFactory {
 
-    private static final String CUSTOMER_ID_FIELD = "customerId";
+    private static final String IDS_FIELD = "ids";
 
     public ObjectNode from(ObjectNode inboundRequest) {
         ObjectNode request = JsonNodeFactory.instance.objectNode();
-        request.put(CUSTOMER_ID_FIELD, requiredString(inboundRequest, CUSTOMER_ID_FIELD));
-        request.put("market", optionalString(inboundRequest, "market", "US"));
-        request.put("includeItems", optionalBoolean(inboundRequest, "includeItems", true));
+        request.set(IDS_FIELD, requiredStringArray(inboundRequest, IDS_FIELD));
         return request;
     }
 
-    private static String requiredString(ObjectNode request, String fieldName) {
+    private static ArrayNode requiredStringArray(ObjectNode request, String fieldName) {
         JsonNode field = request.path(fieldName);
         if (field.isMissingNode() || field.isNull()) {
             throw new InvalidAggregationRequestException("'" + fieldName + "' is required");
         }
-        return stringValue(field)
-                .orElseThrow(
-                        () -> new InvalidAggregationRequestException("'" + fieldName + "' must be a non-blank string"));
-    }
-
-    private static String optionalString(ObjectNode request, String fieldName, String defaultValue) {
-        JsonNode field = request.path(fieldName);
-        if (field.isMissingNode() || field.isNull()) {
-            return defaultValue;
+        if (!field.isArray()) {
+            throw new InvalidAggregationRequestException("'" + fieldName + "' must be an array of non-blank strings");
         }
-        return stringValue(field)
-                .orElseThrow(
-                        () -> new InvalidAggregationRequestException("'" + fieldName + "' must be a non-blank string"));
+
+        ArrayNode ids = JsonNodeFactory.instance.arrayNode();
+        field.forEach(item -> ids.add(stringValue(item)
+                .orElseThrow(() -> new InvalidAggregationRequestException(
+                        "'" + fieldName + "' values must be non-blank strings"))));
+        if (ids.isEmpty()) {
+            throw new InvalidAggregationRequestException("'" + fieldName + "' must contain at least one value");
+        }
+        return ids;
     }
 
     private static Optional<String> stringValue(JsonNode field) {
         return field.stringValueOpt().map(String::trim).filter(value -> !value.isBlank());
-    }
-
-    private static boolean optionalBoolean(ObjectNode request, String fieldName, boolean defaultValue) {
-        JsonNode field = request.path(fieldName);
-        if (field.isMissingNode() || field.isNull()) {
-            return defaultValue;
-        }
-        return field.booleanValueOpt()
-                .orElseThrow(() -> new InvalidAggregationRequestException("'" + fieldName + "' must be a boolean"));
     }
 }
