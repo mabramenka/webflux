@@ -3,6 +3,7 @@ package com.example.aggregation.enrichment.keyed;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -53,6 +54,23 @@ class PathExpressionTest {
 
         assertThat(KeyPathGroups.parse("individual.number", "id").firstKey(entry))
             .contains("fallback-id");
+    }
+
+    @Test
+    void itemKeyExtractor_keepsFirstResponseEntryWhenKeysAreDuplicated() {
+        JsonNode response = json("""
+            {
+              "data": [
+                {"id": "duplicate", "amount": 10},
+                {"id": "duplicate", "amount": 20}
+              ]
+            }
+            """);
+
+        Map<String, JsonNode> entriesByKey = ItemKeyExtractor.from("$.data[*]", "id")
+            .entriesByKey(response);
+
+        assertThat(entriesByKey.get("duplicate").path("amount").intValue()).isEqualTo(10);
     }
 
     private JsonNode json(String raw) {
