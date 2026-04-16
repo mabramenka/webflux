@@ -10,6 +10,7 @@ import com.example.aggregation.enrichment.AccountEnrichment;
 import com.example.aggregation.enrichment.OwnersEnrichment;
 import com.example.aggregation.client.ForwardedHeaders;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.client.DownstreamClientException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.Owners;
@@ -215,6 +216,28 @@ class AggregateServiceTest {
         );
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_rejectsNonObjectAccountGroupResponse() {
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        JsonNode accountGroupResponse = json("""
+            [
+              {"id": "unexpected-array"}
+            ]
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class))).thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+            .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
+                .isInstanceOf(DownstreamClientException.class)
+                .hasMessageContaining("non-object JSON response"))
+            .verify();
+
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test

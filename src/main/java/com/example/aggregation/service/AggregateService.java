@@ -2,6 +2,7 @@ package com.example.aggregation.service;
 
 import com.example.aggregation.enrichment.AggregationEnrichment;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.client.DownstreamClientException;
 import com.example.aggregation.error.InvalidAggregationRequestException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.model.AggregationContext;
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -29,6 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class AggregateService {
 
     private static final String CUSTOMER_ID_FIELD = "customerId";
+    private static final String ACCOUNT_GROUP_CLIENT_NAME = "Account group";
 
     private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
@@ -73,7 +76,7 @@ public class AggregateService {
                         .filter(enrichment -> enrichment.supports(context))
                         .toList();
 
-                    ObjectNode root = (ObjectNode) accountGroupResponse.deepCopy();
+                    ObjectNode root = mutableAccountGroupResponse(accountGroupResponse);
 
                     return Flux.fromIterable(enabledEnrichments)
                         .flatMap(enrichment -> fetchEnrichment(enrichment, context))
@@ -83,6 +86,17 @@ public class AggregateService {
                 .doOnError(observation::error)
                 .doFinally(signalType -> observation.stop());
         });
+    }
+
+    private ObjectNode mutableAccountGroupResponse(JsonNode accountGroupResponse) {
+        if (!accountGroupResponse.isObject()) {
+            throw new DownstreamClientException(
+                ACCOUNT_GROUP_CLIENT_NAME,
+                HttpStatus.BAD_GATEWAY,
+                "account group client returned a non-object JSON response"
+            );
+        }
+        return (ObjectNode) accountGroupResponse.deepCopy();
     }
 
     private ObjectNode buildAccountGroupRequest(ObjectNode inboundRequest) {
