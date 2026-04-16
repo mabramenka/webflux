@@ -55,7 +55,7 @@ class AggregateDownstreamBodyErrorIntegrationTest {
                 .uri("/api/v1/aggregate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"customerId":"cust-1","include":[]}
+                {"ids":["id-x19"],"include":[]}
                 """)
                 .exchange()
                 .expectStatus()

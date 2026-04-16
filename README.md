@@ -93,18 +93,14 @@ Accept: application/json
 
 ```json
 {
-  "customerId": "cust-1",
-  "market": "US",
-  "includeItems": true,
+  "ids": ["id-x19"],
   "include": ["account", "owners"]
 }
 ```
 
 Fields sent to the account group service:
 
-- `customerId`: required non-blank string
-- `market`: optional non-blank string, defaults to `US`
-- `includeItems`: optional boolean, defaults to `true`
+- `ids`: required non-empty array of non-blank strings
 
 `include` controls optional aggregation parts:
 
@@ -141,7 +137,7 @@ Example:
   "type": "/problems/invalid-aggregation-request",
   "title": "Invalid aggregation request",
   "status": 400,
-  "detail": "'customerId' is required"
+  "detail": "'ids' is required"
 }
 ```
 

@@ -61,7 +61,7 @@ class AggregateControllerTest {
                 .header(CORRELATION_ID_HEADER, "corr-456")
                 .header(HttpHeaders.ACCEPT_LANGUAGE, "en-US")
                 .bodyValue("""
-                {"customerId":"cust-1","market":"US"}
+                {"ids":["id-x19"],"include":["account","owners"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -77,7 +77,8 @@ class AggregateControllerTest {
                 ArgumentCaptor.forClass(ClientRequestContext.class);
         verify(aggregateService).aggregate(requestCaptor.capture(), clientRequestContextCaptor.capture());
 
-        assertThat(requestCaptor.getValue().path("customerId").asString()).isEqualTo("cust-1");
+        assertThat(requestCaptor.getValue().path("ids").get(0).asString()).isEqualTo("id-x19");
+        assertThat(requestCaptor.getValue().path("include").get(0).asString()).isEqualTo("account");
         ClientRequestContext clientRequestContext = clientRequestContextCaptor.getValue();
         assertThat(clientRequestContext.headers().authorization()).isEqualTo("Bearer abc");
         assertThat(clientRequestContext.headers().requestId()).isEqualTo("req-123");
@@ -93,7 +94,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate?detokenize=yes")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"customerId":"cust-1"}
+                {"ids":["id-x19"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -114,7 +115,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate?detokenize=")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"customerId":"cust-1"}
+                {"ids":["id-x19"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -132,7 +133,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"customerId":"cust-1"}
+                {"ids":["id-x19"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -157,7 +158,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"customerId":"cust-1"}
+                {"ids":["id-x19"]}
                 """)
                 .exchange()
                 .expectStatus()
