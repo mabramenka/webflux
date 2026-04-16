@@ -6,11 +6,11 @@
 [![Gradle](https://img.shields.io/badge/Gradle-version%20catalog-02303A?logo=gradle&logoColor=white)](https://docs.gradle.org/current/userguide/version_catalogs.html)
 [![Jackson 3](https://img.shields.io/badge/Jackson-3.x-2F6DB3)](https://github.com/FasterXML/jackson)
 [![Renovate](https://img.shields.io/badge/Renovate-enabled-1A1F6C?logo=renovatebot&logoColor=white)](https://docs.renovatebot.com/)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=alert_status&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=coverage&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=bugs&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=code_smells&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
-[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=duplicated_lines_density&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=coverage)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=bugs)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 
 Reactive Spring Boot service that calls an account group service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the account group JSON document.
 
