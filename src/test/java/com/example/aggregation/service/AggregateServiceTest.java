@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.codec.DecodingException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
@@ -70,7 +71,6 @@ class AggregateServiceTest {
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1",
-              "currency": "USD",
               "data": [
                 {
                   "id": "customer-data-1",
@@ -134,7 +134,6 @@ class AggregateServiceTest {
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1",
-              "currency": "USD",
               "data": [
                 {
                   "id": "customer-data-1",
@@ -236,6 +235,30 @@ class AggregateServiceTest {
             .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
                 .isInstanceOf(DownstreamClientException.class)
                 .hasMessageContaining("non-object JSON response"))
+            .verify();
+
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
+        ObjectNode inboundRequest = objectMapper.createObjectNode()
+            .put("customerId", "cust-1");
+        DecodingException decodingException = new DecodingException("Invalid JSON");
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+            .thenReturn(Mono.error(decodingException));
+
+        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+            .expectErrorSatisfies(error -> {
+                org.assertj.core.api.Assertions.assertThat(error)
+                    .isInstanceOf(DownstreamClientException.class)
+                    .hasMessageContaining("unreadable response")
+                    .hasCause(decodingException);
+                DownstreamClientException clientException = (DownstreamClientException) error;
+                org.assertj.core.api.Assertions.assertThat(clientException.statusCode().value()).isEqualTo(502);
+            })
             .verify();
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));

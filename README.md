@@ -45,15 +45,19 @@ The service keeps external service payloads dynamic by working with Jackson `Jso
 ./gradlew bootRun
 ```
 
-Default client URLs are configured in [application.properties](src/main/resources/application.properties):
+Default client settings are configured in [application.properties](src/main/resources/application.properties):
 
 ```properties
 spring.http.clients.connect-timeout=2s
 spring.http.clients.read-timeout=5s
+spring.reactor.context-propagation=auto
 
 spring.http.serviceclient.account-group.base-url=http://localhost:8081
+spring.http.serviceclient.account-group.read-timeout=2s
 spring.http.serviceclient.account.base-url=http://localhost:8083
+spring.http.serviceclient.account.read-timeout=3s
 spring.http.serviceclient.owners.base-url=http://localhost:8084
+spring.http.serviceclient.owners.read-timeout=3s
 ```
 
 Override them with Spring configuration when running in another environment.
@@ -169,8 +173,7 @@ Calls account with:
 
 ```json
 {
-  "ids": ["acc-a", "acc-b"],
-  "currency": "USD"
+  "ids": ["acc-a", "acc-b"]
 }
 ```
 

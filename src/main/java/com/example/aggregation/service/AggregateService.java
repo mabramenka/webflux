@@ -11,6 +11,7 @@ import com.example.aggregation.model.EnrichmentSelection;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.observation.contextpropagation.ObservationThreadLocalAccessor;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,7 +63,7 @@ public class AggregateService {
 
             ObjectNode accountGroupRequest = buildAccountGroupRequest(inboundRequest);
 
-            return accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext)
+            return fetchAccountGroup(accountGroupRequest, clientRequestContext)
                 .flatMap(accountGroupResponse -> {
                     AggregationContext context = new AggregationContext(
                         inboundRequest,
@@ -83,9 +84,23 @@ public class AggregateService {
                         .collectList()
                         .map(results -> merge(root, enabledEnrichments, results));
                 })
+                .contextWrite(context -> context.put(ObservationThreadLocalAccessor.KEY, observation))
                 .doOnError(observation::error)
                 .doFinally(signalType -> observation.stop());
         });
+    }
+
+    private Mono<JsonNode> fetchAccountGroup(ObjectNode accountGroupRequest, ClientRequestContext clientRequestContext) {
+        return accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext)
+            .onErrorMap(
+                ex -> !(ex instanceof DownstreamClientException),
+                ex -> new DownstreamClientException(
+                    ACCOUNT_GROUP_CLIENT_NAME,
+                    HttpStatus.BAD_GATEWAY,
+                    "account group client returned an unreadable response",
+                    ex
+                )
+            );
     }
 
     private ObjectNode mutableAccountGroupResponse(JsonNode accountGroupResponse) {
