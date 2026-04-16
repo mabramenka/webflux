@@ -2,6 +2,7 @@ package com.example.aggregation.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -68,9 +69,15 @@ class HttpServiceExternalClientsTest {
             .build());
 
         StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
-            .expectErrorSatisfies(error -> assertThat(error)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable"))
+            .expectErrorSatisfies(error -> {
+                assertThat(error)
+                    .isInstanceOf(DownstreamClientException.class)
+                    .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable");
+                DownstreamClientException clientException = (DownstreamClientException) error;
+                assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
+                assertThat(clientException.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                assertThat(clientException.responseBody()).isEqualTo("client unavailable");
+            })
             .verify();
     }
 
@@ -83,9 +90,32 @@ class HttpServiceExternalClientsTest {
 
         StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
             .expectErrorSatisfies(error -> assertThat(error)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(DownstreamClientException.class)
                 .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage()))
             .verify();
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
+    void fetch_recordsErrorMetric(WebClientCase clientCase) {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        WebClient webClient = webClient(new AtomicReference<>(), ClientResponse.create(HttpStatus.BAD_GATEWAY)
+            .body("client unavailable")
+            .build())
+            .mutate()
+            .filter(DownstreamClientErrorFilter.forClient(clientCase.errorPrefix(), meterRegistry))
+            .build();
+
+        StepVerifier.create(webClient.post().uri(clientCase.path()).retrieve().bodyToMono(String.class))
+            .expectError(DownstreamClientException.class)
+            .verify();
+
+        assertThat(meterRegistry.get("aggregation.downstream.requests")
+            .tag("client", clientCase.errorPrefix())
+            .tag("status", "502")
+            .tag("outcome", "ERROR")
+            .counter()
+            .count()).isEqualTo(1);
     }
 
     private static Stream<WebClientCase> clients() {

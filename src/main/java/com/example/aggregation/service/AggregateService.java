@@ -2,10 +2,14 @@ package com.example.aggregation.service;
 
 import com.example.aggregation.enrichment.AggregationEnrichment;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.model.EnrichmentFetchResult;
 import com.example.aggregation.model.EnrichmentSelection;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,17 +32,29 @@ public class AggregateService {
     private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
     private final Map<String, AggregationEnrichment> enrichmentByName;
+    private final MeterRegistry meterRegistry;
+    private final ObservationRegistry observationRegistry;
 
-    public AggregateService(AccountGroups accountGroupClient, List<AggregationEnrichment> enrichments) {
+    public AggregateService(
+        AccountGroups accountGroupClient,
+        List<AggregationEnrichment> enrichments,
+        MeterRegistry meterRegistry,
+        ObservationRegistry observationRegistry
+    ) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
         this.enrichmentByName = buildEnrichmentIndex(enrichments);
+        this.meterRegistry = meterRegistry;
+        this.observationRegistry = observationRegistry;
     }
 
     public Mono<JsonNode> aggregate(ObjectNode inboundRequest, ClientRequestContext clientRequestContext) {
         return Mono.defer(() -> {
+            Observation observation = Observation.start("aggregation.request", observationRegistry);
             EnrichmentSelection enrichmentSelection = EnrichmentSelection.from(inboundRequest);
             validateEnrichmentSelection(enrichmentSelection);
+            observation.lowCardinalityKeyValue("enrichment_selection", enrichmentSelection.all() ? "all" : "subset");
+            observation.lowCardinalityKeyValue("requested_enrichments", Integer.toString(enrichmentSelection.names().size()));
 
             ObjectNode accountGroupRequest = buildAccountGroupRequest(inboundRequest);
 
@@ -62,7 +78,9 @@ public class AggregateService {
                         .flatMap(enrichment -> fetchEnrichment(enrichment, context))
                         .collectList()
                         .map(results -> merge(root, enabledEnrichments, results));
-                });
+                })
+                .doOnError(observation::error)
+                .doFinally(signalType -> observation.stop());
         });
     }
 
@@ -76,11 +94,21 @@ public class AggregateService {
 
     private Mono<EnrichmentFetchResult> fetchEnrichment(AggregationEnrichment enrichment, AggregationContext context) {
         return enrichment.fetch(context)
+            .doOnSuccess(response -> recordEnrichmentFetch(enrichment.name(), "SUCCESS"))
             .map(response -> EnrichmentFetchResult.success(enrichment, response))
             .onErrorResume(ex -> {
+                recordEnrichmentFetch(enrichment.name(), "ERROR");
                 log.warn("Optional aggregation enrichment '{}' failed and will be skipped", enrichment.name(), ex);
                 return Mono.just(EnrichmentFetchResult.failed(enrichment, ex));
             });
+    }
+
+    private void recordEnrichmentFetch(String enrichmentName, String outcome) {
+        meterRegistry.counter(
+            "aggregation.enrichment.requests",
+            "enrichment", enrichmentName,
+            "outcome", outcome
+        ).increment();
     }
 
     private JsonNode merge(ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentFetchResult> results) {
@@ -105,7 +133,9 @@ public class AggregateService {
             .toList();
 
         if (!unknownEnrichments.isEmpty()) {
-            throw new IllegalArgumentException("Unknown aggregation enrichment(s): " + String.join(", ", unknownEnrichments));
+            throw new InvalidAggregationRequestException(
+                "Unknown aggregation enrichment(s): " + String.join(", ", unknownEnrichments)
+            );
         }
     }
 

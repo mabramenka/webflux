@@ -1,6 +1,7 @@
 package com.example.aggregation.client;
 
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.MultiValueMap;
@@ -8,10 +9,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 public record ClientRequestContext(
     ForwardedHeaders headers,
-    Boolean detokenize
+    @Nullable Boolean detokenize
 ) {
 
-    private static final String DETOKENIZE_QUERY_PARAM = "detokenize";
+    public static final String DETOKENIZE_QUERY_PARAM = "detokenize";
 
     public static ClientRequestContext from(HttpHeaders headers, MultiValueMap<String, String> queryParams) {
         return new ClientRequestContext(

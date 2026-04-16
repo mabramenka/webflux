@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
 public final class EnrichmentRule {
@@ -31,9 +32,13 @@ public final class EnrichmentRule {
 
     public static final class EnrichmentRuleBuilder {
 
+        @Nullable
         private Function<JsonNode, List<EnrichmentTarget>> targetExtractor;
+        @Nullable
         private Function<JsonNode, Map<String, JsonNode>> responseIndexer;
+        @Nullable
         private String requestKeysField;
+        @Nullable
         private String targetField;
 
         public EnrichmentRuleBuilder mainItems(String itemPath, String... keyPaths) {

@@ -1,5 +1,6 @@
 package com.example.aggregation.model;
 
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -16,16 +17,16 @@ public record EnrichmentSelection(boolean all, Set<String> names) {
         }
 
         if (!includeNode.isArray()) {
-            throw new IllegalArgumentException("'include' must be an array of aggregation enrichment names");
+            throw new InvalidAggregationRequestException("'include' must be an array of aggregation enrichment names");
         }
 
         Set<String> requested = new LinkedHashSet<>();
         includeNode.forEach(item -> {
             String name = item.stringValueOpt()
                 .map(String::trim)
-                .orElseThrow(() -> new IllegalArgumentException("'include' values must be non-blank strings"));
+                .orElseThrow(() -> new InvalidAggregationRequestException("'include' values must be non-blank strings"));
             if (name.isBlank()) {
-                throw new IllegalArgumentException("'include' values must be non-blank strings");
+                throw new InvalidAggregationRequestException("'include' values must be non-blank strings");
             }
             requested.add(name);
         });

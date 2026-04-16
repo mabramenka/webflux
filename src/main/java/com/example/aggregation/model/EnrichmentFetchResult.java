@@ -1,13 +1,14 @@
 package com.example.aggregation.model;
 
 import com.example.aggregation.enrichment.AggregationEnrichment;
+import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 public record EnrichmentFetchResult(
     AggregationEnrichment enrichment,
-    JsonNode response,
-    Throwable error
+    @Nullable JsonNode response,
+    @Nullable Throwable error
 ) {
 
     public static EnrichmentFetchResult success(AggregationEnrichment enrichment, JsonNode response) {

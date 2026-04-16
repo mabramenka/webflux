@@ -3,14 +3,15 @@ package com.example.aggregation.client;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lombok.Builder;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 
 @Builder
 public record ForwardedHeaders(
-    String authorization,
-    String requestId,
-    String correlationId,
-    String acceptLanguage
+    @Nullable String authorization,
+    @Nullable String requestId,
+    @Nullable String correlationId,
+    @Nullable String acceptLanguage
 ) {
 
     public static ForwardedHeaders from(HttpHeaders inbound) {
@@ -31,7 +32,7 @@ public record ForwardedHeaders(
         return headers;
     }
 
-    private static void putIfPresent(Map<String, String> target, String name, String value) {
+    private static void putIfPresent(Map<String, String> target, String name, @Nullable String value) {
         if (value != null && !value.isBlank()) {
             target.put(name, value);
         }

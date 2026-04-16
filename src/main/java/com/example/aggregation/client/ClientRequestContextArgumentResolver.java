@@ -8,8 +8,6 @@ import org.springframework.web.service.invoker.HttpServiceArgumentResolver;
 
 public final class ClientRequestContextArgumentResolver implements HttpServiceArgumentResolver {
 
-    private static final String DETOKENIZE_QUERY_PARAM = "detokenize";
-
     @Override
     public boolean resolve(@Nullable Object argument, MethodParameter parameter, HttpRequestValues.@NonNull Builder requestValues) {
         if (!ClientRequestContext.class.equals(parameter.getParameterType())) {
@@ -22,7 +20,7 @@ public final class ClientRequestContextArgumentResolver implements HttpServiceAr
         ClientRequestContext context = (ClientRequestContext) argument;
         context.headers().asMap().forEach(requestValues::addHeader);
         if (context.detokenize() != null) {
-            requestValues.addRequestParameter(DETOKENIZE_QUERY_PARAM, context.detokenize().toString());
+            requestValues.addRequestParameter(ClientRequestContext.DETOKENIZE_QUERY_PARAM, context.detokenize().toString());
         }
         return true;
     }

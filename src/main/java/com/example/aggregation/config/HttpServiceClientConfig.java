@@ -4,7 +4,9 @@ import com.example.aggregation.client.AccountGroups;
 import com.example.aggregation.client.Accounts;
 import com.example.aggregation.client.ClientRequestContextArgumentResolver;
 import com.example.aggregation.client.DownstreamClientErrorFilter;
+import com.example.aggregation.client.HttpServiceGroups;
 import com.example.aggregation.client.Owners;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.support.WebClientHttpServiceGroupConfigurer;
@@ -13,37 +15,31 @@ import org.springframework.web.service.registry.ImportHttpServices;
 
 @Configuration(proxyBeanMethods = false)
 @ImportHttpServices(
-    group = "account-group",
+    group = HttpServiceGroups.ACCOUNT_GROUP,
     types = AccountGroups.class,
     clientType = HttpServiceGroup.ClientType.WEB_CLIENT
 )
 @ImportHttpServices(
-    group = "account",
+    group = HttpServiceGroups.ACCOUNT,
     types = Accounts.class,
     clientType = HttpServiceGroup.ClientType.WEB_CLIENT
 )
 @ImportHttpServices(
-    group = "owners",
+    group = HttpServiceGroups.OWNERS,
     types = Owners.class,
     clientType = HttpServiceGroup.ClientType.WEB_CLIENT
 )
 public class HttpServiceClientConfig {
 
     @Bean
-    WebClientHttpServiceGroupConfigurer downstreamHttpServiceConfigurer() {
+    WebClientHttpServiceGroupConfigurer downstreamHttpServiceConfigurer(MeterRegistry meterRegistry) {
         ClientRequestContextArgumentResolver resolver = new ClientRequestContextArgumentResolver();
         return groups -> groups.forEachGroup((group, clientBuilder, factoryBuilder) -> {
             factoryBuilder.customArgumentResolver(resolver);
-            clientBuilder.filter(DownstreamClientErrorFilter.forClient(clientName(group.name())));
+            clientBuilder.filter(DownstreamClientErrorFilter.forClient(
+                HttpServiceGroups.downstreamMetricClientName(group.name()),
+                meterRegistry
+            ));
         });
-    }
-
-    private String clientName(String groupName) {
-        return switch (groupName) {
-            case "account-group" -> "Account group";
-            case "account" -> "Account";
-            case "owners" -> "Owners";
-            default -> groupName;
-        };
     }
 }

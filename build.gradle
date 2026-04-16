@@ -14,12 +14,21 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll([
+        '-Xlint:deprecation',
+        '-Xlint:removal',
+        '-Werror'
+    ])
+}
+
 jacoco {
     toolVersion = libs.versions.jacoco.get()
 }
 
 dependencies {
     implementation platform(libs.spring.boot.dependencies)
+    implementation libs.spring.boot.starter.actuator
     implementation libs.spring.boot.starter.webflux
     implementation libs.spring.boot.webclient
 
@@ -32,6 +41,38 @@ dependencies {
     testCompileOnly libs.lombok
     testAnnotationProcessor libs.lombok
     testRuntimeOnly libs.junit.platform.launcher
+}
+
+tasks.register('verifyBoot4Classpath') {
+    description = 'Fails when Boot 3 or Jackson 2 artifacts are present on runtime classpaths.'
+    group = 'verification'
+
+    def checkedConfigurations = [
+        configurations.runtimeClasspath,
+        configurations.testRuntimeClasspath
+    ]
+
+    inputs.files(checkedConfigurations)
+
+    doLast {
+        def forbiddenComponents = checkedConfigurations.collectMany { configuration ->
+            configuration.incoming.resolutionResult.allComponents.findAll { component ->
+                def id = component.moduleVersion
+                id != null && (isSpringBoot3(id) || isJackson2(id))
+            }.collect { component ->
+                def id = component.moduleVersion
+                "${configuration.name}: ${id.group}:${id.name}:${id.version}"
+            }
+        }.unique().sort()
+
+        if (!forbiddenComponents.isEmpty()) {
+            throw new GradleException("Boot 4 classpath verification failed:\n - ${forbiddenComponents.join('\n - ')}")
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyBoot4Classpath')
 }
 
 tasks.named('test') {
@@ -59,4 +100,13 @@ sonar {
 
 tasks.named('sonar') {
     dependsOn tasks.named('jacocoTestReport')
+}
+
+private static boolean isSpringBoot3(ModuleVersionIdentifier id) {
+    id.group == 'org.springframework.boot' && id.version.startsWith('3.')
+}
+
+private static boolean isJackson2(ModuleVersionIdentifier id) {
+    id.group.startsWith('com.fasterxml.jackson')
+        && !(id.group == 'com.fasterxml.jackson.core' && id.name == 'jackson-annotations')
 }

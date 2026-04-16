@@ -34,7 +34,7 @@ jobs:
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
       - name: Test
-        run: ./gradlew test jacocoTestReport --no-daemon
+        run: ./gradlew verifyBoot4Classpath test jacocoTestReport --no-daemon
 
       - name: SonarQube Cloud
         if: env.SONAR_TOKEN != ''

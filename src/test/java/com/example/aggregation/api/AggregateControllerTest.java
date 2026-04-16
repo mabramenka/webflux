@@ -1,16 +1,20 @@
 package com.example.aggregation.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.aggregation.service.AggregateService;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webflux.test.autoconfigure.WebFluxTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -19,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @WebFluxTest(controllers = AggregateController.class)
+@Import(GlobalExceptionHandler.class)
 class AggregateControllerTest {
 
     @Autowired
@@ -27,7 +32,8 @@ class AggregateControllerTest {
     @MockitoBean
     private AggregateService aggregateService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
     void aggregate_acceptsPostBodyAndHeaders_andReturnsJson() {
@@ -77,5 +83,49 @@ class AggregateControllerTest {
                 """)
             .exchange()
             .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
+        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+            .thenReturn(Mono.error(new InvalidAggregationRequestException("Unknown aggregation enrichment(s): foo")));
+
+        webTestClient.post()
+            .uri("/api/v1/aggregate")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {"customerId":"cust-1"}
+                """)
+            .exchange()
+            .expectStatus().isBadRequest()
+            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectBody(String.class)
+            .value(body -> assertThat(body)
+                .contains("\"status\":" + HttpStatus.BAD_REQUEST.value())
+                .contains("Unknown aggregation enrichment(s): foo")
+                .contains("/problems/invalid-aggregation-request")
+                .contains("/api/v1/aggregate"));
+    }
+
+    @Test
+    void aggregate_returnsInternalProblemDetailWhenServiceFailsInternally() {
+        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+            .thenReturn(Mono.error(new IllegalStateException("Duplicate aggregation enrichment name: account")));
+
+        webTestClient.post()
+            .uri("/api/v1/aggregate")
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue("""
+                {"customerId":"cust-1"}
+                """)
+            .exchange()
+            .expectStatus().isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+            .expectBody(String.class)
+            .value(body -> assertThat(body)
+                .contains("\"status\":" + HttpStatus.INTERNAL_SERVER_ERROR.value())
+                .contains("Internal aggregation error")
+                .contains("/problems/internal-aggregation-error")
+                .contains("/api/v1/aggregate"));
     }
 }
