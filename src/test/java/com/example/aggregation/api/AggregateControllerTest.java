@@ -27,7 +27,8 @@ class AggregateControllerTest {
     @MockitoBean
     private AggregateService aggregateService;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
     void aggregate_acceptsPostBodyAndHeaders_andReturnsJson() {
