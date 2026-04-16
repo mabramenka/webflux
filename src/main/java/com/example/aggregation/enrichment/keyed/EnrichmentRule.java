@@ -34,10 +34,13 @@ public final class EnrichmentRule {
 
         @Nullable
         private Function<JsonNode, List<EnrichmentTarget>> targetExtractor;
+
         @Nullable
         private Function<JsonNode, Map<String, JsonNode>> responseIndexer;
+
         @Nullable
         private String requestKeysField;
+
         @Nullable
         private String targetField;
 
@@ -69,16 +72,11 @@ public final class EnrichmentRule {
             Objects.requireNonNull(requestKeysField, "requestKeysField");
             Objects.requireNonNull(targetField, "targetField");
             return new EnrichmentRule(
-                new TargetRule(requestKeysField, targetExtractor),
-                new ResponseRule(responseIndexer, targetField)
-            );
+                    new TargetRule(requestKeysField, targetExtractor), new ResponseRule(responseIndexer, targetField));
         }
     }
 
-    record TargetRule(
-        String requestKeysField,
-        Function<JsonNode, List<EnrichmentTarget>> targetExtractor
-    ) {
+    record TargetRule(String requestKeysField, Function<JsonNode, List<EnrichmentTarget>> targetExtractor) {
 
         TargetRule {
             Objects.requireNonNull(requestKeysField, "requestKeysField");
@@ -90,10 +88,7 @@ public final class EnrichmentRule {
         }
     }
 
-    record ResponseRule(
-        Function<JsonNode, Map<String, JsonNode>> responseIndexer,
-        String targetField
-    ) {
+    record ResponseRule(Function<JsonNode, Map<String, JsonNode>> responseIndexer, String targetField) {
 
         ResponseRule {
             Objects.requireNonNull(responseIndexer, "responseIndexer");

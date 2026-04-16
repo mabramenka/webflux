@@ -23,8 +23,9 @@ public record EnrichmentSelection(boolean all, Set<String> names) {
         Set<String> requested = new LinkedHashSet<>();
         includeNode.forEach(item -> {
             String name = item.stringValueOpt()
-                .map(String::trim)
-                .orElseThrow(() -> new InvalidAggregationRequestException("'include' values must be non-blank strings"));
+                    .map(String::trim)
+                    .orElseThrow(
+                            () -> new InvalidAggregationRequestException("'include' values must be non-blank strings"));
             if (name.isBlank()) {
                 throw new InvalidAggregationRequestException("'include' values must be non-blank strings");
             }

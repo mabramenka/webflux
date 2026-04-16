@@ -7,14 +7,20 @@ jacoco = "0.8.14"
 errorprone-plugin = "4.3.0"
 errorprone = "2.39.0"
 nullaway = "0.12.10"
+jackson = "3.1.2"
+spotless = "8.4.0"
+dependency-check = "12.2.1"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 errorprone = { id = "net.ltgt.errorprone", version.ref = "errorprone-plugin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+dependency-check = { id = "org.owasp.dependencycheck", version.ref = "dependency-check" }
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+jackson-bom = { module = "tools.jackson:jackson-bom", version.ref = "jackson" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-webclient = { module = "org.springframework.boot:spring-boot-webclient" }

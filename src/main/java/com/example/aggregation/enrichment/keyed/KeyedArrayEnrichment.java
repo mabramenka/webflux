@@ -1,7 +1,7 @@
 package com.example.aggregation.enrichment.keyed;
 
-import com.example.aggregation.model.AggregationContext;
 import com.example.aggregation.enrichment.AggregationEnrichment;
+import com.example.aggregation.model.AggregationContext;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -42,10 +42,7 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
 
     private ArrayNode keysFrom(List<EnrichmentTarget> targets) {
         ArrayNode keys = JsonNodeFactory.instance.arrayNode();
-        targets.stream()
-            .map(EnrichmentTarget::key)
-            .distinct()
-            .forEach(keys::add);
+        targets.stream().map(EnrichmentTarget::key).distinct().forEach(keys::add);
         return keys;
     }
 
@@ -56,6 +53,5 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
         }
     }
 
-    protected record EnrichmentTarget(String key, ObjectNode node) {
-    }
+    protected record EnrichmentTarget(String key, ObjectNode node) {}
 }

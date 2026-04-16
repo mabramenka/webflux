@@ -15,43 +15,52 @@ class ActuatorEndpointsTest {
 
     @Test
     void exposesHealthAndMetricsEndpoints() {
-        webTestClient.get()
-            .uri("/actuator/health")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.status").isEqualTo("UP");
+        webTestClient
+                .get()
+                .uri("/actuator/health")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
+                .jsonPath("$.status")
+                .isEqualTo("UP");
 
-        webTestClient.get()
-            .uri("/actuator/metrics")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.names").isArray();
+        webTestClient
+                .get()
+                .uri("/actuator/metrics")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
+                .jsonPath("$.names")
+                .isArray();
     }
 
     @Test
     void exposesHealthProbeEndpoints() {
-        webTestClient.get()
-            .uri("/actuator/health/liveness")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.status").isEqualTo("UP");
+        webTestClient
+                .get()
+                .uri("/actuator/health/liveness")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
+                .jsonPath("$.status")
+                .isEqualTo("UP");
 
-        webTestClient.get()
-            .uri("/actuator/health/readiness")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBody()
-            .jsonPath("$.status").isEqualTo("UP");
+        webTestClient
+                .get()
+                .uri("/actuator/health/readiness")
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
+                .jsonPath("$.status")
+                .isEqualTo("UP");
     }
 
     @Test
     void doesNotExposeUnapprovedActuatorEndpoints() {
-        webTestClient.get()
-            .uri("/actuator/loggers")
-            .exchange()
-            .expectStatus().isNotFound();
+        webTestClient.get().uri("/actuator/loggers").exchange().expectStatus().isNotFound();
     }
 }

@@ -24,7 +24,7 @@ The service keeps external service payloads dynamic by working with Jackson `Jso
 - Fallback key paths for inconsistent external schemas
 - Header and query parameter forwarding for client calls
 - Actuator health and metrics endpoints
-- Downstream and enrichment outcome metrics
+- Enrichment outcome metrics
 - JSpecify nullability annotations checked by NullAway
 - CI-ready test, coverage, and SonarQube Cloud analysis
 - Renovate-ready dependency maintenance
@@ -140,7 +140,6 @@ The service exposes selected Actuator endpoints:
 
 Custom metric names:
 
-- `aggregation.downstream.requests`, tagged by `client`, `status`, and `outcome`
 - `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome`
 
 The Java compile tasks fail on deprecation and removal warnings, keeping major-version migration issues visible during normal builds.

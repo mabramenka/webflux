@@ -1,5 +1,7 @@
 package com.example.aggregation;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.example.aggregation.client.HttpServiceGroups;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -29,17 +31,14 @@ class AggregateDownstreamBodyErrorIntegrationTest {
     static void serviceClientProperties(DynamicPropertyRegistry registry) {
         startServer();
         registry.add(
-            "spring.http.serviceclient." + HttpServiceGroups.ACCOUNT_GROUP + ".base-url",
-            AggregateDownstreamBodyErrorIntegrationTest::serverUrl
-        );
+                "spring.http.serviceclient." + HttpServiceGroups.ACCOUNT_GROUP + ".base-url",
+                AggregateDownstreamBodyErrorIntegrationTest::serverUrl);
         registry.add(
-            "spring.http.serviceclient." + HttpServiceGroups.ACCOUNT + ".base-url",
-            AggregateDownstreamBodyErrorIntegrationTest::serverUrl
-        );
+                "spring.http.serviceclient." + HttpServiceGroups.ACCOUNT + ".base-url",
+                AggregateDownstreamBodyErrorIntegrationTest::serverUrl);
         registry.add(
-            "spring.http.serviceclient." + HttpServiceGroups.OWNERS + ".base-url",
-            AggregateDownstreamBodyErrorIntegrationTest::serverUrl
-        );
+                "spring.http.serviceclient." + HttpServiceGroups.OWNERS + ".base-url",
+                AggregateDownstreamBodyErrorIntegrationTest::serverUrl);
     }
 
     @AfterAll
@@ -51,21 +50,25 @@ class AggregateDownstreamBodyErrorIntegrationTest {
 
     @Test
     void aggregate_returnsDownstreamProblemWhenAccountGroupBodyIsUnreadable() {
-        webTestClient.post()
-            .uri("/api/v1/aggregate")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue("""
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
                 {"customerId":"cust-1","include":[]}
                 """)
-            .exchange()
-            .expectStatus().isEqualTo(HttpStatus.BAD_GATEWAY)
-            .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
-            .expectBody()
-            .jsonPath("$.type").isEqualTo("/problems/downstream-client-error")
-            .jsonPath("$.client").isEqualTo("Account group")
-            .jsonPath("$.detail").value(detail ->
-                org.assertj.core.api.Assertions.assertThat(detail.toString()).contains("unreadable response")
-            );
+                .exchange()
+                .expectStatus()
+                .isEqualTo(HttpStatus.BAD_GATEWAY)
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/downstream-client-error")
+                .jsonPath("$.client")
+                .isEqualTo("Account group")
+                .jsonPath("$.detail")
+                .value(detail -> assertThat(detail.toString()).contains("unreadable response"));
     }
 
     private static void startServer() {
@@ -74,13 +77,12 @@ class AggregateDownstreamBodyErrorIntegrationTest {
         }
 
         server = HttpServer.create()
-            .host("localhost")
-            .port(0)
-            .route(routes -> routes.post("/account-groups", (request, response) ->
-                response.header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                    .sendString(Mono.just("{"))
-            ))
-            .bindNow();
+                .host("localhost")
+                .port(0)
+                .route(routes -> routes.post("/account-groups", (request, response) -> response.header(
+                                HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .sendString(Mono.just("{"))))
+                .bindNow();
     }
 
     private static String serverUrl() {
