@@ -1,6 +1,7 @@
 package com.example.aggregation.api;
 
 import com.example.aggregation.client.DownstreamClientException;
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -12,8 +13,8 @@ import reactor.core.publisher.Mono;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public Mono<ResponseEntity<ProblemDetail>> handleIllegalArgument(IllegalArgumentException ex) {
+    @ExceptionHandler(InvalidAggregationRequestException.class)
+    public Mono<ResponseEntity<ProblemDetail>> handleInvalidAggregationRequest(InvalidAggregationRequestException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         return Mono.just(
             ResponseEntity.badRequest()

@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.example.aggregation.service.AggregateService;
 import com.example.aggregation.client.ClientRequestContext;
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,7 +87,7 @@ class AggregateControllerTest {
     @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
         when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
-            .thenReturn(Mono.error(new IllegalArgumentException("Unknown aggregation enrichment(s): foo")));
+            .thenReturn(Mono.error(new InvalidAggregationRequestException("Unknown aggregation enrichment(s): foo")));
 
         webTestClient.post()
             .uri("/api/v1/aggregate")

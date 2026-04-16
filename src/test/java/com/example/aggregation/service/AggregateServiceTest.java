@@ -5,6 +5,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.example.aggregation.error.InvalidAggregationRequestException;
 import com.example.aggregation.enrichment.AccountEnrichment;
 import com.example.aggregation.enrichment.OwnersEnrichment;
 import com.example.aggregation.client.ForwardedHeaders;
@@ -172,7 +173,7 @@ class AggregateServiceTest {
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
             .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidAggregationRequestException.class)
                 .hasMessageContaining("unknown"))
             .verify();
 
@@ -187,7 +188,7 @@ class AggregateServiceTest {
 
         StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
             .expectErrorSatisfies(error -> org.assertj.core.api.Assertions.assertThat(error)
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidAggregationRequestException.class)
                 .hasMessageContaining("non-blank strings"))
             .verify();
 
