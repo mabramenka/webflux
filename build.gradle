@@ -1,6 +1,16 @@
 import org.gradle.api.artifacts.ModuleVersionIdentifier
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 
+buildscript {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.slf4j:slf4j-nop:2.0.17'
+    }
+}
+
 plugins {
     id 'java'
     id 'jacoco'
