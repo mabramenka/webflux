@@ -38,8 +38,7 @@ jobs:
 
       - name: SonarQube Cloud
         if: env.SONAR_TOKEN != ''
-        run: |
-          ./gradlew sonar 2> >(grep -v -E 'SLF4J\(W\): (No SLF4J providers were found\.|Defaulting to no-operation \(NOP\) logger implementation|See https://www\.slf4j\.org/codes\.html#noProviders for further details\.)' >&2)
+        run: ./gradlew sonar
 
       - name: SonarQube Quality Gate
         if: env.SONAR_TOKEN != ''
