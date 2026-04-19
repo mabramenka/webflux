@@ -4,14 +4,16 @@ import dev.abramenka.aggregation.client.Accounts;
 import dev.abramenka.aggregation.enrichment.keyed.EnrichmentRule;
 import dev.abramenka.aggregation.enrichment.keyed.KeyedArrayEnrichment;
 import dev.abramenka.aggregation.model.AggregationContext;
+import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
-@Order(200)
+@Order(Ordered.LOWEST_PRECEDENCE - 2)
 public class AccountEnrichment extends KeyedArrayEnrichment {
 
     private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
@@ -23,8 +25,8 @@ public class AccountEnrichment extends KeyedArrayEnrichment {
 
     private final Accounts accountClient;
 
-    public AccountEnrichment(Accounts accountClient) {
-        super(ENRICHMENT_RULE);
+    public AccountEnrichment(Accounts accountClient, ObjectMapper objectMapper) {
+        super(ENRICHMENT_RULE, objectMapper);
         this.accountClient = accountClient;
     }
 

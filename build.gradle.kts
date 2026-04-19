@@ -2,6 +2,7 @@ import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.artifacts.ModuleVersionIdentifier
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
 import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
@@ -158,6 +159,28 @@ tasks.named("check") {
     dependsOn(tasks.named("spotlessCheck"))
 }
 
+tasks.register("printStackVersions") {
+    description = "Prints the stack versions from the version catalog. Use to refresh README."
+    group = "documentation"
+
+    val stack = mapOf(
+        "Java" to libs.versions.java.get(),
+        "Spring Boot" to libs.versions.spring.boot.get(),
+        "Jackson" to libs.versions.jackson.get(),
+        "Lombok" to libs.versions.lombok.get(),
+        "JaCoCo" to libs.versions.jacoco.get(),
+        "Error Prone" to libs.versions.errorprone.asProvider().get(),
+        "NullAway" to libs.versions.nullaway.get(),
+        "Spotless" to libs.versions.spotless.get(),
+        "SonarQube" to libs.versions.sonarqube.get(),
+        "OWASP Dependency-Check" to libs.versions.dependency.check.get(),
+    )
+
+    doLast {
+        stack.forEach { (name, ver) -> println("- $name $ver") }
+    }
+}
+
 tasks.register("securityCheck") {
     description = "Runs OWASP Dependency Check. Set NVD_API_KEY before using it to avoid slow NVD API updates."
     group = "verification"
@@ -175,6 +198,23 @@ tasks.named<JacocoReport>("jacocoTestReport") {
         xml.required = true
         html.required = true
     }
+}
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    dependsOn(tasks.named("jacocoTestReport"))
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("jacocoTestCoverageVerification"))
 }
 
 sonar {

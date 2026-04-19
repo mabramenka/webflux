@@ -57,10 +57,13 @@ class AggregateServiceTest {
         meterRegistry = new SimpleMeterRegistry();
         aggregateService = new AggregateService(
                 accountGroupClient,
-                List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient)),
+                List.of(
+                        new AccountEnrichment(accountClient, objectMapper),
+                        new OwnersEnrichment(ownersClient, objectMapper)),
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
-                new AggregationMerger());
+                new AggregationMerger(),
+                objectMapper);
     }
 
     @Test
@@ -508,7 +511,8 @@ class AggregateServiceTest {
                 List.of(enrichment),
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
-                new AggregationMerger());
+                new AggregationMerger(),
+                objectMapper);
     }
 
     private AggregationEnrichment emptyEnrichment() {

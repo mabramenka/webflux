@@ -6,16 +6,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
 
     private final EnrichmentRule rule;
+    private final ObjectMapper objectMapper;
 
-    protected KeyedArrayEnrichment(EnrichmentRule rule) {
+    protected KeyedArrayEnrichment(EnrichmentRule rule, ObjectMapper objectMapper) {
         this.rule = Objects.requireNonNull(rule, "rule");
+        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
     }
 
     @Override
@@ -31,7 +33,7 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
 
     protected ObjectNode requestWithKeys(JsonNode root) {
         List<EnrichmentTarget> targets = targetsFrom(root);
-        ObjectNode request = JsonNodeFactory.instance.objectNode();
+        ObjectNode request = objectMapper.createObjectNode();
         request.set(rule.targetRule().requestKeysField(), keysFrom(targets));
         return request;
     }
@@ -41,7 +43,7 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
     }
 
     private ArrayNode keysFrom(List<EnrichmentTarget> targets) {
-        ArrayNode keys = JsonNodeFactory.instance.arrayNode();
+        ArrayNode keys = objectMapper.createArrayNode();
         targets.stream().map(EnrichmentTarget::key).distinct().forEach(keys::add);
         return keys;
     }
