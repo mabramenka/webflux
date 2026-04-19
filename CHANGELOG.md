@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/mabramenka/webflux/compare/v0.2.0...v0.2.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.google.errorprone:error_prone_core to v2.49.0 ([e3fb929](https://github.com/mabramenka/webflux/commit/e3fb929d79089a0fdb5bc669c93969b1925a72e9))
+* **deps:** update dependency com.uber.nullaway:nullaway to v0.13.3 ([33ec765](https://github.com/mabramenka/webflux/commit/33ec765c396dbbaa0e75f9f6082729234517e4aa))
+
 ## [0.2.0](https://github.com/mabramenka/webflux/compare/v0.1.0...v0.2.0) (2026-04-19)
 
 
