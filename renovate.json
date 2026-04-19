@@ -24,6 +24,29 @@
         "org.projectlombok:lombok"
       ],
       "groupName": "Lombok"
+    },
+    {
+      "description": "Group Jackson artifacts that release in sync.",
+      "matchPackageNames": [
+        "tools.jackson{/,}**",
+        "com.fasterxml.jackson{/,}**"
+      ],
+      "groupName": "Jackson"
+    },
+    {
+      "description": "Group Micrometer core + tracing + context-propagation.",
+      "matchPackageNames": [
+        "io.micrometer{/,}**"
+      ],
+      "groupName": "Micrometer"
+    },
+    {
+      "description": "Group Project Reactor core + test + netty.",
+      "matchPackageNames": [
+        "io.projectreactor{/,}**",
+        "io.projectreactor.netty{/,}**"
+      ],
+      "groupName": "Reactor"
     }
   ]
 }

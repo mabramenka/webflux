@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.service;
 
+import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
@@ -17,18 +18,20 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 @Service
 public class AggregateService {
 
     private static final String ACCOUNT_GROUP_CLIENT_NAME = "Account group";
+    private static final String IDS_FIELD = "ids";
 
     private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
     private final Map<String, AggregationEnrichment> enrichmentByName;
     private final ObservationRegistry observationRegistry;
-    private final AccountGroupRequestFactory accountGroupRequestFactory;
     private final EnrichmentExecutor enrichmentExecutor;
     private final AggregationMerger aggregationMerger;
 
@@ -36,34 +39,32 @@ public class AggregateService {
             AccountGroups accountGroupClient,
             List<AggregationEnrichment> enrichments,
             ObservationRegistry observationRegistry,
-            AccountGroupRequestFactory accountGroupRequestFactory,
             EnrichmentExecutor enrichmentExecutor,
             AggregationMerger aggregationMerger) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
         this.enrichmentByName = buildEnrichmentIndex(enrichments);
         this.observationRegistry = observationRegistry;
-        this.accountGroupRequestFactory = accountGroupRequestFactory;
         this.enrichmentExecutor = enrichmentExecutor;
         this.aggregationMerger = aggregationMerger;
     }
 
-    public Mono<JsonNode> aggregate(ObjectNode inboundRequest, ClientRequestContext clientRequestContext) {
+    public Mono<JsonNode> aggregate(AggregateRequest request, ClientRequestContext clientRequestContext) {
         return Mono.defer(() -> {
             Observation observation = Observation.start("aggregation.request", observationRegistry);
-            EnrichmentSelection enrichmentSelection = EnrichmentSelection.from(inboundRequest);
+            EnrichmentSelection enrichmentSelection = EnrichmentSelection.from(request.include());
             validateEnrichmentSelection(enrichmentSelection);
             observation.lowCardinalityKeyValue("enrichment_selection", enrichmentSelection.all() ? "all" : "subset");
             observation.lowCardinalityKeyValue(
                     "requested_enrichments",
                     Integer.toString(enrichmentSelection.names().size()));
 
-            ObjectNode accountGroupRequest = accountGroupRequestFactory.from(inboundRequest);
+            ObjectNode accountGroupRequest = toAccountGroupRequest(request.ids());
 
             return fetchAccountGroup(accountGroupRequest, clientRequestContext)
                     .flatMap(accountGroupResponse -> {
-                        AggregationContext context = new AggregationContext(
-                                inboundRequest, accountGroupResponse, clientRequestContext, enrichmentSelection);
+                        AggregationContext context =
+                                new AggregationContext(accountGroupResponse, clientRequestContext, enrichmentSelection);
 
                         List<AggregationEnrichment> enabledEnrichments = enrichments.stream()
                                 .filter(enrichment -> enrichmentSelection.includes(enrichment.name()))
@@ -92,6 +93,13 @@ public class AggregateService {
                         ex -> !(ex instanceof DownstreamClientException),
                         ex -> DownstreamClientException.gatewayError(
                                 ACCOUNT_GROUP_CLIENT_NAME, "account group client returned an unreadable response", ex));
+    }
+
+    private static ObjectNode toAccountGroupRequest(List<String> ids) {
+        ObjectNode request = JsonNodeFactory.instance.objectNode();
+        ArrayNode idsArray = request.putArray(IDS_FIELD);
+        ids.forEach(idsArray::add);
+        return request;
     }
 
     private void validateEnrichmentSelection(EnrichmentSelection enrichmentSelection) {
