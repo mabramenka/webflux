@@ -178,7 +178,7 @@ class HttpServiceExternalClientsTest {
                 .filter(DownstreamClientErrorFilter.forClient(clientName))
                 .build();
         return HttpServiceProxyFactory.builderFor(WebClientAdapter.create(filteredWebClient))
-                .customArgumentResolver(new ClientRequestContextArgumentResolver())
+                .customArgumentResolver(new ClientRequestContextHttpServiceArgumentResolver())
                 .build()
                 .createClient(clientType);
     }
