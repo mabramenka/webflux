@@ -2,11 +2,9 @@ package dev.abramenka.aggregation.model;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import lombok.Builder;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 
-@Builder
 public record ForwardedHeaders(
         @Nullable String authorization,
         @Nullable String requestId,
@@ -15,6 +13,10 @@ public record ForwardedHeaders(
 
     public static final String REQUEST_ID_HEADER = "X-Request-Id";
     public static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
+
+    public static Builder builder() {
+        return new Builder();
+    }
 
     public Map<String, String> asMap() {
         Map<String, String> headers = new LinkedHashMap<>();
@@ -28,6 +30,39 @@ public record ForwardedHeaders(
     private static void putIfPresent(Map<String, String> target, String name, @Nullable String value) {
         if (value != null && !value.isBlank()) {
             target.put(name, value);
+        }
+    }
+
+    public static final class Builder {
+        private @Nullable String authorization;
+        private @Nullable String requestId;
+        private @Nullable String correlationId;
+        private @Nullable String acceptLanguage;
+
+        private Builder() {}
+
+        public Builder authorization(@Nullable String authorization) {
+            this.authorization = authorization;
+            return this;
+        }
+
+        public Builder requestId(@Nullable String requestId) {
+            this.requestId = requestId;
+            return this;
+        }
+
+        public Builder correlationId(@Nullable String correlationId) {
+            this.correlationId = correlationId;
+            return this;
+        }
+
+        public Builder acceptLanguage(@Nullable String acceptLanguage) {
+            this.acceptLanguage = acceptLanguage;
+            return this;
+        }
+
+        public ForwardedHeaders build() {
+            return new ForwardedHeaders(authorization, requestId, correlationId, acceptLanguage);
         }
     }
 }

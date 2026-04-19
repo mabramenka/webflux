@@ -1,7 +1,6 @@
 package dev.abramenka.aggregation.client;
 
 import dev.abramenka.aggregation.error.DownstreamClientException;
-import java.util.Locale;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import reactor.core.publisher.Mono;
 
@@ -27,6 +26,6 @@ public final class DownstreamClientErrorFilter {
     }
 
     private static String defaultErrorMessage(String clientName) {
-        return clientName.substring(0, 1).toLowerCase(Locale.ROOT) + clientName.substring(1) + " client request failed";
+        return Character.toLowerCase(clientName.charAt(0)) + clientName.substring(1) + " client request failed";
     }
 }

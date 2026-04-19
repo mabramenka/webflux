@@ -18,8 +18,8 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 @Service
@@ -34,19 +34,22 @@ public class AggregateService {
     private final ObservationRegistry observationRegistry;
     private final EnrichmentExecutor enrichmentExecutor;
     private final AggregationMerger aggregationMerger;
+    private final ObjectMapper objectMapper;
 
     public AggregateService(
             AccountGroups accountGroupClient,
             List<AggregationEnrichment> enrichments,
             ObservationRegistry observationRegistry,
             EnrichmentExecutor enrichmentExecutor,
-            AggregationMerger aggregationMerger) {
+            AggregationMerger aggregationMerger,
+            ObjectMapper objectMapper) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
         this.enrichmentByName = buildEnrichmentIndex(enrichments);
         this.observationRegistry = observationRegistry;
         this.enrichmentExecutor = enrichmentExecutor;
         this.aggregationMerger = aggregationMerger;
+        this.objectMapper = objectMapper;
     }
 
     public Mono<JsonNode> aggregate(AggregateRequest request, ClientRequestContext clientRequestContext) {
@@ -95,8 +98,8 @@ public class AggregateService {
                                 ACCOUNT_GROUP_CLIENT_NAME, "account group client returned an unreadable response", ex));
     }
 
-    private static ObjectNode toAccountGroupRequest(List<String> ids) {
-        ObjectNode request = JsonNodeFactory.instance.objectNode();
+    private ObjectNode toAccountGroupRequest(List<String> ids) {
+        ObjectNode request = objectMapper.createObjectNode();
         ArrayNode idsArray = request.putArray(IDS_FIELD);
         ids.forEach(idsArray::add);
         return request;

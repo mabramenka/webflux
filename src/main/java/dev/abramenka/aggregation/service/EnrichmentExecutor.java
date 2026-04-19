@@ -22,7 +22,7 @@ public class EnrichmentExecutor {
                         "Optional aggregation enrichment '" + enrichment.name() + "' returned an empty response")))
                 .doOnSuccess(response -> recordFetch(enrichment.name(), "SUCCESS"))
                 .map(response -> EnrichmentFetchResult.success(enrichment, response))
-                .onErrorResume(ex -> {
+                .onErrorResume(Exception.class, ex -> {
                     recordFetch(enrichment.name(), "ERROR");
                     log.warn("Optional aggregation enrichment '{}' failed and will be skipped", enrichment.name(), ex);
                     return Mono.just(EnrichmentFetchResult.failed(enrichment, ex));
