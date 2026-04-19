@@ -4,7 +4,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "package-name": "webflux",
+      "package-name": "aggregation-gateway",
       "include-component-in-tag": false
     }
   }

@@ -15,7 +15,7 @@ plugins {
     alias(libs.plugins.dependency.check)
 }
 
-group = "com.example"
+group = "dev.abramenka"
 version = providers
     .gradleProperty("revision")
     .orElse(providers.fileContents(layout.projectDirectory.file("version.txt")).asText.map { it.trim() })
@@ -97,7 +97,7 @@ dependencies {
 tasks.named<JavaCompile>("compileJava") {
     options.errorprone {
         error("NullAway")
-        option("NullAway:AnnotatedPackages", "com.example.aggregation")
+        option("NullAway:AnnotatedPackages", "dev.abramenka.aggregation")
     }
 }
 

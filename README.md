@@ -1,4 +1,4 @@
-# WebFlux JSON Aggregation
+# Aggregation Gateway
 
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot 4.0.5](https://img.shields.io/badge/Spring%20Boot-4.0.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
