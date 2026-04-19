@@ -28,8 +28,6 @@ public final class DownstreamClientException extends ErrorResponseException {
     @Accessors(fluent = true)
     private final String responseBody;
 
-    private final String message;
-
     public DownstreamClientException(String clientName, HttpStatusCode downstreamStatusCode, String responseBody) {
         this(clientName, HttpStatus.BAD_GATEWAY, downstreamStatusCode, responseBody, null);
     }
@@ -62,12 +60,12 @@ public final class DownstreamClientException extends ErrorResponseException {
         this.statusCode = statusCode;
         this.downstreamStatusCode = downstreamStatusCode;
         this.responseBody = responseBody;
-        this.message = clientName + " client failed: " + responseBody;
     }
 
     @Override
     public @NonNull String getMessage() {
-        return message;
+        String detail = getBody().getDetail();
+        return detail != null ? detail : super.getMessage();
     }
 
     private static ProblemDetail problemDetail(

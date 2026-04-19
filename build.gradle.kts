@@ -79,8 +79,12 @@ dependencies {
     implementation(platform(libs.jackson.bom))
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.webflux)
+    implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.webclient)
     implementation(libs.micrometer.context.propagation)
+
+    annotationProcessor(platform(SpringBootPlugin.BOM_COORDINATES))
+    annotationProcessor(libs.spring.boot.configuration.processor)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
@@ -99,6 +103,8 @@ tasks.named<JavaCompile>("compileJava") {
     options.errorprone {
         error("NullAway")
         option("NullAway:AnnotatedPackages", "dev.abramenka.aggregation")
+        option("NullAway:JSpecifyMode", "true")
+        option("NullAway:AcknowledgeRestrictiveAnnotations", "true")
     }
 }
 

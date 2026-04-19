@@ -13,8 +13,8 @@ public class GlobalExceptionHandler {
 
     private static final String INTERNAL_ERROR_DETAIL = "Internal aggregation error";
 
-    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
-    public ProblemDetail handleInternalAggregationError(Exception ex) {
+    @ExceptionHandler(IllegalStateException.class)
+    public ProblemDetail handleInternalAggregationError(IllegalStateException ex) {
         log.error(INTERNAL_ERROR_DETAIL, ex);
         ProblemDetail detail =
                 ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR_DETAIL);

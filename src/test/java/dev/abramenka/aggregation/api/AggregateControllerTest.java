@@ -50,7 +50,7 @@ class AggregateControllerTest {
         ObjectNode mergedResponse = objectMapper.createObjectNode();
         mergedResponse.put("status", "ok");
 
-        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(mergedResponse));
 
         webTestClient
@@ -74,13 +74,13 @@ class AggregateControllerTest {
                 .jsonPath("$.status")
                 .isEqualTo("ok");
 
-        ArgumentCaptor<ObjectNode> requestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
+        ArgumentCaptor<AggregateRequest> requestCaptor = ArgumentCaptor.forClass(AggregateRequest.class);
         ArgumentCaptor<ClientRequestContext> clientRequestContextCaptor =
                 ArgumentCaptor.forClass(ClientRequestContext.class);
         verify(aggregateService).aggregate(requestCaptor.capture(), clientRequestContextCaptor.capture());
 
-        assertThat(requestCaptor.getValue().path("ids").get(0).asString()).isEqualTo("id-x19");
-        assertThat(requestCaptor.getValue().path("include").get(0).asString()).isEqualTo("account");
+        assertThat(requestCaptor.getValue().ids()).containsExactly("id-x19");
+        assertThat(requestCaptor.getValue().include()).containsExactly("account", "owners");
         ClientRequestContext clientRequestContext = clientRequestContextCaptor.getValue();
         assertThat(clientRequestContext.headers().authorization()).isEqualTo("Bearer abc");
         assertThat(clientRequestContext.headers().requestId()).isEqualTo("req-123");
@@ -125,8 +125,48 @@ class AggregateControllerTest {
     }
 
     @Test
+    void aggregate_rejectsMissingIds() {
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{}")
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
+    }
+
+    @Test
+    void aggregate_rejectsEmptyIds() {
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":[]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
+    }
+
+    @Test
+    void aggregate_rejectsBlankId() {
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["  "]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
+    }
+
+    @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
-        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
                 .thenReturn(
                         Mono.error(new InvalidAggregationRequestException("Unknown aggregation enrichment(s): foo")));
 
@@ -152,7 +192,7 @@ class AggregateControllerTest {
 
     @Test
     void aggregate_returnsInternalProblemDetailWhenServiceFailsInternally() {
-        when(aggregateService.aggregate(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.error(new IllegalStateException("Duplicate aggregation enrichment name: account")));
 
         webTestClient

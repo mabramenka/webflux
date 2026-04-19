@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.client.Accounts;
 import dev.abramenka.aggregation.client.Owners;
@@ -31,13 +32,13 @@ import org.springframework.core.codec.DecodingException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @ExtendWith(MockitoExtension.class)
 class AggregateServiceTest {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @Mock
     private AccountGroups accountGroupClient;
@@ -58,14 +59,13 @@ class AggregateServiceTest {
                 accountGroupClient,
                 List.of(new AccountEnrichment(accountClient), new OwnersEnrichment(ownersClient)),
                 ObservationRegistry.create(),
-                new AccountGroupRequestFactory(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger());
     }
 
     @Test
     void aggregate_handlesOptionalFailuresAndMergesSuccessfulOptionalResults() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
         ClientRequestContext clientRequestContext = new ClientRequestContext(
                 ForwardedHeaders.builder().authorization("Bearer token").build(), true);
 
@@ -89,7 +89,7 @@ class AggregateServiceTest {
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.error(new RuntimeException("account down")));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
                     assertThat(root.path("customerId").asString()).isEqualTo("cust-1");
@@ -111,7 +111,7 @@ class AggregateServiceTest {
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(accountResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
                     JsonNode dataEntry = root.path("data").get(0);
@@ -129,8 +129,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_fetchesOnlyEnrichmentSelection() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
-        inboundRequest.putArray("include").add("account");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -158,7 +157,7 @@ class AggregateServiceTest {
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(accountResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
                     JsonNode dataEntry = root.path("data").get(0);
@@ -182,10 +181,9 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_rejectsUnknownEnrichmentSelectionBeforeCallingAccountGroup() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
-        inboundRequest.putArray("include").add("unknown");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("unknown"));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(InvalidAggregationRequestException.class)
                         .hasMessageContaining("unknown"))
@@ -195,11 +193,10 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_rejectsNonStringEnrichmentSelectionBeforeCallingAccountGroup() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
-        inboundRequest.putArray("include").add(42);
+    void aggregate_rejectsBlankEnrichmentSelectionBeforeCallingAccountGroup() {
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of(" "));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(InvalidAggregationRequestException.class)
                         .hasMessageContaining("non-blank strings"))
@@ -209,32 +206,8 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_rejectsInvalidAccountGroupRequestFieldsBeforeCallingAccountGroup() {
-        ObjectNode blankIdRequest = objectMapper.createObjectNode();
-        blankIdRequest.putArray("ids").add(" ");
-        ObjectNode nonStringIdRequest = objectMapper.createObjectNode();
-        nonStringIdRequest.putArray("ids").add(123);
-        ObjectNode emptyIdsRequest = objectMapper.createObjectNode();
-        emptyIdsRequest.putArray("ids");
-
-        List<ObjectNode> invalidRequests = List.of(
-                objectMapper.createObjectNode(),
-                objectMapper.createObjectNode().put("ids", "id-x19"),
-                emptyIdsRequest,
-                blankIdRequest,
-                nonStringIdRequest);
-
-        invalidRequests.forEach(invalidRequest -> StepVerifier.create(
-                        aggregateService.aggregate(invalidRequest, clientRequestContext()))
-                .expectError(InvalidAggregationRequestException.class)
-                .verify());
-
-        verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
-    }
-
-    @Test
     void aggregate_rejectsNonObjectAccountGroupResponse() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
         JsonNode accountGroupResponse = json("""
             [
               {"id": "unexpected-array"}
@@ -244,7 +217,7 @@ class AggregateServiceTest {
         when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(accountGroupResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(DownstreamClientException.class)
                         .hasMessageContaining("non-object JSON response"))
@@ -256,13 +229,13 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
         DecodingException decodingException = new DecodingException("Invalid JSON");
 
         when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.error(decodingException));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> {
                     assertThat(error)
                             .isInstanceOf(DownstreamClientException.class)
@@ -280,7 +253,7 @@ class AggregateServiceTest {
     @Test
     void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
         AggregateService service = aggregateServiceWith(emptyEnrichment());
-        ObjectNode inboundRequest = inboundRequest("id-x19");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
@@ -290,7 +263,7 @@ class AggregateServiceTest {
         when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(accountGroupResponse));
 
-        StepVerifier.create(service.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated ->
                         assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
                 .verifyComplete();
@@ -300,8 +273,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_embedsAccountEntriesIntoMatchingItems() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
-        inboundRequest.putArray("include").add("account");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -338,7 +310,7 @@ class AggregateServiceTest {
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(accountResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
                     JsonNode firstData = root.path("data").get(0);
@@ -380,8 +352,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_deduplicatesAccountRequestIdsButMergesAllMatchingItems() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
-        inboundRequest.putArray("include").add("account");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -415,7 +386,7 @@ class AggregateServiceTest {
         when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(accountResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     JsonNode data = aggregated.path("data");
                     assertThat(data.get(0)
@@ -445,8 +416,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
-        ObjectNode inboundRequest = inboundRequest("id-x19");
-        inboundRequest.putArray("include").add("owners");
+        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("owners"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -487,7 +457,7 @@ class AggregateServiceTest {
         when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(ownersResponse));
 
-        StepVerifier.create(aggregateService.aggregate(inboundRequest, clientRequestContext()))
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
                     JsonNode firstData = root.path("data").get(0);
@@ -532,21 +502,11 @@ class AggregateServiceTest {
         return new ClientRequestContext(ForwardedHeaders.builder().build(), null);
     }
 
-    private ObjectNode inboundRequest(String... ids) {
-        ObjectNode request = objectMapper.createObjectNode();
-        var requestIds = request.putArray("ids");
-        for (String id : ids) {
-            requestIds.add(id);
-        }
-        return request;
-    }
-
     private AggregateService aggregateServiceWith(AggregationEnrichment enrichment) {
         return new AggregateService(
                 accountGroupClient,
                 List.of(enrichment),
                 ObservationRegistry.create(),
-                new AccountGroupRequestFactory(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger());
     }
