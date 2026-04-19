@@ -1,6 +1,5 @@
 import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.artifacts.ModuleVersionIdentifier
-import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.testing.jacoco.tasks.JacocoCoverageVerification
 import org.gradle.testing.jacoco.tasks.JacocoReport
@@ -28,6 +27,35 @@ java {
     }
 }
 
+dependencies {
+    implementation(platform(SpringBootPlugin.BOM_COORDINATES))
+    implementation(platform(libs.jackson.bom))
+    implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.validation)
+    implementation(libs.spring.boot.starter.webflux)
+    implementation(libs.spring.boot.webclient)
+    implementation(libs.micrometer.context.propagation)
+
+    compileOnly(libs.lombok)
+
+    annotationProcessor(platform(SpringBootPlugin.BOM_COORDINATES))
+    annotationProcessor(libs.spring.boot.configuration.processor)
+    annotationProcessor(libs.lombok)
+
+    errorprone(libs.errorprone.core)
+    errorprone(libs.nullaway)
+
+    testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.webflux.test)
+    testImplementation(libs.reactor.test)
+
+    testCompileOnly(libs.lombok)
+
+    testAnnotationProcessor(libs.lombok)
+
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(
         listOf(
@@ -36,6 +64,21 @@ tasks.withType<JavaCompile>().configureEach {
             "-Werror"
         )
     )
+}
+
+tasks.named<JavaCompile>("compileJava") {
+    options.errorprone {
+        error("NullAway")
+        option("NullAway:AnnotatedPackages", "dev.abramenka.aggregation")
+        option("NullAway:JSpecifyMode", "true")
+        option("NullAway:AcknowledgeRestrictiveAnnotations", "true")
+    }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    if (name == "compileTestJava") {
+        options.errorprone.enabled.set(false)
+    }
 }
 
 jacoco {
@@ -74,47 +117,6 @@ dependencyCheck {
     }
 }
 
-dependencies {
-    implementation(platform(SpringBootPlugin.BOM_COORDINATES))
-    // Override Boot BOM's Jackson to stay on the latest 3.1.x (Boot 4.0.5 pins 3.1.0).
-    implementation(platform(libs.jackson.bom))
-    implementation(libs.spring.boot.starter.actuator)
-    implementation(libs.spring.boot.starter.webflux)
-    implementation(libs.spring.boot.starter.validation)
-    implementation(libs.spring.boot.webclient)
-    implementation(libs.micrometer.context.propagation)
-
-    annotationProcessor(platform(SpringBootPlugin.BOM_COORDINATES))
-    annotationProcessor(libs.spring.boot.configuration.processor)
-
-    compileOnly(libs.lombok)
-    annotationProcessor(libs.lombok)
-    errorprone(libs.errorprone.core)
-    errorprone(libs.nullaway)
-
-    testImplementation(libs.spring.boot.starter.test)
-    testImplementation(libs.spring.boot.starter.webflux.test)
-    testImplementation(libs.reactor.test)
-    testCompileOnly(libs.lombok)
-    testAnnotationProcessor(libs.lombok)
-    testRuntimeOnly(libs.junit.platform.launcher)
-}
-
-tasks.named<JavaCompile>("compileJava") {
-    options.errorprone {
-        error("NullAway")
-        option("NullAway:AnnotatedPackages", "dev.abramenka.aggregation")
-        option("NullAway:JSpecifyMode", "true")
-        option("NullAway:AcknowledgeRestrictiveAnnotations", "true")
-    }
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    if (name == "compileTestJava") {
-        options.errorprone.enabled.set(false)
-    }
-}
-
 tasks.register("verifyBoot4Classpath") {
     description = "Fails when Boot 3, Spring Framework 6, or Jackson 2 artifacts are present on runtime classpaths."
     group = "verification"
@@ -127,6 +129,7 @@ tasks.register("verifyBoot4Classpath") {
     checkedConfigurations.forEach { configurationProvider ->
         inputs.files(configurationProvider)
     }
+
     val forbiddenComponents = providers.provider {
         checkedConfigurations
             .flatMap { configurationProvider ->
@@ -144,6 +147,7 @@ tasks.register("verifyBoot4Classpath") {
             .distinct()
             .sorted()
     }
+
     inputs.property("forbiddenComponents", forbiddenComponents)
 
     doLast {
@@ -154,11 +158,6 @@ tasks.register("verifyBoot4Classpath") {
             )
         }
     }
-}
-
-tasks.named("check") {
-    dependsOn(tasks.named("verifyBoot4Classpath"))
-    dependsOn(tasks.named("spotlessCheck"))
 }
 
 tasks.register("printStackVersions") {
@@ -216,6 +215,8 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
 }
 
 tasks.named("check") {
+    dependsOn(tasks.named("verifyBoot4Classpath"))
+    dependsOn(tasks.named("spotlessCheck"))
     dependsOn(tasks.named("jacocoTestCoverageVerification"))
 }
 
@@ -243,4 +244,4 @@ fun isSpringFramework6(id: ModuleVersionIdentifier): Boolean =
 
 fun isJackson2(id: ModuleVersionIdentifier): Boolean =
     id.group.startsWith("com.fasterxml.jackson") &&
-        !(id.group == "com.fasterxml.jackson.core" && id.name == "jackson-annotations")
+            !(id.group == "com.fasterxml.jackson.core" && id.name == "jackson-annotations")
