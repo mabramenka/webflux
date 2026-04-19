@@ -12,10 +12,9 @@
   "prHourlyLimit": 2,
   "packageRules": [
     {
-      "description": "Keep Spring Boot plugin and BOM updates together.",
+      "description": "Group Spring Boot plugin updates.",
       "matchPackageNames": [
-        "org.springframework.boot",
-        "org.springframework.boot:spring-boot-dependencies"
+        "org.springframework.boot"
       ],
       "groupName": "Spring Boot"
     },

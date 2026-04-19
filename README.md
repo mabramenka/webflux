@@ -35,6 +35,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 - Java 21
 - Spring Boot 4.0.5
+- Spring Framework 7.0.x managed by the Spring Boot BOM
 - Spring WebFlux
 - Spring HTTP service clients
 - Jackson 3.1.2
@@ -303,7 +304,7 @@ export NVD_API_KEY=...
 ./gradlew securityCheck
 ```
 
-Verify that runtime classpaths stay on the Spring Boot 4 / Jackson 3 line:
+Verify that runtime classpaths stay on the Spring Boot 4 / Spring Framework 7 / Jackson 3 line:
 
 ```bash
 ./gradlew verifyBoot4Classpath
@@ -332,7 +333,7 @@ Renovate is configured in [renovate.json](renovate.json):
 - best-practices preset
 - dependency dashboard
 - dependency PR label
-- Spring Boot plugin and BOM grouped together
+- Spring Boot plugin updates grouped; the plugin version supplies the BOM coordinates
 - Lombok updates grouped together
 
 Enable the Renovate GitHub App for the repository to start receiving dependency update PRs.
@@ -348,7 +349,7 @@ Gradle tasks:
 ./gradlew sonar
 ```
 
-Default project settings are in [build.gradle](build.gradle):
+Default project settings are in [build.gradle.kts](build.gradle.kts):
 
 ```properties
 sonar.projectKey=mabramenka_webflux
