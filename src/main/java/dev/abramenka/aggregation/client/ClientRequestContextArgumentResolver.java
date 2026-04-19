@@ -1,6 +1,7 @@
 package dev.abramenka.aggregation.client;
 
 import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.ForwardedHeaders;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
@@ -16,16 +17,18 @@ public final class ClientRequestContextArgumentResolver implements HttpServiceAr
         if (!ClientRequestContext.class.equals(parameter.getParameterType())) {
             return false;
         }
-        if (argument == null) {
+
+        if (!(argument instanceof ClientRequestContext(ForwardedHeaders headers, Boolean detokenize))) {
             throw new IllegalArgumentException("ClientRequestContext must not be null");
         }
 
-        ClientRequestContext context = (ClientRequestContext) argument;
-        context.headers().asMap().forEach(requestValues::addHeader);
-        Boolean detokenize = context.detokenize();
+        headers.asMap().forEach(requestValues::addHeader);
+
         if (detokenize != null) {
-            requestValues.addRequestParameter(ClientRequestContext.DETOKENIZE_QUERY_PARAM, detokenize.toString());
+            requestValues.addRequestParameter(
+                    ClientRequestContext.DETOKENIZE_QUERY_PARAM, Boolean.toString(detokenize));
         }
+
         return true;
     }
 }
