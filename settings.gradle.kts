@@ -14,4 +14,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "webflux"
+rootProject.name = "aggregation-gateway"
