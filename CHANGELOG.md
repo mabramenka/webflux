@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/mabramenka/webflux/compare/v0.1.0...v0.2.0) (2026-04-19)
+
+
+### Features
+
+* add coverage gate, structured logging profile, stack-versions task ([7db5f95](https://github.com/mabramenka/webflux/commit/7db5f95cb684a1f31e30c820d993c871a345afd2))
+
 ## [0.1.0](https://github.com/mabramenka/webflux/compare/v0.0.3...v0.1.0) (2026-04-19)
 
 
