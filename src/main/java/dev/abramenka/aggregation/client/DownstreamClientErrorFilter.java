@@ -1,31 +1,27 @@
 package dev.abramenka.aggregation.client;
 
 import dev.abramenka.aggregation.error.DownstreamClientException;
+import java.util.Locale;
+import lombok.experimental.UtilityClass;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import reactor.core.publisher.Mono;
 
+@UtilityClass
 public final class DownstreamClientErrorFilter {
-
-    private DownstreamClientErrorFilter() {}
-
     public static ExchangeFilterFunction forClient(String clientName) {
         return (request, next) -> next.exchange(request)
-                .onErrorMap(
-                        ex -> DownstreamClientException.transportError(clientName, defaultErrorMessage(clientName), ex))
+                .onErrorMap(ex -> DownstreamClientException.transportError(
+                        clientName, "%s client request failed".formatted(clientName.toLowerCase(Locale.ROOT)), ex))
                 .flatMap(response -> {
-                    if (!response.statusCode().isError()) {
-                        return Mono.just(response);
+                    if (response.statusCode().isError()) {
+                        return response.bodyToMono(String.class)
+                                .filter(message -> !message.isBlank())
+                                .defaultIfEmpty(
+                                        "%s client request failed".formatted(clientName.toLowerCase(Locale.ROOT)))
+                                .flatMap(message -> Mono.error(
+                                        new DownstreamClientException(clientName, response.statusCode(), message)));
                     }
-                    var downstreamStatusCode = response.statusCode();
-                    return response.bodyToMono(String.class)
-                            .filter(message -> !message.isBlank())
-                            .defaultIfEmpty(defaultErrorMessage(clientName))
-                            .flatMap(message -> Mono.error(
-                                    new DownstreamClientException(clientName, downstreamStatusCode, message)));
+                    return Mono.just(response);
                 });
-    }
-
-    private static String defaultErrorMessage(String clientName) {
-        return Character.toLowerCase(clientName.charAt(0)) + clientName.substring(1) + " client request failed";
     }
 }
