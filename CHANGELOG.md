@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/mabramenka/webflux/compare/v0.0.3...v0.1.0) (2026-04-19)
+
+
+### Features
+
+* validate aggregate request with Jakarta @Valid at API boundary ([8448d07](https://github.com/mabramenka/webflux/commit/8448d074bca692640698e66a40c512992d6dfa9d))
+
 ## [0.0.3](https://github.com/mabramenka/webflux/compare/v0.0.2...v0.0.3) (2026-04-19)
 
 
