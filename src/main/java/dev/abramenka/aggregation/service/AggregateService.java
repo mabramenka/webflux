@@ -77,8 +77,9 @@ public class AggregateService {
                         ObjectNode root =
                                 aggregationMerger.mutableRoot(ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse);
 
+                        int concurrency = Math.max(1, enabledEnrichments.size());
                         return Flux.fromIterable(enabledEnrichments)
-                                .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context))
+                                .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
                                 .collectList()
                                 .map(results -> aggregationMerger.merge(root, enabledEnrichments, results));
                     })
