@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.3](https://github.com/mabramenka/webflux/compare/v0.0.2...v0.0.3) (2026-04-19)
+
+
+### Bug Fixes
+
+* trigger release-please ([5db5cad](https://github.com/mabramenka/webflux/commit/5db5cad07e86e628e327a8bac6636030ae51c6b6))
+
 ## [0.0.2](https://github.com/mabramenka/webflux/compare/v0.0.1...v0.0.2) (2026-04-17)
 
 
