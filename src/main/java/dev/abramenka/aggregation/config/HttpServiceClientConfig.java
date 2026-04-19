@@ -2,7 +2,7 @@ package dev.abramenka.aggregation.config;
 
 import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.client.Accounts;
-import dev.abramenka.aggregation.client.ClientRequestContextArgumentResolver;
+import dev.abramenka.aggregation.client.ClientRequestContextHttpServiceArgumentResolver;
 import dev.abramenka.aggregation.client.DownstreamClientErrorFilter;
 import dev.abramenka.aggregation.client.HttpServiceGroups;
 import dev.abramenka.aggregation.client.Owners;
@@ -29,7 +29,7 @@ import org.springframework.web.service.registry.ImportHttpServices;
 @RequiredArgsConstructor
 public class HttpServiceClientConfig {
 
-    private final ClientRequestContextArgumentResolver clientRequestContextArgumentResolver;
+    private final ClientRequestContextHttpServiceArgumentResolver clientRequestContextArgumentResolver;
 
     @Bean
     WebClientHttpServiceGroupConfigurer downstreamHttpServiceConfigurer() {

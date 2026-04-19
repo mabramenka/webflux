@@ -9,7 +9,7 @@ import org.springframework.web.service.invoker.HttpRequestValues;
 import org.springframework.web.service.invoker.HttpServiceArgumentResolver;
 
 @Component
-public final class ClientRequestContextArgumentResolver implements HttpServiceArgumentResolver {
+public final class ClientRequestContextHttpServiceArgumentResolver implements HttpServiceArgumentResolver {
 
     @Override
     public boolean resolve(
