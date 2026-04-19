@@ -109,8 +109,10 @@ tasks.named<JavaCompile>("compileJava") {
     }
 }
 
-tasks.named<JavaCompile>("compileTestJava") {
-    options.errorprone.isEnabled.set(false)
+tasks.withType<JavaCompile>().configureEach {
+    if (name == "compileTestJava") {
+        options.errorprone.enabled.set(false)
+    }
 }
 
 tasks.register("verifyBoot4Classpath") {
