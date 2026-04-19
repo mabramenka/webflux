@@ -75,6 +75,7 @@ dependencyCheck {
 
 dependencies {
     implementation(platform(SpringBootPlugin.BOM_COORDINATES))
+    // Override Boot BOM's Jackson to stay on the latest 3.1.x (Boot 4.0.5 pins 3.1.0).
     implementation(platform(libs.jackson.bom))
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.webflux)
