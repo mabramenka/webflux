@@ -20,7 +20,7 @@ import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 
 @RestController
-@RequestMapping("/api/v1/aggregate")
+@RequestMapping(path = "/api/{apiVersion:v\\d+}/aggregate", version = "1")
 @RequiredArgsConstructor
 public class AggregateController {
 
