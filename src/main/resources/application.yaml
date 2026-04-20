@@ -1,4 +1,9 @@
 spring:
+  profiles:
+    # HTTPS (SSL bundles, :8443, https:// downstreams) is the default runtime profile.
+    # Tests activate a different profile (or none) so they can run against plain HTTP
+    # fixtures without provisioning certificates.
+    default: https
   http:
     clients:
       connect-timeout: 2s
@@ -44,3 +49,32 @@ management:
 logging:
   pattern:
     correlation: "[%X{requestId:-},%X{correlationId:-}] "
+
+---
+spring:
+  config:
+    activate:
+      on-profile: https
+  ssl:
+    bundle:
+      pem:
+        server:
+          keystore:
+            certificate: "classpath:certs/dev/server.crt"
+            private-key: "classpath:certs/dev/server.key"
+        downstream:
+          truststore:
+            certificate: "classpath:certs/dev/downstream-ca.crt"
+  http:
+    serviceclient:
+      account-group:
+        base-url: https://localhost:8081
+      account:
+        base-url: https://localhost:8083
+      owners:
+        base-url: https://localhost:8084
+
+server:
+  port: 8443
+  ssl:
+    bundle: server

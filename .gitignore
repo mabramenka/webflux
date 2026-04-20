@@ -5,3 +5,7 @@ build/
 *.iml
 
 out/
+
+# Dev-only TLS material (see scripts/gen-dev-certs.sh). Never commit key material.
+src/main/resources/certs/
+
