@@ -249,4 +249,14 @@ class AggregateControllerTest {
                 .expectStatus()
                 .isBadRequest();
     }
+
+    @Test
+    void aggregate_rejectsUnsupportedApiVersion() {
+        webTestClient
+                .get()
+                .uri("/api/v99/aggregate/AB123456789")
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
+    }
 }
