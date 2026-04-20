@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/mabramenka/webflux/compare/v0.2.1...v0.3.0) (2026-04-20)
+
+
+### Features
+
+* **observability:** propagate request and correlation ids to logs via MDC ([07e0f4b](https://github.com/mabramenka/webflux/commit/07e0f4b2b79a2aff33091659cbc781e5db33c0c2))
+
+
+### Bug Fixes
+
+* harden downstream client and request validation ([3f762ae](https://github.com/mabramenka/webflux/commit/3f762ae4d6f9e819ee491af31be7109767d7d1c7))
+
+
+### Performance Improvements
+
+* memoize per-request enrichment target resolution ([0724f51](https://github.com/mabramenka/webflux/commit/0724f51df9e9d36e1442ea1a68ccb265512f5cc3))
+
 ## [0.2.1](https://github.com/mabramenka/webflux/compare/v0.2.0...v0.2.1) (2026-04-19)
 
 
