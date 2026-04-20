@@ -22,24 +22,24 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
 
     @Override
     public boolean supports(AggregationContext context) {
-        return !targetsFrom(context.accountGroupResponse()).isEmpty();
+        return !targetsFrom(context).isEmpty();
     }
 
     @Override
     public void merge(ObjectNode root, JsonNode enrichmentResponse) {
         Map<String, JsonNode> entriesByKey = rule.responseRule().entriesByKey(enrichmentResponse);
-        targetsFrom(root).forEach(target -> attachMatchingEntry(target, entriesByKey));
+        rule.targetRule().targetsFrom(root).forEach(target -> attachMatchingEntry(target, entriesByKey));
     }
 
-    protected ObjectNode requestWithKeys(JsonNode root) {
-        List<EnrichmentTarget> targets = targetsFrom(root);
+    protected ObjectNode requestWithKeys(AggregationContext context) {
+        List<EnrichmentTarget> targets = targetsFrom(context);
         ObjectNode request = objectMapper.createObjectNode();
         request.set(rule.targetRule().requestKeysField(), keysFrom(targets));
         return request;
     }
 
-    private List<EnrichmentTarget> targetsFrom(JsonNode root) {
-        return rule.targetRule().targetsFrom(root);
+    private List<EnrichmentTarget> targetsFrom(AggregationContext context) {
+        return context.memoize(rule, root -> rule.targetRule().targetsFrom(root));
     }
 
     private ArrayNode keysFrom(List<EnrichmentTarget> targets) {
