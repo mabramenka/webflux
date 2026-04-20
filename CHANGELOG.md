@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/mabramenka/webflux/compare/v0.6.0...v0.6.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **api:** reject null aggregate ids ([6166d93](https://github.com/mabramenka/webflux/commit/6166d932fdc69b9da6ae17c2b2f45ffd97f09697))
+
 ## [0.6.0](https://github.com/mabramenka/webflux/compare/v0.5.0...v0.6.0) (2026-04-20)
 
 
