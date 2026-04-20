@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/mabramenka/webflux/compare/v0.3.0...v0.4.0) (2026-04-20)
+
+
+### Features
+
+* **ssl:** enable TLS inbound and outbound via Spring SSL bundles ([fd9bcb0](https://github.com/mabramenka/webflux/commit/fd9bcb03ca8bc72dcf86e313ae7c5747c8e40e4a))
+
 ## [0.3.0](https://github.com/mabramenka/webflux/compare/v0.2.1...v0.3.0) (2026-04-20)
 
 
