@@ -6,9 +6,8 @@ import dev.abramenka.aggregation.client.ClientRequestContextHttpServiceArgumentR
 import dev.abramenka.aggregation.client.DownstreamClientErrorFilter;
 import dev.abramenka.aggregation.client.HttpServiceGroups;
 import dev.abramenka.aggregation.client.Owners;
-import org.jspecify.annotations.Nullable;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ssl.NoSuchSslBundleException;
-import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.webclient.autoconfigure.WebClientSsl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +16,7 @@ import org.springframework.web.service.registry.HttpServiceGroup;
 import org.springframework.web.service.registry.ImportHttpServices;
 
 @Configuration(proxyBeanMethods = false)
+@RequiredArgsConstructor
 @ImportHttpServices(
         group = HttpServiceGroups.ACCOUNT_GROUP,
         types = AccountGroups.class,
@@ -35,16 +35,6 @@ public class HttpServiceClientConfig {
 
     private final ClientRequestContextHttpServiceArgumentResolver clientRequestContextArgumentResolver;
     private final WebClientSsl webClientSsl;
-    private final SslBundles sslBundles;
-
-    public HttpServiceClientConfig(
-            ClientRequestContextHttpServiceArgumentResolver clientRequestContextArgumentResolver,
-            WebClientSsl webClientSsl,
-            SslBundles sslBundles) {
-        this.clientRequestContextArgumentResolver = clientRequestContextArgumentResolver;
-        this.webClientSsl = webClientSsl;
-        this.sslBundles = sslBundles;
-    }
 
     @Bean
     WebClientHttpServiceGroupConfigurer downstreamHttpServiceConfigurer() {
@@ -52,23 +42,13 @@ public class HttpServiceClientConfig {
             factoryBuilder.customArgumentResolver(clientRequestContextArgumentResolver);
             clientBuilder.filter(
                     DownstreamClientErrorFilter.forClient(HttpServiceGroups.downstreamClientName(group.name())));
-
-            String bundleName = resolveBundleName();
-            if (bundleName != null) {
-                webClientSsl.fromBundle(bundleName).accept(clientBuilder);
+            // Absent bundle → plain HTTP, so tests/dev can run without certs; https:// calls would
+            // then fail at handshake time, which is the correct visible failure mode.
+            try {
+                webClientSsl.fromBundle(OUTBOUND_BUNDLE).accept(clientBuilder);
+            } catch (NoSuchSslBundleException ignored) {
+                // no bundle configured — skip SSL customization
             }
         });
-    }
-
-    private @Nullable String resolveBundleName() {
-        // Treat an absent bundle as "plain HTTP" so tests/dev can run without provisioning certificates.
-        // Any attempt to call https:// without a matching bundle will fail at request time with a
-        // standard TLS handshake error, which is the correct, visible failure mode.
-        try {
-            sslBundles.getBundle(OUTBOUND_BUNDLE);
-            return OUTBOUND_BUNDLE;
-        } catch (NoSuchSslBundleException ignored) {
-            return null;
-        }
     }
 }
