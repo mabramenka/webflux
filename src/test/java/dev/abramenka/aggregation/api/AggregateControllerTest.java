@@ -63,7 +63,7 @@ class AggregateControllerTest {
                 .header(CORRELATION_ID_HEADER, "corr-456")
                 .header(HttpHeaders.ACCEPT_LANGUAGE, "en-US")
                 .bodyValue("""
-                {"ids":["id-x19"],"include":["account","owners"]}
+                {"ids":["AB123456789"],"include":["account","owners"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -79,7 +79,7 @@ class AggregateControllerTest {
                 ArgumentCaptor.forClass(ClientRequestContext.class);
         verify(aggregateService).aggregate(requestCaptor.capture(), clientRequestContextCaptor.capture());
 
-        assertThat(requestCaptor.getValue().ids()).containsExactly("id-x19");
+        assertThat(requestCaptor.getValue().ids()).containsExactly("AB123456789");
         assertThat(requestCaptor.getValue().include()).containsExactly("account", "owners");
         ClientRequestContext clientRequestContext = clientRequestContextCaptor.getValue();
         assertThat(clientRequestContext.headers().authorization()).isEqualTo("Bearer abc");
@@ -96,7 +96,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate?detokenize=yes")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"ids":["id-x19"]}
+                {"ids":["AB123456789"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -117,7 +117,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate?detokenize=")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"ids":["id-x19"]}
+                {"ids":["AB123456789"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -175,7 +175,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"ids":["id-x19"]}
+                {"ids":["AB123456789"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -200,7 +200,7 @@ class AggregateControllerTest {
                 .uri("/api/v1/aggregate")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                {"ids":["id-x19"]}
+                {"ids":["AB123456789"]}
                 """)
                 .exchange()
                 .expectStatus()
@@ -213,5 +213,40 @@ class AggregateControllerTest {
                         .contains("Internal aggregation error")
                         .contains("/problems/internal-aggregation-error")
                         .contains("/api/v1/aggregate"));
+    }
+
+    @Test
+    void aggregateOne_returnsJsonForSingleId() {
+        ObjectNode mergedResponse = objectMapper.createObjectNode();
+        mergedResponse.put("status", "ok");
+
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(mergedResponse));
+
+        webTestClient
+                .get()
+                .uri("/api/v1/aggregate/ab123456789?include=account&include=owners")
+                .accept(MediaType.APPLICATION_JSON)
+                .exchange()
+                .expectStatus()
+                .isOk()
+                .expectBody()
+                .jsonPath("$.status")
+                .isEqualTo("ok");
+
+        ArgumentCaptor<AggregateRequest> requestCaptor = ArgumentCaptor.forClass(AggregateRequest.class);
+        verify(aggregateService).aggregate(requestCaptor.capture(), any(ClientRequestContext.class));
+        assertThat(requestCaptor.getValue().ids()).containsExactly("ab123456789");
+        assertThat(requestCaptor.getValue().include()).containsExactly("account", "owners");
+    }
+
+    @Test
+    void aggregateOne_rejectsIdThatDoesNotMatchPattern() {
+        webTestClient
+                .get()
+                .uri("/api/v1/aggregate/not-an-id")
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
     }
 }

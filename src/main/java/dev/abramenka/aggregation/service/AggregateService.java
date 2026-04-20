@@ -13,6 +13,7 @@ import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.observation.contextpropagation.ObservationThreadLocalAccessor;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -102,7 +103,7 @@ public class AggregateService {
     private ObjectNode toAccountGroupRequest(List<String> ids) {
         ObjectNode request = objectMapper.createObjectNode();
         ArrayNode idsArray = request.putArray(IDS_FIELD);
-        ids.forEach(idsArray::add);
+        ids.forEach(id -> idsArray.add(id.toUpperCase(Locale.ROOT)));
         return request;
     }
 
