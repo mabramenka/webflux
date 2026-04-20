@@ -100,7 +100,7 @@ class AggregateServiceTest {
                             .isFalse();
                 })
                 .verifyComplete();
-        assertEnrichmentMetric("account", "ERROR", 1);
+        assertEnrichmentMetric("account", "failure", 1);
 
         JsonNode accountResponse = json("""
             {
@@ -127,7 +127,7 @@ class AggregateServiceTest {
                     assertThat(root.has("account1")).isFalse();
                 })
                 .verifyComplete();
-        assertEnrichmentMetric("account", "SUCCESS", 1);
+        assertEnrichmentMetric("account", "success", 1);
     }
 
     @Test
@@ -271,7 +271,7 @@ class AggregateServiceTest {
                         assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
                 .verifyComplete();
 
-        assertEnrichmentMetric("empty", "ERROR", 1);
+        assertEnrichmentMetric("empty", "empty", 1);
     }
 
     @Test
