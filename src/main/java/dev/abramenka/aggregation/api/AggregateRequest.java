@@ -10,6 +10,6 @@ import org.jspecify.annotations.Nullable;
 
 public record AggregateRequest(
         @NotEmpty @Size(max = AccountGroupIds.MAX_PER_REQUEST)
-        List<@Pattern(regexp = AccountGroupIds.PATTERN) String> ids,
+        List<@NotBlank @Pattern(regexp = AccountGroupIds.PATTERN) String> ids,
 
         @Nullable @Size(max = 32) List<@NotBlank String> include) {}

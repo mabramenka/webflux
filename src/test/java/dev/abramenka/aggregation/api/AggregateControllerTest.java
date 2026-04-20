@@ -161,6 +161,20 @@ class AggregateControllerTest {
     }
 
     @Test
+    void aggregate_rejectsNullId() {
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":[null]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isBadRequest();
+    }
+
+    @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
         when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
                 .thenReturn(
