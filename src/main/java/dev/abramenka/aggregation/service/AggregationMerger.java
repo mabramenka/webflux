@@ -2,10 +2,10 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
+import dev.abramenka.aggregation.service.EnrichmentFetchResult.Success;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -23,13 +23,19 @@ public class AggregationMerger {
 
     JsonNode merge(
             ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentFetchResult> results) {
-        Map<String, EnrichmentFetchResult> resultByName =
-                results.stream().collect(Collectors.toMap(EnrichmentFetchResult::name, Function.identity()));
+        Map<String, Success> successByName = HashMap.newHashMap(results.size());
+        for (EnrichmentFetchResult result : results) {
+            if (result instanceof Success success) {
+                successByName.put(success.name(), success);
+            }
+        }
 
-        enabledEnrichments.stream()
-                .map(enrichment -> resultByName.get(enrichment.name()))
-                .filter(result -> result != null && result.successful())
-                .forEach(result -> result.mergeInto(root));
+        for (AggregationEnrichment enrichment : enabledEnrichments) {
+            Success success = successByName.get(enrichment.name());
+            if (success != null) {
+                enrichment.merge(root, success.response());
+            }
+        }
 
         return root;
     }
