@@ -40,3 +40,7 @@ management:
   metrics:
     tags:
       application: aggregation-gateway
+
+logging:
+  pattern:
+    correlation: "[%X{requestId:-},%X{correlationId:-}] "
