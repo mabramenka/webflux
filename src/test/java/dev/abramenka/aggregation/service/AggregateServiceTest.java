@@ -245,7 +245,7 @@ class AggregateServiceTest {
                             .hasMessageContaining("unreadable response")
                             .hasCause(decodingException);
                     DownstreamClientException clientException = (DownstreamClientException) error;
-                    assertThat(clientException.statusCode().value()).isEqualTo(502);
+                    assertThat(clientException.getStatusCode().value()).isEqualTo(502);
                 })
                 .verify();
 

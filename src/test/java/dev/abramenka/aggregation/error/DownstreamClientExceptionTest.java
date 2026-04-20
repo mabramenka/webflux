@@ -16,7 +16,7 @@ class DownstreamClientExceptionTest {
 
         ProblemDetail body = exception.getBody();
 
-        assertThat(exception.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(exception.downstreamStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(body.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY.value());
         assertThat(body.getProperties())
@@ -29,7 +29,7 @@ class DownstreamClientExceptionTest {
         DownstreamClientException exception = DownstreamClientException.gatewayError(
                 "Account group", "account group client returned a non-object JSON response");
 
-        assertThat(exception.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(exception.downstreamStatusCode()).isNull();
         assertThat(exception.getBody().getProperties()).doesNotContainKey("downstreamStatus");
     }
@@ -41,7 +41,7 @@ class DownstreamClientExceptionTest {
         DownstreamClientException exception =
                 DownstreamClientException.transportError("Owners", "owners client request failed", cause);
 
-        assertThat(exception.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(exception.downstreamStatusCode()).isNull();
         assertThat(exception.getCause()).isSameAs(cause);
         assertThat(exception.getBody().getProperties()).doesNotContainKey("downstreamStatus");

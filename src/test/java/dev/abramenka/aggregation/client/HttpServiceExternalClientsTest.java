@@ -86,7 +86,7 @@ class HttpServiceExternalClientsTest {
                             .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable");
                     DownstreamClientException clientException = (DownstreamClientException) error;
                     assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
-                    assertThat(clientException.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                     assertThat(clientException.downstreamStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                     assertThat(clientException.responseBody()).isEqualTo("client unavailable");
                 })
@@ -141,7 +141,7 @@ class HttpServiceExternalClientsTest {
                             .hasCauseInstanceOf(IOException.class);
                     DownstreamClientException clientException = (DownstreamClientException) error;
                     assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
-                    assertThat(clientException.statusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                     assertThat(clientException.downstreamStatusCode()).isNull();
                     assertThat(clientException.responseBody()).isEqualTo(clientCase.defaultErrorMessage());
                 })
