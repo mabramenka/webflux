@@ -7,7 +7,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.ErrorResponseException;
 
 abstract sealed class AggregationException extends ErrorResponseException
-        permits DownstreamClientException, InvalidAggregationRequestException {
+        permits DownstreamClientException, InternalAggregationException, InvalidAggregationRequestException {
 
     protected AggregationException(HttpStatusCode status, ProblemDetail body, @Nullable Throwable cause) {
         super(status, body, cause);
