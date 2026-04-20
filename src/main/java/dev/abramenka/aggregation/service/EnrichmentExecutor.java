@@ -18,12 +18,16 @@ public class EnrichmentExecutor {
     Mono<EnrichmentFetchResult> fetch(AggregationEnrichment enrichment, AggregationContext context) {
         return enrichment
                 .fetch(context)
-                .switchIfEmpty(Mono.error(() -> new IllegalStateException(
-                        "Optional aggregation enrichment '" + enrichment.name() + "' returned an empty response")))
-                .doOnSuccess(response -> recordFetch(enrichment.name(), "SUCCESS"))
+                .doOnSuccess(response -> recordFetch(enrichment.name(), "success"))
                 .map(response -> EnrichmentFetchResult.success(enrichment, response))
+                .switchIfEmpty(Mono.fromSupplier(() -> {
+                    recordFetch(enrichment.name(), "empty");
+                    log.warn("Optional aggregation enrichment '{}' returned an empty response", enrichment.name());
+                    return EnrichmentFetchResult.failed(
+                            enrichment, new IllegalStateException("empty response from enrichment"));
+                }))
                 .onErrorResume(Exception.class, ex -> {
-                    recordFetch(enrichment.name(), "ERROR");
+                    recordFetch(enrichment.name(), "failure");
                     log.warn("Optional aggregation enrichment '{}' failed and will be skipped", enrichment.name(), ex);
                     return Mono.just(EnrichmentFetchResult.failed(enrichment, ex));
                 });
