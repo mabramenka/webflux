@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.api;
 
+import dev.abramenka.aggregation.model.AccountIds;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.service.AggregateService;
 import jakarta.validation.Valid;
@@ -34,7 +35,7 @@ public class AggregateController {
 
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<JsonNode> aggregateOne(
-            @PathVariable @Pattern(regexp = AggregateRequest.ID_PATTERN) String id,
+            @PathVariable @Pattern(regexp = AccountIds.PATTERN) String id,
             @RequestParam(required = false) @Nullable List<@NotBlank String> include,
             ClientRequestContext clientRequestContext) {
         return aggregateService.aggregate(new AggregateRequest(List.of(id), include), clientRequestContext);
