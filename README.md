@@ -47,25 +47,54 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 ## Run
 
+The service listens on HTTPS (`:8443`) by default and calls downstreams over HTTPS as well, both
+configured through Spring Boot SSL Bundles (`spring.ssl.bundle.pem.server` for inbound,
+`spring.ssl.bundle.pem.downstream` for outbound trust). Before the first `bootRun`, generate a
+self-signed dev cert:
+
 ```bash
+./scripts/gen-dev-certs.sh
 ./gradlew bootRun
 ```
 
-Default client settings are configured in [application.properties](src/main/resources/application.properties):
+The generated PEM files land in `src/main/resources/certs/dev/` and are gitignored. CI and
+production must supply their own bundles via mounted secrets and environment-specific
+`application-*.yaml` overlays; do not commit key material.
 
-```properties
-spring.http.clients.connect-timeout=2s
-spring.http.clients.read-timeout=5s
-spring.http.clients.reactive.connector=reactor
-spring.webflux.problemdetails.enabled=true
-spring.reactor.context-propagation=auto
+Default client settings live in [application.yaml](src/main/resources/application.yaml):
 
-spring.http.serviceclient.account-group.base-url=http://localhost:8081
-spring.http.serviceclient.account-group.read-timeout=2s
-spring.http.serviceclient.account.base-url=http://localhost:8083
-spring.http.serviceclient.account.read-timeout=3s
-spring.http.serviceclient.owners.base-url=http://localhost:8084
-spring.http.serviceclient.owners.read-timeout=3s
+```yaml
+server:
+  port: 8443
+  ssl:
+    bundle: server
+spring:
+  ssl:
+    bundle:
+      pem:
+        server:
+          keystore:
+            certificate: "classpath:certs/dev/server.crt"
+            private-key: "classpath:certs/dev/server.key"
+        downstream:
+          truststore:
+            certificate: "classpath:certs/dev/downstream-ca.crt"
+  http:
+    clients:
+      connect-timeout: 2s
+      read-timeout: 5s
+      reactive:
+        connector: reactor
+    serviceclient:
+      account-group:
+        base-url: https://localhost:8081
+        read-timeout: 2s
+      account:
+        base-url: https://localhost:8083
+        read-timeout: 3s
+      owners:
+        base-url: https://localhost:8084
+        read-timeout: 3s
 ```
 
 Override these properties with standard Spring configuration when running in another environment.
@@ -76,9 +105,9 @@ The application registers three HTTP service client groups:
 
 | Group | Interface | Method | Path | Default base URL |
 | --- | --- | --- | --- | --- |
-| `account-group` | `AccountGroups` | `POST` | `/account-groups` | `http://localhost:8081` |
-| `account` | `Accounts` | `POST` | `/accounts` | `http://localhost:8083` |
-| `owners` | `Owners` | `POST` | `/owners` | `http://localhost:8084` |
+| `account-group` | `AccountGroups` | `POST` | `/account-groups` | `https://localhost:8081` |
+| `account` | `Accounts` | `POST` | `/accounts` | `https://localhost:8083` |
+| `owners` | `Owners` | `POST` | `/owners` | `https://localhost:8084` |
 
 All downstream clients send and accept JSON. Downstream 4xx/5xx responses, transport failures, and unreadable account group responses are mapped to `502 Bad Gateway` problem responses.
 
