@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/mabramenka/webflux/compare/v0.5.0...v0.6.0) (2026-04-20)
+
+
+### Features
+
+* **api:** declare API version via Spring 7 ApiVersionStrategy ([0ac997b](https://github.com/mabramenka/webflux/commit/0ac997b6a0310961e09b486b8a1a5a5c069cb97c))
+
 ## [0.5.0](https://github.com/mabramenka/webflux/compare/v0.4.0...v0.5.0) (2026-04-20)
 
 
