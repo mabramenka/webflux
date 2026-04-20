@@ -68,7 +68,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_handlesOptionalFailuresAndMergesSuccessfulOptionalResults() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         ClientRequestContext clientRequestContext = new ClientRequestContext(
                 ForwardedHeaders.builder().authorization("Bearer token").build(), true);
 
@@ -132,7 +132,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_fetchesOnlyEnrichmentSelection() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("account"));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -178,13 +178,13 @@ class AggregateServiceTest {
                 .fetchAccountGroup(accountGroupRequestCaptor.capture(), any(ClientRequestContext.class));
         assertThat(accountGroupRequestCaptor.getValue().path("ids").values())
                 .extracting(JsonNode::asString)
-                .containsExactly("id-x19");
+                .containsExactly("AB123456789");
         assertThat(accountGroupRequestCaptor.getValue().has("include")).isFalse();
     }
 
     @Test
     void aggregate_rejectsUnknownEnrichmentSelectionBeforeCallingAccountGroup() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("unknown"));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("unknown"));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
@@ -197,7 +197,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_rejectsBlankEnrichmentSelectionBeforeCallingAccountGroup() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of(" "));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of(" "));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
@@ -210,7 +210,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_rejectsNonObjectAccountGroupResponse() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         JsonNode accountGroupResponse = json("""
             [
               {"id": "unexpected-array"}
@@ -232,7 +232,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         DecodingException decodingException = new DecodingException("Invalid JSON");
 
         when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
@@ -256,7 +256,7 @@ class AggregateServiceTest {
     @Test
     void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
         AggregateService service = aggregateServiceWith(emptyEnrichment());
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), null);
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
@@ -276,7 +276,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_embedsAccountEntriesIntoMatchingItems() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("account"));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -355,7 +355,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_deduplicatesAccountRequestIdsButMergesAllMatchingItems() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("account"));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
             {
@@ -419,7 +419,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
-        AggregateRequest request = new AggregateRequest(List.of("id-x19"), List.of("owners"));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("owners"));
 
         JsonNode accountGroupResponse = json("""
             {
