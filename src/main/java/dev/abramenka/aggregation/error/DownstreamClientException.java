@@ -29,7 +29,7 @@ public final class DownstreamClientException extends AggregationException {
     }
 
     public static DownstreamClientException gatewayError(String clientName, String responseBody) {
-        return new DownstreamClientException(clientName, null, responseBody, null);
+        return gatewayError(clientName, responseBody, null);
     }
 
     public static DownstreamClientException gatewayError(

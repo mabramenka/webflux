@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import dev.abramenka.aggregation.config.ClientRequestContextFactory;
 import dev.abramenka.aggregation.config.ServerClientRequestContextArgumentResolver;
 import dev.abramenka.aggregation.config.WebFluxConfig;
+import dev.abramenka.aggregation.error.InternalAggregationException;
 import dev.abramenka.aggregation.error.InvalidAggregationRequestException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.service.AggregateService;
@@ -28,12 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @WebFluxTest(controllers = AggregateController.class)
-@Import({
-    ClientRequestContextFactory.class,
-    GlobalExceptionHandler.class,
-    ServerClientRequestContextArgumentResolver.class,
-    WebFluxConfig.class
-})
+@Import({ClientRequestContextFactory.class, ServerClientRequestContextArgumentResolver.class, WebFluxConfig.class})
 class AggregateControllerTest {
 
     @Autowired
@@ -193,7 +189,8 @@ class AggregateControllerTest {
     @Test
     void aggregate_returnsInternalProblemDetailWhenServiceFailsInternally() {
         when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
-                .thenReturn(Mono.error(new IllegalStateException("Duplicate aggregation enrichment name: account")));
+                .thenReturn(Mono.error(
+                        new InternalAggregationException("Duplicate aggregation enrichment name: account", null)));
 
         webTestClient
                 .post()
