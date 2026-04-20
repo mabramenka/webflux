@@ -7,9 +7,10 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
-import org.springframework.web.ErrorResponseException;
 
-public final class DownstreamClientException extends ErrorResponseException {
+public final class DownstreamClientException extends AggregationException {
+
+    private static final String TITLE = "Downstream client error";
 
     @Getter
     @Accessors(fluent = true)
@@ -55,7 +56,7 @@ public final class DownstreamClientException extends ErrorResponseException {
             @Nullable HttpStatusCode downstreamStatusCode,
             String responseBody,
             @Nullable Throwable cause) {
-        super(statusCode, problemDetail(clientName, statusCode, downstreamStatusCode, responseBody), cause);
+        super(statusCode, buildProblemDetail(clientName, statusCode, downstreamStatusCode, responseBody), cause);
         this.clientName = clientName;
         this.statusCode = statusCode;
         this.downstreamStatusCode = downstreamStatusCode;
@@ -68,15 +69,16 @@ public final class DownstreamClientException extends ErrorResponseException {
         return detail != null ? detail : super.getMessage();
     }
 
-    private static ProblemDetail problemDetail(
+    private static ProblemDetail buildProblemDetail(
             String clientName,
             HttpStatusCode statusCode,
             @Nullable HttpStatusCode downstreamStatusCode,
             String responseBody) {
-        ProblemDetail problem =
-                ProblemDetail.forStatusAndDetail(statusCode, clientName + " client failed: " + responseBody);
-        problem.setType(AggregationProblemTypes.DOWNSTREAM_CLIENT_ERROR);
-        problem.setTitle("Downstream client error");
+        ProblemDetail problem = problemDetail(
+                statusCode,
+                AggregationProblemTypes.DOWNSTREAM_CLIENT_ERROR,
+                TITLE,
+                clientName + " client failed: " + responseBody);
         problem.setProperty("client", clientName);
         if (downstreamStatusCode != null) {
             problem.setProperty("downstreamStatus", downstreamStatusCode.value());

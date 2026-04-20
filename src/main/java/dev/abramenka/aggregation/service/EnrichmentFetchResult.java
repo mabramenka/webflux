@@ -1,34 +1,25 @@
 package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
-import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.node.ObjectNode;
 
-record EnrichmentFetchResult(
-        AggregationEnrichment enrichment,
-        @Nullable JsonNode response,
-        @Nullable Throwable error) {
+sealed interface EnrichmentFetchResult {
+
+    AggregationEnrichment enrichment();
+
+    default String name() {
+        return enrichment().name();
+    }
 
     static EnrichmentFetchResult success(AggregationEnrichment enrichment, JsonNode response) {
-        return new EnrichmentFetchResult(enrichment, response, null);
+        return new Success(enrichment, response);
     }
 
     static EnrichmentFetchResult failed(AggregationEnrichment enrichment, Throwable error) {
-        return new EnrichmentFetchResult(enrichment, null, error);
+        return new Failure(enrichment, error);
     }
 
-    String name() {
-        return enrichment.name();
-    }
+    record Success(AggregationEnrichment enrichment, JsonNode response) implements EnrichmentFetchResult {}
 
-    boolean successful() {
-        return error == null && response != null;
-    }
-
-    void mergeInto(ObjectNode root) {
-        if (response != null && error == null) {
-            enrichment.merge(root, response);
-        }
-    }
+    record Failure(AggregationEnrichment enrichment, Throwable error) implements EnrichmentFetchResult {}
 }

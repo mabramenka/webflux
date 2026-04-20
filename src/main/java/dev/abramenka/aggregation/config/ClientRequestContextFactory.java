@@ -3,7 +3,8 @@ package dev.abramenka.aggregation.config;
 import dev.abramenka.aggregation.error.InvalidAggregationRequestException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
-import java.util.Optional;
+import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
@@ -13,9 +14,7 @@ public class ClientRequestContextFactory {
 
     public ClientRequestContext from(HttpHeaders headers, MultiValueMap<String, String> queryParams) {
         return new ClientRequestContext(
-                forwardedHeaders(headers),
-                booleanQueryParam(queryParams, ClientRequestContext.DETOKENIZE_QUERY_PARAM)
-                        .orElse(null));
+                forwardedHeaders(headers), booleanQueryParam(queryParams, ClientRequestContext.DETOKENIZE_QUERY_PARAM));
     }
 
     private static ForwardedHeaders forwardedHeaders(HttpHeaders inbound) {
@@ -27,17 +26,15 @@ public class ClientRequestContextFactory {
                 .build();
     }
 
-    private static Optional<Boolean> booleanQueryParam(MultiValueMap<String, String> queryParams, String name) {
+    private static @Nullable Boolean booleanQueryParam(MultiValueMap<String, String> queryParams, String name) {
         String rawValue = queryParams.getFirst(name);
         if (rawValue == null) {
-            return Optional.empty();
+            return null;
         }
-        if ("true".equalsIgnoreCase(rawValue)) {
-            return Optional.of(true);
-        }
-        if ("false".equalsIgnoreCase(rawValue)) {
-            return Optional.of(false);
-        }
-        throw new InvalidAggregationRequestException("'" + name + "' must be either true or false");
+        return switch (rawValue.toLowerCase(Locale.ROOT)) {
+            case "true" -> Boolean.TRUE;
+            case "false" -> Boolean.FALSE;
+            default -> throw new InvalidAggregationRequestException("'" + name + "' must be either true or false");
+        };
     }
 }
