@@ -53,6 +53,7 @@ public class AggregateService {
         this.enrichments = List.copyOf(enrichments);
         this.postProcessors = List.copyOf(postProcessors);
         this.knownNames = buildKnownNamesIndex(enrichments, postProcessors);
+        validateDependencies(this.postProcessors, this.knownNames);
         this.observationRegistry = observationRegistry;
         this.enrichmentExecutor = enrichmentExecutor;
         this.aggregationMerger = aggregationMerger;
@@ -62,12 +63,13 @@ public class AggregateService {
     public Mono<JsonNode> aggregate(AggregateRequest request, ClientRequestContext clientRequestContext) {
         return Mono.defer(() -> {
             Observation observation = Observation.start("aggregation.request", observationRegistry);
-            EnrichmentSelection enrichmentSelection = EnrichmentSelection.from(request.include());
-            validateEnrichmentSelection(enrichmentSelection);
-            observation.lowCardinalityKeyValue("enrichment_selection", enrichmentSelection.all() ? "all" : "subset");
+            EnrichmentSelection requestedSelection = EnrichmentSelection.from(request.include());
+            validateEnrichmentSelection(requestedSelection);
+            EnrichmentSelection effectiveSelection = expandDependencies(requestedSelection);
+            observation.lowCardinalityKeyValue("enrichment_selection", requestedSelection.all() ? "all" : "subset");
             observation.lowCardinalityKeyValue(
                     "requested_enrichments",
-                    Integer.toString(enrichmentSelection.names().size()));
+                    Integer.toString(requestedSelection.names().size()));
 
             ObjectNode accountGroupRequest = toAccountGroupRequest(request.ids());
 
@@ -80,10 +82,10 @@ public class AggregateService {
                             ex -> DownstreamClientException.transport(ACCOUNT_GROUP_CLIENT_NAME, ex))
                     .flatMap(accountGroupResponse -> {
                         AggregationContext context =
-                                new AggregationContext(accountGroupResponse, clientRequestContext, enrichmentSelection);
+                                new AggregationContext(accountGroupResponse, clientRequestContext, effectiveSelection);
 
                         List<AggregationEnrichment> enabledEnrichments = enrichments.stream()
-                                .filter(enrichment -> enrichmentSelection.includes(enrichment.name()))
+                                .filter(enrichment -> effectiveSelection.includes(enrichment.name()))
                                 .filter(enrichment -> enrichment.supports(context))
                                 .toList();
 
@@ -92,7 +94,7 @@ public class AggregateService {
 
                         int concurrency = Math.max(1, enabledEnrichments.size());
                         List<AggregationPostProcessor> enabledPostProcessors = postProcessors.stream()
-                                .filter(pp -> enrichmentSelection.includes(pp.name()))
+                                .filter(pp -> effectiveSelection.includes(pp.name()))
                                 .toList();
                         return Flux.fromIterable(enabledEnrichments)
                                 .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
@@ -128,6 +130,24 @@ public class AggregateService {
         }
     }
 
+    private EnrichmentSelection expandDependencies(EnrichmentSelection enrichmentSelection) {
+        if (enrichmentSelection.all()) {
+            return enrichmentSelection;
+        }
+
+        Set<String> effectiveNames = new LinkedHashSet<>(enrichmentSelection.names());
+        boolean changed;
+        do {
+            changed = false;
+            for (AggregationPostProcessor postProcessor : postProcessors) {
+                if (effectiveNames.contains(postProcessor.name())) {
+                    changed = effectiveNames.addAll(postProcessor.dependencies()) || changed;
+                }
+            }
+        } while (changed);
+        return EnrichmentSelection.subset(effectiveNames);
+    }
+
     private Mono<Void> runPostProcessors(
             List<AggregationPostProcessor> enabledPostProcessors, ObjectNode root, AggregationContext context) {
         if (enabledPostProcessors.isEmpty()) {
@@ -146,6 +166,19 @@ public class AggregateService {
         registeredEnrichments.forEach(enrichment -> addUnique(seen, names, enrichment.name(), enrichment));
         registeredPostProcessors.forEach(postProcessor -> addUnique(seen, names, postProcessor.name(), postProcessor));
         return Set.copyOf(names);
+    }
+
+    private static void validateDependencies(
+            List<AggregationPostProcessor> registeredPostProcessors, Set<String> knownNames) {
+        for (AggregationPostProcessor postProcessor : registeredPostProcessors) {
+            List<String> unknownDependencies = postProcessor.dependencies().stream()
+                    .filter(dependency -> !knownNames.contains(dependency))
+                    .toList();
+            if (!unknownDependencies.isEmpty()) {
+                throw new IllegalStateException("Unknown aggregation component dependency for " + postProcessor.name()
+                        + ": " + String.join(", ", unknownDependencies));
+            }
+        }
     }
 
     private static void addUnique(Map<String, Object> seen, Set<String> names, String name, Object owner) {

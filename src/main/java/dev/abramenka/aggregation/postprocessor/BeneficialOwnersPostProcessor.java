@@ -4,6 +4,7 @@ import dev.abramenka.aggregation.model.AggregationContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -32,6 +33,11 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
     @Override
     public String name() {
         return NAME;
+    }
+
+    @Override
+    public Set<String> dependencies() {
+        return Set.of("owners");
     }
 
     @Override
