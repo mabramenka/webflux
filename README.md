@@ -23,6 +23,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 - Parallel optional enrichment parts with per-part failure isolation
 - Declarative path-based enrichment rules for keyed array joins
 - Fallback key paths for inconsistent downstream schemas
+- Recursive beneficial-owners post-processing with bounded depth
 - Header and query parameter forwarding to downstream calls
 - RFC 9457-style problem responses for validation and downstream failures
 - Actuator health, readiness, liveness, info, and metrics endpoints
@@ -113,11 +114,20 @@ All downstream clients send and accept JSON. Downstream 4xx/5xx responses, trans
 
 ## API
 
+The URL path carries an explicit API version segment; the controller binds `/api/{apiVersion:v\d+}/aggregate` to version `1`.
+
 ```http
 POST /api/v1/aggregate
 Content-Type: application/json
 Accept: application/json
 ```
+
+```http
+GET /api/v1/aggregate/{id}
+Accept: application/json
+```
+
+The `GET` form is a convenience that accepts a single `id` path variable (validated against the shared id pattern) plus an optional repeated `include` query parameter. It reuses the same aggregation pipeline as `POST`.
 
 ### Request Body
 
@@ -130,13 +140,13 @@ Accept: application/json
 
 Fields sent to the account group service:
 
-- `ids`: required non-empty array of non-blank strings
+- `ids`: required non-empty array of non-blank, pattern-matching strings (bounded by `AccountGroupIds.MAX_PER_REQUEST`)
 
 `include` controls optional aggregation parts:
 
 - omitted or `null`: all registered parts are enabled
 - empty array: only the account group response is returned
-- supported values: `account`, `owners`
+- supported values: `account`, `owners`, `beneficialOwners`
 - unknown values fail before calling the account group service
 
 ### Query Parameters
@@ -158,9 +168,13 @@ The service forwards selected inbound headers to downstream services:
 
 ## Error Responses
 
-Validation failures return `400 Bad Request` with `application/problem+json`.
+All failures are returned as RFC 7807 `application/problem+json` responses. Only the canonical RFC 7807 fields (`type`, `title`, `status`, `detail`, `instance`) are standard; a small set of documented extension members is added where useful. The `title` is derived from the HTTP status reason phrase — it is not a custom, stable identifier. Use the `type` URI as the machine-readable problem identifier.
 
-Example:
+When the inbound request carries `X-Request-Id` or `X-Correlation-Id`, or the response pipeline has assigned a request id, those values are echoed back as `requestId` and `correlationId` extension members on every problem response.
+
+### 400 Bad Request — request validation failed
+
+Emitted when bean validation rejects the `@RequestBody` payload, when method-level validation rejects a path/query/header argument, or when a handler programmatically throws `RequestValidationException` (for example, an invalid `detokenize` value).
 
 ```json
 {
@@ -174,9 +188,26 @@ Example:
 }
 ```
 
-Business rule rejections return `422 Unprocessable Content`.
+The `errors` array is always present for this problem type. Each entry has `location` (`body`, `path`, `query`, `header`, or `request`), `field` (nullable for global errors), and `message`. The `detail` varies by source: `"Invalid request content."` for body binding, `"Request validation failed."` for method-argument validation, and the programmatic message for `RequestValidationException`.
 
-Example:
+### 400 Bad Request — malformed request content
+
+Emitted for unreadable or malformed inputs below the validation layer (for example, a non-JSON body or a missing required value that Spring raises as `ServerWebInputException`).
+
+```json
+{
+  "type": "/problems/invalid-request-content",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Request content is malformed or unreadable."
+}
+```
+
+No `errors` array is emitted for this type.
+
+### 422 Unprocessable Content — unsupported enrichment name
+
+Emitted when `include` contains a name that is not a registered enrichment or post-processor. Validation runs before the account group service is called.
 
 ```json
 {
@@ -188,9 +219,24 @@ Example:
 }
 ```
 
-Downstream failures return `502 Bad Gateway` with client metadata.
+### 502 Bad Gateway — downstream client error
 
-Example:
+Emitted when a downstream call fails. Two shapes are possible, differentiated by whether an HTTP status was received.
+
+Upstream returned a 4xx/5xx response:
+
+```json
+{
+  "type": "/problems/downstream-client-error",
+  "title": "Bad Gateway",
+  "status": 502,
+  "detail": "Account group client returned an error response",
+  "client": "Account group",
+  "downstreamStatus": 503
+}
+```
+
+Transport failure, unreadable body, or other non-status error:
 
 ```json
 {
@@ -202,7 +248,20 @@ Example:
 }
 ```
 
-Internal aggregation errors return `500 Internal Server Error`.
+`client` is the human-readable client name derived from the HTTP service group. `downstreamStatus` is present only when the upstream returned a status code.
+
+### 500 Internal Server Error — unhandled error
+
+Returned by the catch-all handler for any exception not mapped by a more specific handler. The logs retain the stack trace; the response body is deliberately generic.
+
+```json
+{
+  "type": "/problems/internal-aggregation-error",
+  "title": "Internal Server Error",
+  "status": 500,
+  "detail": "The aggregation request could not be completed."
+}
+```
 
 ## Aggregation Flow
 
@@ -213,11 +272,13 @@ Internal aggregation errors return `500 Internal Server Error`.
 5. Fetch enabled optional parts in parallel.
 6. Ignore failed optional parts and keep the account group response.
 7. Merge successful optional responses in registered order.
+8. Run enabled post-processors sequentially against the merged document. Post-processor failures are swallowed and do not affect the response.
 
 Optional part order:
 
-1. `account`
-2. `owners`
+1. `account` (enrichment)
+2. `owners` (enrichment)
+3. `beneficialOwners` (post-processor)
 
 ## Optional Parts
 
@@ -279,6 +340,24 @@ Appends matched response entries to the owning `data[*]` item under:
 owners1
 ```
 
+## Post-Processors
+
+Post-processors run after all enrichments have been merged. They receive the mutable merged document and the aggregation context, and operate by mutating the document in place. Unlike enrichments, post-processors are invoked sequentially and may issue their own downstream calls.
+
+### Beneficial Owners
+
+Resolves the ownership tree rooted at entity owners already merged under `owners1`.
+
+For every `data[*]` item, the post-processor walks each entry in `owners1` whose shape identifies an entity (non-individual) and repeatedly fetches `/owners` in level-by-level batches, following the child numbers on each resolved entity. Individuals encountered anywhere in the tree are collected (deduplicated by number, first-seen order) and attached to the owning entity under:
+
+```text
+beneficialOwnersDetails
+```
+
+Traversal is bounded by a maximum depth of 6 levels. Downstream failures, malformed responses, or depth violations abort the tree for that entity only; the enclosing `data[*]` item keeps all previously merged data.
+
+Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The post-processor name also participates in the unknown-name validation that is applied to the `include` set.
+
 ## Enrichment Rules
 
 Keyed enrichment parts are configured with `EnrichmentRule`:
@@ -327,7 +406,8 @@ All other Actuator endpoints are disabled by default.
 Custom metric names:
 
 - `aggregation.request`, tagged by `enrichment_selection` and `requested_enrichments`
-- `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome`
+- `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome` (emitted by enrichments and post-processors)
+- `aggregation.beneficial_owners.tree`, tagged by `outcome` (per root entity resolved by the beneficial-owners post-processor)
 
 ## Quality Gates
 
