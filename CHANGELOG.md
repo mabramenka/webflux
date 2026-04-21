@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/mabramenka/webflux/compare/v0.7.0...v0.7.1) (2026-04-21)
+
+
+### Bug Fixes
+
+* **deps:** update dependency com.uber.nullaway:nullaway to v0.13.4 ([dd3927c](https://github.com/mabramenka/webflux/commit/dd3927c66bf4a8e4c9ea744bf7a5a4ec29400a2d))
+
 ## [0.7.0](https://github.com/mabramenka/webflux/compare/v0.6.1...v0.7.0) (2026-04-21)
 
 
