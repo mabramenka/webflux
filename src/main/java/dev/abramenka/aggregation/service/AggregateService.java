@@ -4,7 +4,7 @@ import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
-import dev.abramenka.aggregation.error.InvalidAggregationRequestException;
+import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.EnrichmentSelection;
@@ -65,7 +65,13 @@ public class AggregateService {
 
             ObjectNode accountGroupRequest = toAccountGroupRequest(request.ids());
 
-            return fetchAccountGroup(accountGroupRequest, clientRequestContext)
+            return accountGroupClient
+                    .fetchAccountGroup(accountGroupRequest, clientRequestContext)
+                    // Catches DecodingException and other codec failures that surface after the
+                    // WebClient filter chain; DownstreamClientErrorFilter only sees HTTP-layer errors.
+                    .onErrorMap(
+                            ex -> !(ex instanceof DownstreamClientException),
+                            ex -> DownstreamClientException.transport(ACCOUNT_GROUP_CLIENT_NAME, ex))
                     .flatMap(accountGroupResponse -> {
                         AggregationContext context =
                                 new AggregationContext(accountGroupResponse, clientRequestContext, enrichmentSelection);
@@ -90,16 +96,6 @@ public class AggregateService {
         });
     }
 
-    private Mono<JsonNode> fetchAccountGroup(
-            ObjectNode accountGroupRequest, ClientRequestContext clientRequestContext) {
-        return accountGroupClient
-                .fetchAccountGroup(accountGroupRequest, clientRequestContext)
-                .onErrorMap(
-                        ex -> !(ex instanceof DownstreamClientException),
-                        ex -> DownstreamClientException.gatewayError(
-                                ACCOUNT_GROUP_CLIENT_NAME, "account group client returned an unreadable response", ex));
-    }
-
     private ObjectNode toAccountGroupRequest(List<String> ids) {
         ObjectNode request = objectMapper.createObjectNode();
         ArrayNode idsArray = request.putArray(IDS_FIELD);
@@ -117,8 +113,7 @@ public class AggregateService {
                 .toList();
 
         if (!unknownEnrichments.isEmpty()) {
-            throw new InvalidAggregationRequestException(
-                    "Unknown aggregation enrichment(s): " + String.join(", ", unknownEnrichments));
+            throw new UnsupportedAggregationEnrichmentException(unknownEnrichments);
         }
     }
 

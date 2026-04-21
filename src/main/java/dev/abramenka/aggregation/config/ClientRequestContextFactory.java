@@ -1,6 +1,6 @@
 package dev.abramenka.aggregation.config;
 
-import dev.abramenka.aggregation.error.InvalidAggregationRequestException;
+import dev.abramenka.aggregation.error.RequestValidationException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import java.util.Locale;
@@ -34,7 +34,9 @@ public class ClientRequestContextFactory {
         return switch (rawValue.toLowerCase(Locale.ROOT)) {
             case "true" -> Boolean.TRUE;
             case "false" -> Boolean.FALSE;
-            default -> throw new InvalidAggregationRequestException("'" + name + "' must be either true or false");
+            default ->
+                throw RequestValidationException.invalidQueryParameter(
+                        name, "'" + name + "' must be either true or false");
         };
     }
 }

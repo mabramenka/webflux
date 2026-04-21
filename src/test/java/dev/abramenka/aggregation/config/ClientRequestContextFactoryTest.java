@@ -5,6 +5,7 @@ import static dev.abramenka.aggregation.model.ForwardedHeaders.REQUEST_ID_HEADER
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.abramenka.aggregation.error.RequestValidationException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -37,7 +38,10 @@ class ClientRequestContextFactoryTest {
         queryParams.add("detokenize", " ");
 
         assertThatThrownBy(() -> factory.from(new HttpHeaders(), queryParams))
-                .hasMessageContaining("'detokenize' must be either true or false");
+                .isInstanceOf(RequestValidationException.class)
+                .satisfies(error -> assertThat(
+                                ((RequestValidationException) error).getBody().getProperties())
+                        .containsKey("errors"));
     }
 
     @Test

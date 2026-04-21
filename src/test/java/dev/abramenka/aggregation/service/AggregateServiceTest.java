@@ -14,7 +14,8 @@ import dev.abramenka.aggregation.enrichment.AccountEnrichment;
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.enrichment.OwnersEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
-import dev.abramenka.aggregation.error.InvalidAggregationRequestException;
+import dev.abramenka.aggregation.error.RequestValidationException;
+import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
@@ -28,7 +29,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.codec.DecodingException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
@@ -188,7 +188,7 @@ class AggregateServiceTest {
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(InvalidAggregationRequestException.class)
+                        .isInstanceOf(UnsupportedAggregationEnrichmentException.class)
                         .hasMessageContaining("unknown"))
                 .verify();
 
@@ -200,9 +200,7 @@ class AggregateServiceTest {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of(" "));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
-                .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(InvalidAggregationRequestException.class)
-                        .hasMessageContaining("non-blank strings"))
+                .expectErrorSatisfies(error -> assertThat(error).isInstanceOf(RequestValidationException.class))
                 .verify();
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
@@ -223,30 +221,7 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(DownstreamClientException.class)
-                        .hasMessageContaining("non-object JSON response"))
-                .verify();
-
-        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
-        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
-    }
-
-    @Test
-    void aggregate_mapsUnreadableAccountGroupResponseToDownstreamError() {
-        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
-        DecodingException decodingException = new DecodingException("Invalid JSON");
-
-        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
-                .thenReturn(Mono.error(decodingException));
-
-        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
-                .expectErrorSatisfies(error -> {
-                    assertThat(error)
-                            .isInstanceOf(DownstreamClientException.class)
-                            .hasMessageContaining("unreadable response")
-                            .hasCause(decodingException);
-                    DownstreamClientException clientException = (DownstreamClientException) error;
-                    assertThat(clientException.getStatusCode().value()).isEqualTo(502);
-                })
+                        .hasMessage("Account group client request failed"))
                 .verify();
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));

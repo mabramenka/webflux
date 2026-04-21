@@ -164,10 +164,27 @@ Example:
 
 ```json
 {
-  "type": "/problems/invalid-aggregation-request",
-  "title": "Invalid aggregation request",
+  "type": "/problems/request-validation-failed",
+  "title": "Bad Request",
   "status": 400,
-  "detail": "'ids' is required"
+  "detail": "Invalid request content.",
+  "errors": [
+    {"location": "body", "field": "ids", "message": "must not be empty"}
+  ]
+}
+```
+
+Business rule rejections return `422 Unprocessable Content`.
+
+Example:
+
+```json
+{
+  "type": "/problems/unsupported-aggregation-enrichment",
+  "title": "Unprocessable Content",
+  "status": 422,
+  "detail": "Unsupported aggregation enrichment(s): foo",
+  "enrichments": ["foo"]
 }
 ```
 
@@ -178,9 +195,9 @@ Example:
 ```json
 {
   "type": "/problems/downstream-client-error",
-  "title": "Downstream client error",
+  "title": "Bad Gateway",
   "status": 502,
-  "detail": "Account group client failed: account group client returned an unreadable response",
+  "detail": "Account group client request failed",
   "client": "Account group"
 }
 ```
