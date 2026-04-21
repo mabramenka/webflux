@@ -64,9 +64,8 @@ class AggregateServiceTest {
                                 new AccountEnrichment(accountClient, objectMapper),
                                 new OwnersEnrichment(ownersClient, objectMapper)),
                         List.of()),
+                partExecutor(),
                 ObservationRegistry.create(),
-                new EnrichmentExecutor(meterRegistry),
-                new AggregationMerger(),
                 objectMapper);
     }
 
@@ -620,15 +619,18 @@ class AggregateServiceTest {
         return new AggregateService(
                 accountGroupClient,
                 partPlanner(enrichments, postProcessors),
+                partExecutor(),
                 ObservationRegistry.create(),
-                new EnrichmentExecutor(meterRegistry),
-                new AggregationMerger(),
                 objectMapper);
     }
 
     private AggregationPartPlanner partPlanner(
             List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
         return new AggregationPartPlanner(enrichments, postProcessors);
+    }
+
+    private AggregationPartExecutor partExecutor() {
+        return new AggregationPartExecutor(new EnrichmentExecutor(meterRegistry), new AggregationMerger());
     }
 
     private AggregationEnrichment emptyEnrichment() {
