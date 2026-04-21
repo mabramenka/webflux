@@ -1,6 +1,7 @@
 package dev.abramenka.aggregation.model;
 
 import dev.abramenka.aggregation.error.RequestValidationException;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,7 +24,11 @@ public record EnrichmentSelection(boolean all, Set<String> names) {
             requested.add(trimmed);
         }
 
-        return new EnrichmentSelection(false, Set.copyOf(requested));
+        return subset(requested);
+    }
+
+    public static EnrichmentSelection subset(Set<String> names) {
+        return new EnrichmentSelection(false, Collections.unmodifiableSet(new LinkedHashSet<>(names)));
     }
 
     public boolean includes(String name) {

@@ -19,9 +19,11 @@ import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -252,6 +254,55 @@ class AggregateServiceTest {
                 .verifyComplete();
 
         assertEnrichmentMetric("empty", "empty", 1);
+    }
+
+    @Test
+    void aggregate_enablesPostProcessorDependencies() {
+        AggregateService service = aggregateServiceWith(
+                List.of(
+                        new AccountEnrichment(accountClient, objectMapper),
+                        new OwnersEnrichment(ownersClient, objectMapper)),
+                List.of(dependentPostProcessor("beneficialOwners", "owners")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("beneficialOwners"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "basicDetails": {
+                    "owners": [
+                      {"id": "owner-a"}
+                    ]
+                  }
+                }
+              ]
+            }
+            """);
+        JsonNode ownersResponse = json("""
+            {
+              "data": [
+                {"individual": {"number": "owner-a"}, "name": "Ada"}
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(ownersResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> assertThat(aggregated
+                                .path("data")
+                                .path(0)
+                                .path("owners1")
+                                .path(0)
+                                .path("name")
+                                .asString())
+                        .isEqualTo("Ada"))
+                .verifyComplete();
+
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
@@ -513,10 +564,15 @@ class AggregateServiceTest {
     }
 
     private AggregateService aggregateServiceWith(AggregationEnrichment enrichment) {
+        return aggregateServiceWith(List.of(enrichment), List.of());
+    }
+
+    private AggregateService aggregateServiceWith(
+            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
         return new AggregateService(
                 accountGroupClient,
-                List.of(enrichment),
-                List.of(),
+                enrichments,
+                postProcessors,
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger(),
@@ -570,6 +626,25 @@ class AggregateServiceTest {
             public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
                 root.put("partialMerge", true);
                 throw new IllegalStateException("merge failed");
+            }
+        };
+    }
+
+    private AggregationPostProcessor dependentPostProcessor(String name, String dependency) {
+        return new AggregationPostProcessor() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of(dependency);
+            }
+
+            @Override
+            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
+                return Mono.empty();
             }
         };
     }

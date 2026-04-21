@@ -234,6 +234,11 @@ class BeneficialOwnersPostProcessorTest {
         assertTreeMetric("success", 2);
     }
 
+    @Test
+    void dependencies_includeOwnersEnrichment() {
+        assertThat(postProcessor.dependencies()).containsExactly("owners");
+    }
+
     private JsonNode individual(String number) {
         ObjectNode node = objectMapper.createObjectNode();
         node.putObject("individual").put("number", number);
