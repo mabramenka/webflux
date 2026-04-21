@@ -255,6 +255,29 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_skipsOptionalEnrichmentWhenMergeFails() {
+        AggregateService service = aggregateServiceWith(failingMergeEnrichment());
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> {
+                    assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
+                    assertThat(aggregated.has("partialMerge")).isFalse();
+                })
+                .verifyComplete();
+
+        assertEnrichmentMetric("mergeFailure", "success", 1);
+    }
+
+    @Test
     void aggregate_embedsAccountEntriesIntoMatchingItems() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
 
@@ -520,6 +543,33 @@ class AggregateServiceTest {
             @Override
             public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
                 throw new IllegalStateException("Empty enrichment should not be merged");
+            }
+        };
+    }
+
+    private AggregationEnrichment failingMergeEnrichment() {
+        return new AggregationEnrichment() {
+            @Override
+            public @NonNull String name() {
+                return "mergeFailure";
+            }
+
+            @Override
+            public boolean supports(@NonNull AggregationContext context) {
+                return true;
+            }
+
+            @Override
+            public @NonNull Mono<JsonNode> fetch(@NonNull AggregationContext context) {
+                ObjectNode response = objectMapper.createObjectNode();
+                response.put("status", "ok");
+                return Mono.just(response);
+            }
+
+            @Override
+            public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
+                root.put("partialMerge", true);
+                throw new IllegalStateException("merge failed");
             }
         };
     }
