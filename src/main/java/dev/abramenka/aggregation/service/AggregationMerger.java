@@ -6,11 +6,13 @@ import dev.abramenka.aggregation.service.EnrichmentFetchResult.Success;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
+@Slf4j
 public class AggregationMerger {
 
     public ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
@@ -32,10 +34,24 @@ public class AggregationMerger {
         for (AggregationEnrichment enrichment : enabledEnrichments) {
             Success success = successByName.get(enrichment.name());
             if (success != null) {
-                enrichment.merge(root, success.response());
+                try {
+                    ObjectNode mergedRoot = root.deepCopy();
+                    enrichment.merge(mergedRoot, success.response());
+                    replaceRoot(root, mergedRoot);
+                } catch (Exception ex) {
+                    log.warn(
+                            "Optional aggregation enrichment '{}' failed during merge and will be skipped",
+                            enrichment.name(),
+                            ex);
+                }
             }
         }
 
         return root;
+    }
+
+    private static void replaceRoot(ObjectNode root, ObjectNode replacement) {
+        root.removeAll();
+        root.setAll(replacement);
     }
 }
