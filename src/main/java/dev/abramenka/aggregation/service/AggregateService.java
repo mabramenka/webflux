@@ -8,13 +8,16 @@ import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.EnrichmentSelection;
+import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.observation.contextpropagation.ObservationThreadLocalAccessor;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -31,7 +34,8 @@ public class AggregateService {
 
     private final AccountGroups accountGroupClient;
     private final List<AggregationEnrichment> enrichments;
-    private final Map<String, AggregationEnrichment> enrichmentByName;
+    private final List<AggregationPostProcessor> postProcessors;
+    private final Set<String> knownNames;
     private final ObservationRegistry observationRegistry;
     private final EnrichmentExecutor enrichmentExecutor;
     private final AggregationMerger aggregationMerger;
@@ -40,13 +44,15 @@ public class AggregateService {
     public AggregateService(
             AccountGroups accountGroupClient,
             List<AggregationEnrichment> enrichments,
+            List<AggregationPostProcessor> postProcessors,
             ObservationRegistry observationRegistry,
             EnrichmentExecutor enrichmentExecutor,
             AggregationMerger aggregationMerger,
             ObjectMapper objectMapper) {
         this.accountGroupClient = accountGroupClient;
         this.enrichments = List.copyOf(enrichments);
-        this.enrichmentByName = buildEnrichmentIndex(enrichments);
+        this.postProcessors = List.copyOf(postProcessors);
+        this.knownNames = buildKnownNamesIndex(enrichments, postProcessors);
         this.observationRegistry = observationRegistry;
         this.enrichmentExecutor = enrichmentExecutor;
         this.aggregationMerger = aggregationMerger;
@@ -85,10 +91,15 @@ public class AggregateService {
                                 aggregationMerger.mutableRoot(ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse);
 
                         int concurrency = Math.max(1, enabledEnrichments.size());
+                        List<AggregationPostProcessor> enabledPostProcessors = postProcessors.stream()
+                                .filter(pp -> enrichmentSelection.includes(pp.name()))
+                                .toList();
                         return Flux.fromIterable(enabledEnrichments)
                                 .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
                                 .collectList()
-                                .map(results -> aggregationMerger.merge(root, enabledEnrichments, results));
+                                .map(results -> aggregationMerger.merge(root, enabledEnrichments, results))
+                                .flatMap(merged -> runPostProcessors(enabledPostProcessors, root, context)
+                                        .thenReturn(merged));
                     })
                     .contextWrite(context -> context.put(ObservationThreadLocalAccessor.KEY, observation))
                     .doOnError(observation::error)
@@ -109,7 +120,7 @@ public class AggregateService {
         }
 
         List<String> unknownEnrichments = enrichmentSelection.names().stream()
-                .filter(name -> !enrichmentByName.containsKey(name))
+                .filter(name -> !knownNames.contains(name))
                 .toList();
 
         if (!unknownEnrichments.isEmpty()) {
@@ -117,15 +128,31 @@ public class AggregateService {
         }
     }
 
-    private static Map<String, AggregationEnrichment> buildEnrichmentIndex(
-            List<AggregationEnrichment> registeredEnrichments) {
-        Map<String, AggregationEnrichment> index = new LinkedHashMap<>();
-        registeredEnrichments.forEach(enrichment -> {
-            AggregationEnrichment previous = index.putIfAbsent(enrichment.name(), enrichment);
-            if (previous != null) {
-                throw new IllegalStateException("Duplicate aggregation enrichment name: " + enrichment.name());
-            }
-        });
-        return Map.copyOf(index);
+    private Mono<Void> runPostProcessors(
+            List<AggregationPostProcessor> enabledPostProcessors, ObjectNode root, AggregationContext context) {
+        if (enabledPostProcessors.isEmpty()) {
+            return Mono.empty();
+        }
+        return Flux.fromIterable(enabledPostProcessors)
+                .concatMap(postProcessor -> postProcessor.apply(root, context).onErrorResume(ex -> Mono.empty()))
+                .then();
+    }
+
+    private static Set<String> buildKnownNamesIndex(
+            List<AggregationEnrichment> registeredEnrichments,
+            List<AggregationPostProcessor> registeredPostProcessors) {
+        Set<String> names = new LinkedHashSet<>();
+        Map<String, Object> seen = new LinkedHashMap<>();
+        registeredEnrichments.forEach(enrichment -> addUnique(seen, names, enrichment.name(), enrichment));
+        registeredPostProcessors.forEach(postProcessor -> addUnique(seen, names, postProcessor.name(), postProcessor));
+        return Set.copyOf(names);
+    }
+
+    private static void addUnique(Map<String, Object> seen, Set<String> names, String name, Object owner) {
+        Object previous = seen.putIfAbsent(name, owner);
+        if (previous != null) {
+            throw new IllegalStateException("Duplicate aggregation component name: " + name);
+        }
+        names.add(name);
     }
 }

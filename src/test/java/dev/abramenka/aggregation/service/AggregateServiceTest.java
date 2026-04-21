@@ -60,6 +60,7 @@ class AggregateServiceTest {
                 List.of(
                         new AccountEnrichment(accountClient, objectMapper),
                         new OwnersEnrichment(ownersClient, objectMapper)),
+                List.of(),
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger(),
@@ -484,6 +485,7 @@ class AggregateServiceTest {
         return new AggregateService(
                 accountGroupClient,
                 List.of(enrichment),
+                List.of(),
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger(),
