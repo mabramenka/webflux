@@ -97,7 +97,11 @@ class AggregateServiceTest {
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
                     assertThat(root.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(root.path("data").get(0).path("accounts").get(0).has("account1"))
+                    assertThat(root.path("data")
+                                    .path(0)
+                                    .path("accounts")
+                                    .path(0)
+                                    .has("account1"))
                             .isFalse();
                 })
                 .verifyComplete();
@@ -118,12 +122,12 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
-                    JsonNode dataEntry = root.path("data").get(0);
-                    assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
+                    JsonNode dataEntry = root.path("data").path(0);
+                    assertThat(dataEntry.path("account1").path(0).path("amount").decimalValue())
                             .isEqualByComparingTo("10.5");
-                    assertThat(dataEntry.path("account1").get(1).path("amount").decimalValue())
+                    assertThat(dataEntry.path("account1").path(1).path("amount").decimalValue())
                             .isEqualByComparingTo("20.0");
-                    assertThat(dataEntry.path("accounts").get(0).has("account1"))
+                    assertThat(dataEntry.path("accounts").path(0).has("account1"))
                             .isFalse();
                     assertThat(root.has("account1")).isFalse();
                 })
@@ -164,10 +168,10 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
-                    JsonNode dataEntry = root.path("data").get(0);
-                    assertThat(dataEntry.path("account1").get(0).path("amount").decimalValue())
+                    JsonNode dataEntry = root.path("data").path(0);
+                    assertThat(dataEntry.path("account1").path(0).path("amount").decimalValue())
                             .isEqualByComparingTo("10.5");
-                    assertThat(dataEntry.path("accounts").get(0).has("account1"))
+                    assertThat(dataEntry.path("accounts").path(0).has("account1"))
                             .isFalse();
                 })
                 .verifyComplete();
@@ -292,31 +296,35 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
-                    JsonNode firstData = root.path("data").get(0);
-                    JsonNode secondData = root.path("data").get(1);
+                    JsonNode firstData = root.path("data").path(0);
+                    JsonNode secondData = root.path("data").path(1);
                     JsonNode firstAccounts = firstData.path("accounts");
-                    assertThat(firstAccounts.get(0).has("price")).isFalse();
-                    assertThat(firstAccounts.get(1).has("price")).isFalse();
-                    assertThat(firstAccounts.get(0).has("account1")).isFalse();
-                    assertThat(firstAccounts.get(1).has("account1")).isFalse();
-                    assertThat(firstData.path("account1").get(0).path("id").asString())
+                    assertThat(firstAccounts.path(0).has("price")).isFalse();
+                    assertThat(firstAccounts.path(1).has("price")).isFalse();
+                    assertThat(firstAccounts.path(0).has("account1")).isFalse();
+                    assertThat(firstAccounts.path(1).has("account1")).isFalse();
+                    assertThat(firstData.path("account1").path(0).path("id").asString())
                             .isEqualTo("acc-a");
-                    assertThat(firstData.path("account1").get(0).path("amount").asString())
+                    assertThat(firstData.path("account1").path(0).path("amount").asString())
                             .isEqualTo("not-a-number");
-                    assertThat(firstData.path("account1").get(0).path("source").asString())
+                    assertThat(firstData.path("account1").path(0).path("source").asString())
                             .isEqualTo("account-service");
-                    assertThat(firstData.path("account1").get(1).path("amount").decimalValue())
+                    assertThat(firstData.path("account1").path(1).path("amount").decimalValue())
                             .isEqualByComparingTo("20.0");
                     assertThat(firstData
                                     .path("account1")
-                                    .get(1)
+                                    .path(1)
                                     .path("discount")
                                     .path("code")
                                     .asString())
                             .isEqualTo("SPRING");
-                    assertThat(secondData.path("accounts").get(0).has("account1"))
+                    assertThat(secondData.path("accounts").path(0).has("account1"))
                             .isFalse();
-                    assertThat(secondData.path("account1").get(0).path("amount").decimalValue())
+                    assertThat(secondData
+                                    .path("account1")
+                                    .path(0)
+                                    .path("amount")
+                                    .decimalValue())
                             .isEqualByComparingTo("30.0");
                     assertThat(root.has("account1")).isFalse();
                 })
@@ -368,20 +376,20 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     JsonNode data = aggregated.path("data");
-                    assertThat(data.get(0)
+                    assertThat(data.path(0)
                                     .path("account1")
-                                    .get(0)
+                                    .path(0)
                                     .path("amount")
                                     .decimalValue())
                             .isEqualByComparingTo("15.0");
-                    assertThat(data.get(1)
+                    assertThat(data.path(1)
                                     .path("account1")
-                                    .get(0)
+                                    .path(0)
                                     .path("amount")
                                     .decimalValue())
                             .isEqualByComparingTo("15.0");
-                    assertThat(data.get(0).path("account1").get(0))
-                            .isNotSameAs(data.get(1).path("account1").get(0));
+                    assertThat(data.path(0).path("account1").path(0))
+                            .isNotSameAs(data.path(1).path("account1").path(0));
                 })
                 .verifyComplete();
 
@@ -439,24 +447,24 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     ObjectNode root = (ObjectNode) aggregated;
-                    JsonNode firstData = root.path("data").get(0);
-                    JsonNode secondData = root.path("data").get(1);
+                    JsonNode firstData = root.path("data").path(0);
+                    JsonNode secondData = root.path("data").path(1);
                     JsonNode firstBasicDetails = firstData.path("basicDetails");
                     JsonNode secondBasicDetails = secondData.path("basicDetails");
-                    assertThat(firstBasicDetails.path("owners").get(0).has("owners1"))
+                    assertThat(firstBasicDetails.path("owners").path(0).has("owners1"))
                             .isFalse();
                     assertThat(firstBasicDetails.has("owners1")).isFalse();
                     assertThat(secondBasicDetails.has("owners1")).isFalse();
-                    assertThat(firstData.path("owners1").get(0).path("name").asString())
+                    assertThat(firstData.path("owners1").path(0).path("name").asString())
                             .isEqualTo("Ada");
                     assertThat(firstData
                                     .path("owners1")
-                                    .get(1)
+                                    .path(1)
                                     .path("flags")
-                                    .get(0)
+                                    .path(0)
                                     .asString())
                             .isEqualTo("primary");
-                    assertThat(secondData.path("owners1").get(0).path("name").asString())
+                    assertThat(secondData.path("owners1").path(0).path("name").asString())
                             .isEqualTo("Cid");
                 })
                 .verifyComplete();

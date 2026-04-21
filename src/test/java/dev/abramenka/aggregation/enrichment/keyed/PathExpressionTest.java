@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -79,7 +80,8 @@ class PathExpressionTest {
         Map<String, JsonNode> entriesByKey =
                 ItemKeyExtractor.from("$.data[*]", "id").entriesByKey(response);
 
-        assertThat(entriesByKey.get("duplicate").path("amount").intValue()).isEqualTo(10);
+        JsonNode duplicateEntry = Objects.requireNonNull(entriesByKey.get("duplicate"));
+        assertThat(duplicateEntry.path("amount").intValue()).isEqualTo(10);
     }
 
     private JsonNode json(String raw) {

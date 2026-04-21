@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.abramenka.aggregation.AggregationApplication;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +31,7 @@ class HttpServiceClientConfigIntegrationTest {
 
     private static final ObjectNode REQUEST =
             JsonNodeFactory.instance.objectNode().put("id", "request-1");
-    private static DisposableServer server;
+    private static @Nullable DisposableServer server;
 
     @Autowired
     private AccountGroups accountGroups;
@@ -56,8 +58,10 @@ class HttpServiceClientConfigIntegrationTest {
 
     @AfterAll
     static void stopServer() {
-        if (server != null) {
-            server.disposeNow();
+        DisposableServer runningServer = server;
+        if (runningServer != null) {
+            runningServer.disposeNow();
+            server = null;
         }
     }
 
@@ -102,7 +106,7 @@ class HttpServiceClientConfigIntegrationTest {
     }
 
     private static String serverUrl() {
-        return "http://localhost:" + server.port();
+        return "http://localhost:" + Objects.requireNonNull(server).port();
     }
 
     private static ClientRequestContext clientRequestContext() {

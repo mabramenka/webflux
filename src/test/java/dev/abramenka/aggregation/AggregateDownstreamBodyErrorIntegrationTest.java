@@ -1,6 +1,8 @@
 package dev.abramenka.aggregation;
 
 import dev.abramenka.aggregation.client.HttpServiceGroups;
+import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +22,7 @@ import reactor.netty.http.server.HttpServer;
 @AutoConfigureWebTestClient
 class AggregateDownstreamBodyErrorIntegrationTest {
 
-    private static DisposableServer server;
+    private static @Nullable DisposableServer server;
 
     @Autowired
     private WebTestClient webTestClient;
@@ -41,8 +43,10 @@ class AggregateDownstreamBodyErrorIntegrationTest {
 
     @AfterAll
     static void stopServer() {
-        if (server != null) {
-            server.disposeNow();
+        DisposableServer runningServer = server;
+        if (runningServer != null) {
+            runningServer.disposeNow();
+            server = null;
         }
     }
 
@@ -84,6 +88,6 @@ class AggregateDownstreamBodyErrorIntegrationTest {
     }
 
     private static String serverUrl() {
-        return "http://localhost:" + server.port();
+        return "http://localhost:" + Objects.requireNonNull(server).port();
     }
 }

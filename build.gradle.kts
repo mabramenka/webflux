@@ -66,18 +66,12 @@ tasks.withType<JavaCompile>().configureEach {
     )
 }
 
-tasks.named<JavaCompile>("compileJava") {
+tasks.withType<JavaCompile>().configureEach {
     options.errorprone {
         error("NullAway")
         option("NullAway:AnnotatedPackages", "dev.abramenka.aggregation")
         option("NullAway:JSpecifyMode", "true")
         option("NullAway:AcknowledgeRestrictiveAnnotations", "true")
-    }
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    if (name == "compileTestJava") {
-        options.errorprone.enabled.set(false)
     }
 }
 

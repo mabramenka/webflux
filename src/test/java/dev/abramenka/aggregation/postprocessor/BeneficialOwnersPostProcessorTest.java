@@ -82,14 +82,14 @@ class BeneficialOwnersPostProcessorTest {
 
         StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
 
-        JsonNode owners = root.path("data").get(0).path("owners1");
-        assertThat(owners.get(0).has("beneficialOwnersDetails")).isFalse();
-        JsonNode resolvedArray = owners.get(1).path("beneficialOwnersDetails");
+        JsonNode owners = root.path("data").path(0).path("owners1");
+        assertThat(owners.path(0).has("beneficialOwnersDetails")).isFalse();
+        JsonNode resolvedArray = owners.path(1).path("beneficialOwnersDetails");
         assertThat(resolvedArray.isArray()).isTrue();
         assertThat(resolvedArray.size()).isEqualTo(2);
-        assertThat(resolvedArray.get(0).path("individual").path("number").asString())
+        assertThat(resolvedArray.path(0).path("individual").path("number").asString())
                 .isEqualTo("P-1");
-        assertThat(resolvedArray.get(1).path("individual").path("number").asString())
+        assertThat(resolvedArray.path(1).path("individual").path("number").asString())
                 .isEqualTo("P-2");
 
         assertPhaseMetric("success", 1);
@@ -140,9 +140,9 @@ class BeneficialOwnersPostProcessorTest {
 
         StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
 
-        JsonNode owners = root.path("data").get(0).path("owners1");
-        assertThat(owners.get(0).path("beneficialOwnersDetails").size()).isEqualTo(1);
-        assertThat(owners.get(1).has("beneficialOwnersDetails")).isFalse();
+        JsonNode owners = root.path("data").path(0).path("owners1");
+        assertThat(owners.path(0).path("beneficialOwnersDetails").size()).isEqualTo(1);
+        assertThat(owners.path(1).has("beneficialOwnersDetails")).isFalse();
 
         assertPhaseMetric("success", 1);
         assertTreeMetric("success", 1);
@@ -165,7 +165,7 @@ class BeneficialOwnersPostProcessorTest {
 
         StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
 
-        assertThat(root.path("data").get(0).path("owners1").get(0).has("beneficialOwnersDetails"))
+        assertThat(root.path("data").path(0).path("owners1").path(0).has("beneficialOwnersDetails"))
                 .isFalse();
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
         assertPhaseMetric("success", 1);
@@ -207,7 +207,7 @@ class BeneficialOwnersPostProcessorTest {
         when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode request = invocation.getArgument(0);
-                    String onlyId = request.path("ids").get(0).asString();
+                    String onlyId = request.path("ids").path(0).asString();
                     ObjectNode response = objectMapper.createObjectNode();
                     response.putArray("data").add(individual(onlyId));
                     return Mono.just(response);
@@ -215,18 +215,18 @@ class BeneficialOwnersPostProcessorTest {
 
         StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
 
-        JsonNode firstOwner = root.path("data").get(0).path("owners1").get(0);
-        JsonNode secondOwner = root.path("data").get(1).path("owners1").get(0);
+        JsonNode firstOwner = root.path("data").path(0).path("owners1").path(0);
+        JsonNode secondOwner = root.path("data").path(1).path("owners1").path(0);
         assertThat(firstOwner
                         .path("beneficialOwnersDetails")
-                        .get(0)
+                        .path(0)
                         .path("individual")
                         .path("number")
                         .asString())
                 .isEqualTo("X");
         assertThat(secondOwner
                         .path("beneficialOwnersDetails")
-                        .get(0)
+                        .path(0)
                         .path("individual")
                         .path("number")
                         .asString())
