@@ -2,18 +2,15 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
-import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
-import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.observation.contextpropagation.ObservationThreadLocalAccessor;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -28,23 +25,20 @@ public class AggregateService {
 
     private final AccountGroups accountGroupClient;
     private final AggregationPartPlanner partPlanner;
+    private final AggregationPartExecutor partExecutor;
     private final ObservationRegistry observationRegistry;
-    private final EnrichmentExecutor enrichmentExecutor;
-    private final AggregationMerger aggregationMerger;
     private final ObjectMapper objectMapper;
 
     public AggregateService(
             AccountGroups accountGroupClient,
             AggregationPartPlanner partPlanner,
+            AggregationPartExecutor partExecutor,
             ObservationRegistry observationRegistry,
-            EnrichmentExecutor enrichmentExecutor,
-            AggregationMerger aggregationMerger,
             ObjectMapper objectMapper) {
         this.accountGroupClient = accountGroupClient;
         this.partPlanner = partPlanner;
+        this.partExecutor = partExecutor;
         this.observationRegistry = observationRegistry;
-        this.enrichmentExecutor = enrichmentExecutor;
-        this.aggregationMerger = aggregationMerger;
         this.objectMapper = objectMapper;
     }
 
@@ -70,20 +64,7 @@ public class AggregateService {
                     .flatMap(accountGroupResponse -> {
                         AggregationContext context = new AggregationContext(
                                 accountGroupResponse, clientRequestContext, partPlan.effectiveSelection());
-
-                        List<AggregationEnrichment> enabledEnrichments = partPlan.supportedEnrichments(context);
-
-                        ObjectNode root =
-                                aggregationMerger.mutableRoot(ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse);
-
-                        int concurrency = Math.max(1, enabledEnrichments.size());
-                        List<AggregationPostProcessor> enabledPostProcessors = partPlan.selectedPostProcessors();
-                        return Flux.fromIterable(enabledEnrichments)
-                                .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
-                                .collectList()
-                                .map(results -> aggregationMerger.merge(root, enabledEnrichments, results))
-                                .flatMap(merged -> runPostProcessors(enabledPostProcessors, root, context)
-                                        .thenReturn(merged));
+                        return partExecutor.execute(ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse, context, partPlan);
                     })
                     .contextWrite(context -> context.put(ObservationThreadLocalAccessor.KEY, observation))
                     .doOnError(observation::error)
@@ -96,15 +77,5 @@ public class AggregateService {
         ArrayNode idsArray = request.putArray(IDS_FIELD);
         ids.forEach(id -> idsArray.add(id.toUpperCase(Locale.ROOT)));
         return request;
-    }
-
-    private Mono<Void> runPostProcessors(
-            List<AggregationPostProcessor> enabledPostProcessors, ObjectNode root, AggregationContext context) {
-        if (enabledPostProcessors.isEmpty()) {
-            return Mono.empty();
-        }
-        return Flux.fromIterable(enabledPostProcessors)
-                .concatMap(postProcessor -> postProcessor.apply(root, context).onErrorResume(ex -> Mono.empty()))
-                .then();
     }
 }
