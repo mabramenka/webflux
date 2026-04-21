@@ -1,0 +1,275 @@
+package dev.abramenka.aggregation.postprocessor;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import dev.abramenka.aggregation.client.Owners;
+import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.EnrichmentSelection;
+import dev.abramenka.aggregation.model.ForwardedHeaders;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+@ExtendWith(MockitoExtension.class)
+class BeneficialOwnersPostProcessorTest {
+
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
+
+    @Mock
+    private Owners ownersClient;
+
+    private SimpleMeterRegistry meterRegistry;
+    private BeneficialOwnersPostProcessor postProcessor;
+
+    @BeforeEach
+    void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        postProcessor =
+                new BeneficialOwnersPostProcessor(new OwnershipResolver(ownersClient, objectMapper), meterRegistry);
+    }
+
+    @Test
+    void apply_attachesBeneficialOwnersDetailsToRootEntityOnly() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "id": "item-1",
+                  "owners1": [
+                    {"individual": {"number": "I-1"}, "name": "Ada"},
+                    {
+                      "entity": {
+                        "number": "E-1",
+                        "ownershipStructure": [
+                          {
+                            "principalOwners": [
+                              {"memberDetails": {"number": "P-1"}}
+                            ],
+                            "indirectOwners": [
+                              {"memberDetails": {"number": "P-2"}}
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenAnswer(invocation -> {
+                    ObjectNode response = objectMapper.createObjectNode();
+                    response.putArray("data").add(individual("P-1")).add(individual("P-2"));
+                    return Mono.just(response);
+                });
+
+        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+
+        JsonNode owners = root.path("data").get(0).path("owners1");
+        assertThat(owners.get(0).has("beneficialOwnersDetails")).isFalse();
+        JsonNode resolvedArray = owners.get(1).path("beneficialOwnersDetails");
+        assertThat(resolvedArray.isArray()).isTrue();
+        assertThat(resolvedArray.size()).isEqualTo(2);
+        assertThat(resolvedArray.get(0).path("individual").path("number").asString())
+                .isEqualTo("P-1");
+        assertThat(resolvedArray.get(1).path("individual").path("number").asString())
+                .isEqualTo("P-2");
+
+        assertPhaseMetric("success", 1);
+        assertTreeMetric("success", 1);
+    }
+
+    @Test
+    void apply_isolatesFailureOfOneRootEntityFromSiblings() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {
+                      "entity": {
+                        "number": "E-OK",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "OK-1"}}]}
+                        ]
+                      }
+                    },
+                    {
+                      "entity": {
+                        "number": "E-FAIL",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "FAIL-1"}}]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenAnswer(invocation -> {
+                    ObjectNode request = invocation.getArgument(0);
+                    Set<String> ids = new java.util.HashSet<>();
+                    request.path("ids").values().forEach(node -> ids.add(node.asString()));
+                    if (ids.contains("OK-1")) {
+                        ObjectNode response = objectMapper.createObjectNode();
+                        response.putArray("data").add(individual("OK-1"));
+                        return Mono.just(response);
+                    }
+                    return Mono.error(new RuntimeException("owners 5xx"));
+                });
+
+        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+
+        JsonNode owners = root.path("data").get(0).path("owners1");
+        assertThat(owners.get(0).path("beneficialOwnersDetails").size()).isEqualTo(1);
+        assertThat(owners.get(1).has("beneficialOwnersDetails")).isFalse();
+
+        assertPhaseMetric("success", 1);
+        assertTreeMetric("success", 1);
+        assertTreeMetric("failure", 1);
+    }
+
+    @Test
+    void apply_isNoopWhenOwners1ContainsOnlyIndividuals() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {"individual": {"number": "I-1"}}
+                  ]
+                }
+              ]
+            }
+            """);
+
+        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+
+        assertThat(root.path("data").get(0).path("owners1").get(0).has("beneficialOwnersDetails"))
+                .isFalse();
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        assertPhaseMetric("success", 1);
+    }
+
+    @Test
+    void apply_processesRootEntitiesAcrossMultipleDataItems() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {
+                      "entity": {
+                        "number": "E-A",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "X"}}]}
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "owners1": [
+                    {
+                      "entity": {
+                        "number": "E-B",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "Y"}}]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenAnswer(invocation -> {
+                    ObjectNode request = invocation.getArgument(0);
+                    String onlyId = request.path("ids").get(0).asString();
+                    ObjectNode response = objectMapper.createObjectNode();
+                    response.putArray("data").add(individual(onlyId));
+                    return Mono.just(response);
+                });
+
+        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+
+        JsonNode firstOwner = root.path("data").get(0).path("owners1").get(0);
+        JsonNode secondOwner = root.path("data").get(1).path("owners1").get(0);
+        assertThat(firstOwner
+                        .path("beneficialOwnersDetails")
+                        .get(0)
+                        .path("individual")
+                        .path("number")
+                        .asString())
+                .isEqualTo("X");
+        assertThat(secondOwner
+                        .path("beneficialOwnersDetails")
+                        .get(0)
+                        .path("individual")
+                        .path("number")
+                        .asString())
+                .isEqualTo("Y");
+        assertTreeMetric("success", 2);
+    }
+
+    private JsonNode individual(String number) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.putObject("individual").put("number", number);
+        return node;
+    }
+
+    private ObjectNode json(String raw) {
+        try {
+            return (ObjectNode) objectMapper.readTree(raw);
+        } catch (Exception ex) {
+            throw new IllegalArgumentException(ex);
+        }
+    }
+
+    private AggregationContext context() {
+        return new AggregationContext(
+                objectMapper.createObjectNode(),
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null),
+                EnrichmentSelection.from(null));
+    }
+
+    private void assertPhaseMetric(String outcome, double count) {
+        assertThat(meterRegistry
+                        .get("aggregation.enrichment.requests")
+                        .tag("enrichment", BeneficialOwnersPostProcessor.NAME)
+                        .tag("outcome", outcome)
+                        .counter()
+                        .count())
+                .isEqualTo(count);
+    }
+
+    private void assertTreeMetric(String outcome, double count) {
+        assertThat(meterRegistry
+                        .get("aggregation.beneficial_owners.tree")
+                        .tag("outcome", outcome)
+                        .counter()
+                        .count())
+                .isEqualTo(count);
+    }
+}
