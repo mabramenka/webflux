@@ -59,10 +59,11 @@ class AggregateServiceTest {
         meterRegistry = new SimpleMeterRegistry();
         aggregateService = new AggregateService(
                 accountGroupClient,
-                List.of(
-                        new AccountEnrichment(accountClient, objectMapper),
-                        new OwnersEnrichment(ownersClient, objectMapper)),
-                List.of(),
+                partPlanner(
+                        List.of(
+                                new AccountEnrichment(accountClient, objectMapper),
+                                new OwnersEnrichment(ownersClient, objectMapper)),
+                        List.of()),
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger(),
@@ -303,6 +304,53 @@ class AggregateServiceTest {
                 .verifyComplete();
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_enablesEnrichmentDependencies() {
+        AggregateService service = aggregateServiceWith(
+                List.of(
+                        new AccountEnrichment(accountClient, objectMapper),
+                        dependentEnrichment("auditTrail", "account")),
+                List.of());
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "accounts": [
+                    {"id": "acc-a"}
+                  ]
+                }
+              ]
+            }
+            """);
+        JsonNode accountResponse = json("""
+            {
+              "data": [
+                {"id": "acc-a", "amount": 10.50}
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> assertThat(aggregated
+                                .path("data")
+                                .path(0)
+                                .path("account1")
+                                .path(0)
+                                .path("amount")
+                                .decimalValue())
+                        .isEqualByComparingTo("10.5"))
+                .verifyComplete();
+
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test
@@ -571,12 +619,16 @@ class AggregateServiceTest {
             List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
         return new AggregateService(
                 accountGroupClient,
-                enrichments,
-                postProcessors,
+                partPlanner(enrichments, postProcessors),
                 ObservationRegistry.create(),
                 new EnrichmentExecutor(meterRegistry),
                 new AggregationMerger(),
                 objectMapper);
+    }
+
+    private AggregationPartPlanner partPlanner(
+            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
+        return new AggregationPartPlanner(enrichments, postProcessors);
     }
 
     private AggregationEnrichment emptyEnrichment() {
@@ -626,6 +678,35 @@ class AggregateServiceTest {
             public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
                 root.put("partialMerge", true);
                 throw new IllegalStateException("merge failed");
+            }
+        };
+    }
+
+    private AggregationEnrichment dependentEnrichment(String name, String dependency) {
+        return new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of(dependency);
+            }
+
+            @Override
+            public boolean supports(AggregationContext context) {
+                return true;
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.empty();
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                throw new IllegalStateException("Empty enrichment should not be merged");
             }
         };
     }
