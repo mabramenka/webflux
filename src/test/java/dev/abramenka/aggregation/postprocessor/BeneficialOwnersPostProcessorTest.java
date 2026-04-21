@@ -12,6 +12,7 @@ import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.EnrichmentSelection;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.HashSet;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -127,7 +128,7 @@ class BeneficialOwnersPostProcessorTest {
         when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode request = invocation.getArgument(0);
-                    Set<String> ids = new java.util.HashSet<>();
+                    Set<String> ids = new HashSet<>();
                     request.path("ids").values().forEach(node -> ids.add(node.asString()));
                     if (ids.contains("OK-1")) {
                         ObjectNode response = objectMapper.createObjectNode();

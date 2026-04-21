@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -27,11 +29,10 @@ class PathExpressionTest {
         assertThat(PathExpression.parse("$.data[*].id").select(root)).isEmpty();
     }
 
-    @Test
-    void parse_rejectsMalformedAbsolutePaths() {
-        assertThatThrownBy(() -> PathExpression.parse("$.")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> PathExpression.parse("$.data.")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> PathExpression.parse("$data")).isInstanceOf(IllegalArgumentException.class);
+    @ParameterizedTest
+    @ValueSource(strings = {"$.", "$.data.", "$data"})
+    void parse_rejectsMalformedAbsolutePaths(String path) {
+        assertThatThrownBy(() -> PathExpression.parse(path)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
