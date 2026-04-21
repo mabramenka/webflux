@@ -1,6 +1,6 @@
 package dev.abramenka.aggregation.model;
 
-import dev.abramenka.aggregation.error.InvalidAggregationRequestException;
+import dev.abramenka.aggregation.error.RequestValidationException;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -17,7 +17,8 @@ public record EnrichmentSelection(boolean all, Set<String> names) {
         for (String name : include) {
             String trimmed = name.trim();
             if (trimmed.isBlank()) {
-                throw new InvalidAggregationRequestException("'include' values must be non-blank strings");
+                throw RequestValidationException.invalidRequestValue(
+                        "include", "'include' values must be non-blank strings");
             }
             requested.add(trimmed);
         }

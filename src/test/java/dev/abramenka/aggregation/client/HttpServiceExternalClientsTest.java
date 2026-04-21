@@ -83,12 +83,11 @@ class HttpServiceExternalClientsTest {
                 .expectErrorSatisfies(error -> {
                     assertThat(error)
                             .isInstanceOf(DownstreamClientException.class)
-                            .hasMessage(clientCase.errorPrefix() + " client failed: client unavailable");
+                            .hasMessage(clientCase.errorPrefix() + " client returned an error response");
                     DownstreamClientException clientException = (DownstreamClientException) error;
                     assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
                     assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                     assertThat(clientException.downstreamStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-                    assertThat(clientException.responseBody()).isEqualTo("client unavailable");
                 })
                 .verify();
     }
@@ -101,9 +100,11 @@ class HttpServiceExternalClientsTest {
                 ClientResponse.create(HttpStatus.BAD_GATEWAY).body(" ").build());
 
         StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
-                .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(DownstreamClientException.class)
-                        .hasMessage(clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage()))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error)
+                            .isInstanceOf(DownstreamClientException.class)
+                            .hasMessage(clientCase.errorPrefix() + " client returned an error response");
+                })
                 .verify();
     }
 
@@ -136,14 +137,12 @@ class HttpServiceExternalClientsTest {
                 .expectErrorSatisfies(error -> {
                     assertThat(error)
                             .isInstanceOf(DownstreamClientException.class)
-                            .hasMessage(
-                                    clientCase.errorPrefix() + " client failed: " + clientCase.defaultErrorMessage())
+                            .hasMessage(clientCase.errorPrefix() + " client request failed")
                             .hasCauseInstanceOf(IOException.class);
                     DownstreamClientException clientException = (DownstreamClientException) error;
                     assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
                     assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                     assertThat(clientException.downstreamStatusCode()).isNull();
-                    assertThat(clientException.responseBody()).isEqualTo(clientCase.defaultErrorMessage());
                 })
                 .verify();
     }
@@ -184,12 +183,7 @@ class HttpServiceExternalClientsTest {
     }
 
     private record WebClientCase(
-            String path, String errorPrefix, Function<WebClient, WebClientInvocation> invocationFactory) {
-
-        String defaultErrorMessage() {
-            return errorPrefix.substring(0, 1).toLowerCase() + errorPrefix.substring(1) + " client request failed";
-        }
-    }
+            String path, String errorPrefix, Function<WebClient, WebClientInvocation> invocationFactory) {}
 
     @FunctionalInterface
     private interface WebClientInvocation {

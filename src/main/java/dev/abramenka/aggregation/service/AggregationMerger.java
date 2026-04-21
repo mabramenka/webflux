@@ -15,8 +15,7 @@ public class AggregationMerger {
 
     public ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
         if (!accountGroupResponse.isObject()) {
-            throw DownstreamClientException.gatewayError(
-                    clientName, "account group client returned a non-object JSON response");
+            throw DownstreamClientException.transport(clientName, null);
         }
         return (ObjectNode) accountGroupResponse.deepCopy();
     }

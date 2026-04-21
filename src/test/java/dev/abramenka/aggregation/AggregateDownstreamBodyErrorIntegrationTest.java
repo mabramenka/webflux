@@ -1,7 +1,5 @@
 package dev.abramenka.aggregation;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import dev.abramenka.aggregation.client.HttpServiceGroups;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -68,7 +66,7 @@ class AggregateDownstreamBodyErrorIntegrationTest {
                 .jsonPath("$.client")
                 .isEqualTo("Account group")
                 .jsonPath("$.detail")
-                .value(detail -> assertThat(detail.toString()).contains("unreadable response"));
+                .isEqualTo("Account group client request failed");
     }
 
     private static void startServer() {
