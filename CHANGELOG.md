@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/mabramenka/webflux/compare/v0.6.1...v0.7.0) (2026-04-21)
+
+
+### Features
+
+* **postprocessor:** add beneficialOwners recursive resolution phase ([2d6777d](https://github.com/mabramenka/webflux/commit/2d6777de68514633b2f6a8aaf08d64db9068b002))
+
 ## [0.6.1](https://github.com/mabramenka/webflux/compare/v0.6.0...v0.6.1) (2026-04-20)
 
 
