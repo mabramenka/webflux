@@ -66,6 +66,9 @@ public final class AggregationErrorResponseAdvice extends ResponseEntityExceptio
         return handleExceptionInternal(ex, body, headers, status, exchange);
     }
 
+    // ErrorResponseException subclasses (DownstreamClientException, RequestValidationException,
+    // UnsupportedAggregationEnrichmentException) are matched by the parent's more-specific
+    // handleException first; this runs only for truly unexpected throwables.
     @ExceptionHandler(Exception.class)
     public Mono<ResponseEntity<Object>> handleUnexpectedException(Exception ex, ServerWebExchange exchange) {
         logger.error("Unhandled aggregation exception", ex);
@@ -73,7 +76,7 @@ public final class AggregationErrorResponseAdvice extends ResponseEntityExceptio
         ProblemDetail body =
                 ProblemDetail.forStatusAndDetail(status, "The aggregation request could not be completed.");
         body.setType(INTERNAL_TYPE);
-        return handleExceptionInternal(ex, body, new HttpHeaders(), status, exchange);
+        return handleExceptionInternal(ex, body, HttpHeaders.EMPTY, status, exchange);
     }
 
     @Override
