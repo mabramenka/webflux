@@ -1,6 +1,8 @@
 package dev.abramenka.aggregation;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
@@ -13,18 +15,22 @@ class ActuatorEndpointsTest {
     @Autowired
     private WebTestClient webTestClient;
 
-    @Test
-    void exposesHealthAndMetricsEndpoints() {
+    @ParameterizedTest
+    @ValueSource(strings = {"/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness"})
+    void exposedHealthEndpointsReportUp(String uri) {
         webTestClient
                 .get()
-                .uri("/actuator/health")
+                .uri(uri)
                 .exchange()
                 .expectStatus()
                 .isOk()
                 .expectBody()
                 .jsonPath("$.status")
                 .isEqualTo("UP");
+    }
 
+    @Test
+    void exposesMetricsEndpoint() {
         webTestClient
                 .get()
                 .uri("/actuator/metrics")
@@ -34,29 +40,6 @@ class ActuatorEndpointsTest {
                 .expectBody()
                 .jsonPath("$.names")
                 .isArray();
-    }
-
-    @Test
-    void exposesHealthProbeEndpoints() {
-        webTestClient
-                .get()
-                .uri("/actuator/health/liveness")
-                .exchange()
-                .expectStatus()
-                .isOk()
-                .expectBody()
-                .jsonPath("$.status")
-                .isEqualTo("UP");
-
-        webTestClient
-                .get()
-                .uri("/actuator/health/readiness")
-                .exchange()
-                .expectStatus()
-                .isOk()
-                .expectBody()
-                .jsonPath("$.status")
-                .isEqualTo("UP");
     }
 
     @Test

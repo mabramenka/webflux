@@ -14,6 +14,7 @@ import dev.abramenka.aggregation.model.EnrichmentSelection;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -175,7 +176,7 @@ class OwnershipResolverTest {
         when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode request = invocation.getArgument(0);
-                    Set<String> ids = new java.util.HashSet<>();
+                    Set<String> ids = new HashSet<>();
                     request.path("ids").values().forEach(node -> ids.add(node.asString()));
                     JsonNode response = levelsByIds.get(ids);
                     if (response == null) {
