@@ -29,7 +29,7 @@ If the main flow fails, the entire request fails.
 
 ### 2.3 Selected Enrichment Is Required
 When the client selects an enrichment, either explicitly or by omitting `include`, that enrichment must complete successfully when it is applicable to the current payload.
-Execution failures, empty enrichment responses, downstream failures, malformed enrichment responses, and merge failures fail the request.
+Execution failures, empty enrichment responses, downstream failures, malformed or incomplete enrichment responses, and merge failures fail the request.
 
 ### 2.4 RFC 9457 Is Used For Terminal Failures
 `application/problem+json` is returned when the request ends in an actual failure, including failure of a selected enrichment.
