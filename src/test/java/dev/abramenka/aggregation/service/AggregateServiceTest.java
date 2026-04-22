@@ -23,6 +23,7 @@ import dev.abramenka.aggregation.part.execution.AggregationMerger;
 import dev.abramenka.aggregation.part.execution.AggregationPartExecutor;
 import dev.abramenka.aggregation.part.execution.AggregationPartMetrics;
 import dev.abramenka.aggregation.part.execution.AggregationPartPlanner;
+import dev.abramenka.aggregation.part.execution.AggregationPartResultApplicator;
 import dev.abramenka.aggregation.part.execution.AggregationPartRunner;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -727,7 +728,8 @@ class AggregateServiceTest {
 
     private AggregationPartExecutor partExecutor() {
         AggregationPartMetrics partMetrics = new AggregationPartMetrics(meterRegistry);
-        return new AggregationPartExecutor(new AggregationPartRunner(partMetrics), new AggregationMerger());
+        return new AggregationPartExecutor(
+                new AggregationPartRunner(partMetrics), new AggregationMerger(), new AggregationPartResultApplicator());
     }
 
     private AggregationEnrichment emptyEnrichment() {
