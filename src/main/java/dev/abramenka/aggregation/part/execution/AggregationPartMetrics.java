@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.service;
+package dev.abramenka.aggregation.part.execution;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-class AggregationPartMetrics {
+public class AggregationPartMetrics {
 
     private static final String PART_REQUESTS_METRIC = "aggregation.part.requests";
     private static final String PART_TAG = "part";

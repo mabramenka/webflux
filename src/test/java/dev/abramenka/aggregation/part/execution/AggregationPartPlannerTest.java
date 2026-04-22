@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.service;
+package dev.abramenka.aggregation.part.execution;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

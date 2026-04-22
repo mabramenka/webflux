@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.service;
+package dev.abramenka.aggregation.part.execution;
 
 import dev.abramenka.aggregation.model.AggregationPart;
 import java.util.List;

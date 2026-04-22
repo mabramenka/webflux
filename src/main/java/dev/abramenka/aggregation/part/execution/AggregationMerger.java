@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.service;
+package dev.abramenka.aggregation.part.execution;
 
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import org.springframework.stereotype.Component;
@@ -6,7 +6,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
-class AggregationMerger {
+public class AggregationMerger {
 
     ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
         if (!accountGroupResponse.isObject()) {

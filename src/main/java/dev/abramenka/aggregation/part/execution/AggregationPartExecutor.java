@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.service;
+package dev.abramenka.aggregation.part.execution;
 
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
@@ -18,12 +18,12 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-class AggregationPartExecutor {
+public class AggregationPartExecutor {
 
     private final AggregationPartRunner partRunner;
     private final AggregationMerger aggregationMerger;
 
-    Mono<JsonNode> execute(
+    public Mono<JsonNode> execute(
             String rootClientName,
             JsonNode accountGroupResponse,
             AggregationContext context,
