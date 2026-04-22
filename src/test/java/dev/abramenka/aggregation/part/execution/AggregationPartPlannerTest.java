@@ -8,7 +8,7 @@ import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
-import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
+import dev.abramenka.aggregation.part.AggregationDocumentPart;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -24,7 +24,7 @@ class AggregationPartPlannerTest {
         AggregationPartPlanner planner = new AggregationPartPlanner(List.of(
                 enrichment("account"),
                 enrichment("auditTrail", "account"),
-                postProcessor("beneficialOwners", "auditTrail")));
+                documentPart("beneficialOwners", "auditTrail")));
 
         AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
 
@@ -49,9 +49,9 @@ class AggregationPartPlannerTest {
     }
 
     @Test
-    void plan_ordersSelectedPostProcessorsByDependencies() {
+    void plan_ordersSelectedDocumentPartsByDependencies() {
         AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(postProcessor("summary", "beneficialOwners"), postProcessor("beneficialOwners")));
+                List.of(documentPart("summary", "beneficialOwners"), documentPart("beneficialOwners")));
 
         AggregationPartPlan plan = planner.plan(List.of("summary"));
 
@@ -63,7 +63,7 @@ class AggregationPartPlannerTest {
     @Test
     void plan_keepsSelectedPartsForRuntimeSupportCheck() {
         AggregationPartPlanner planner =
-                new AggregationPartPlanner(List.of(unsupportedPostProcessor("beneficialOwners")));
+                new AggregationPartPlanner(List.of(unsupportedDocumentPart("beneficialOwners")));
 
         AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
 
@@ -83,7 +83,7 @@ class AggregationPartPlannerTest {
 
     @Test
     void constructor_rejectsDuplicatePartNames() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account"), postProcessor("account"))))
+        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account"), documentPart("account"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate aggregation component name: account");
     }
@@ -106,7 +106,7 @@ class AggregationPartPlannerTest {
     @Test
     void constructor_allowsDependenciesAcrossPartTypes() {
         AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(enrichment("auditTrail", "beneficialOwners"), postProcessor("beneficialOwners")));
+                List.of(enrichment("auditTrail", "beneficialOwners"), documentPart("beneficialOwners")));
 
         AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
 
@@ -162,8 +162,8 @@ class AggregationPartPlannerTest {
         };
     }
 
-    private static AggregationPostProcessor postProcessor(String name, String... dependencies) {
-        return new AggregationPostProcessor() {
+    private static AggregationDocumentPart documentPart(String name, String... dependencies) {
+        return new AggregationDocumentPart() {
             @Override
             public String name() {
                 return name;
@@ -181,8 +181,8 @@ class AggregationPartPlannerTest {
         };
     }
 
-    private static AggregationPostProcessor unsupportedPostProcessor(String name) {
-        return new AggregationPostProcessor() {
+    private static AggregationDocumentPart unsupportedDocumentPart(String name) {
+        return new AggregationDocumentPart() {
             @Override
             public String name() {
                 return name;

@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.postprocessor;
+package dev.abramenka.aggregation.beneficialowners;
 
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.model.AggregationContext;

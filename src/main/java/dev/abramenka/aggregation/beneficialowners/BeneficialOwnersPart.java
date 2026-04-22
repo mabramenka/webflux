@@ -1,6 +1,7 @@
-package dev.abramenka.aggregation.postprocessor;
+package dev.abramenka.aggregation.beneficialowners;
 
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.part.AggregationDocumentPart;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Component
 @Slf4j
-class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
+class BeneficialOwnersPart implements AggregationDocumentPart {
 
     static final String NAME = "beneficialOwners";
     private static final String TARGET_FIELD = "beneficialOwnersDetails";
@@ -24,7 +25,7 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
     private final OwnershipResolver resolver;
     private final MeterRegistry meterRegistry;
 
-    BeneficialOwnersPostProcessor(OwnershipResolver resolver, MeterRegistry meterRegistry) {
+    BeneficialOwnersPart(OwnershipResolver resolver, MeterRegistry meterRegistry) {
         this.resolver = resolver;
         this.meterRegistry = meterRegistry;
     }

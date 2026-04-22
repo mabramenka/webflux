@@ -20,10 +20,10 @@ import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.part.AggregationDocumentPart;
 import dev.abramenka.aggregation.part.execution.AggregationPartExecutor;
 import dev.abramenka.aggregation.part.execution.AggregationPartExecutorFactory;
 import dev.abramenka.aggregation.part.execution.AggregationPartPlanner;
-import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.ArrayList;
@@ -262,12 +262,12 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_enablesPostProcessorDependencies() {
+    void aggregate_enablesDocumentPartDependencies() {
         AggregateService service = aggregateServiceWith(
                 List.of(
                         new AccountEnrichment(accountClient, objectMapper),
                         new OwnersEnrichment(ownersClient, objectMapper)),
-                List.of(dependentPostProcessor("beneficialOwners", "owners")));
+                List.of(dependentDocumentPart("beneficialOwners", "owners")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("beneficialOwners"));
         JsonNode accountGroupResponse = json("""
             {
@@ -312,8 +312,8 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsFailedPostProcessors() {
-        AggregateService service = aggregateServiceWith(List.of(), List.of(failingPostProcessor("optionalAudit")));
+    void aggregate_skipsFailedDocumentParts() {
+        AggregateService service = aggregateServiceWith(List.of(), List.of(failingDocumentPart("optionalAudit")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -333,8 +333,8 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsUnsupportedPostProcessors() {
-        AggregateService service = aggregateServiceWith(List.of(), List.of(unsupportedPostProcessor("optionalAudit")));
+    void aggregate_skipsUnsupportedDocumentParts() {
+        AggregateService service = aggregateServiceWith(List.of(), List.of(unsupportedDocumentPart("optionalAudit")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -348,7 +348,7 @@ class AggregateServiceTest {
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(aggregated.has("unsupportedPostProcessorRan")).isFalse();
+                    assertThat(aggregated.has("unsupportedDocumentPartRan")).isFalse();
                 })
                 .verifyComplete();
     }
@@ -426,10 +426,10 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_appliesSameLevelPostProcessorPatchWithoutWipingEnrichmentResult() {
+    void aggregate_appliesSameLevelDocumentPartPatchWithoutWipingEnrichmentResult() {
         AggregateService service = aggregateServiceWith(
                 List.of(rootFlagEnrichment("account", "enriched")),
-                List.of(rootFlagPostProcessor("optionalAudit", "audited")));
+                List.of(rootFlagDocumentPart("optionalAudit", "audited")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -711,25 +711,25 @@ class AggregateServiceTest {
     }
 
     private AggregateService aggregateServiceWith(
-            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
+            List<AggregationEnrichment> enrichments, List<AggregationDocumentPart> documentParts) {
         return new AggregateService(
                 accountGroupClient,
-                partPlanner(enrichments, postProcessors),
+                partPlanner(enrichments, documentParts),
                 partExecutor(),
                 ObservationRegistry.create(),
                 objectMapper);
     }
 
     private AggregationPartPlanner partPlanner(
-            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
-        return new AggregationPartPlanner(aggregationParts(enrichments, postProcessors));
+            List<AggregationEnrichment> enrichments, List<AggregationDocumentPart> documentParts) {
+        return new AggregationPartPlanner(aggregationParts(enrichments, documentParts));
     }
 
     private static List<AggregationPart> aggregationParts(
-            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
-        List<AggregationPart> parts = new ArrayList<>(enrichments.size() + postProcessors.size());
+            List<AggregationEnrichment> enrichments, List<AggregationDocumentPart> documentParts) {
+        List<AggregationPart> parts = new ArrayList<>(enrichments.size() + documentParts.size());
         parts.addAll(enrichments);
-        parts.addAll(postProcessors);
+        parts.addAll(documentParts);
         return parts;
     }
 
@@ -866,8 +866,8 @@ class AggregateServiceTest {
         };
     }
 
-    private AggregationPostProcessor dependentPostProcessor(String name, String dependency) {
-        return new AggregationPostProcessor() {
+    private AggregationDocumentPart dependentDocumentPart(String name, String dependency) {
+        return new AggregationDocumentPart() {
             @Override
             public String name() {
                 return name;
@@ -885,8 +885,8 @@ class AggregateServiceTest {
         };
     }
 
-    private AggregationPostProcessor rootFlagPostProcessor(String name, String flag) {
-        return new AggregationPostProcessor() {
+    private AggregationDocumentPart rootFlagDocumentPart(String name, String flag) {
+        return new AggregationDocumentPart() {
             @Override
             public String name() {
                 return name;
@@ -899,8 +899,8 @@ class AggregateServiceTest {
         };
     }
 
-    private AggregationPostProcessor failingPostProcessor(String name) {
-        return new AggregationPostProcessor() {
+    private AggregationDocumentPart failingDocumentPart(String name) {
+        return new AggregationDocumentPart() {
             @Override
             public String name() {
                 return name;
@@ -908,13 +908,13 @@ class AggregateServiceTest {
 
             @Override
             public Mono<Void> apply(ObjectNode root, AggregationContext context) {
-                return Mono.error(new IllegalStateException("post-processor down"));
+                return Mono.error(new IllegalStateException("document part down"));
             }
         };
     }
 
-    private AggregationPostProcessor unsupportedPostProcessor(String name) {
-        return new AggregationPostProcessor() {
+    private AggregationDocumentPart unsupportedDocumentPart(String name) {
+        return new AggregationDocumentPart() {
             @Override
             public String name() {
                 return name;
@@ -927,7 +927,7 @@ class AggregateServiceTest {
 
             @Override
             public Mono<Void> apply(ObjectNode root, AggregationContext context) {
-                return Mono.fromRunnable(() -> root.put("unsupportedPostProcessorRan", true));
+                return Mono.fromRunnable(() -> root.put("unsupportedDocumentPartRan", true));
             }
         };
     }
