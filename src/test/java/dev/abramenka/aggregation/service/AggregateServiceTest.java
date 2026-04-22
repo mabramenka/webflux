@@ -10,20 +10,19 @@ import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.client.Accounts;
 import dev.abramenka.aggregation.client.Owners;
-import dev.abramenka.aggregation.enrichment.AccountEnrichment;
-import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
-import dev.abramenka.aggregation.enrichment.OwnersEnrichment;
+import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
+import dev.abramenka.aggregation.enrichment.owners.OwnersEnrichmentTestFactory;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.RequestValidationException;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationEnrichment;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
-import dev.abramenka.aggregation.part.AggregationDocumentPart;
-import dev.abramenka.aggregation.part.execution.AggregationPartExecutor;
-import dev.abramenka.aggregation.part.execution.AggregationPartExecutorFactory;
-import dev.abramenka.aggregation.part.execution.AggregationPartPlanner;
+import dev.abramenka.aggregation.part.AggregationPartExecutor;
+import dev.abramenka.aggregation.part.AggregationPartExecutorFactory;
+import dev.abramenka.aggregation.part.AggregationPartPlanner;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
@@ -64,8 +63,8 @@ class AggregateServiceTest {
         aggregateService = new AggregateService(
                 accountGroupClient,
                 partPlanner(List.of(
-                        new AccountEnrichment(accountClient, objectMapper),
-                        new OwnersEnrichment(ownersClient, objectMapper))),
+                        AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
+                        OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient, objectMapper))),
                 partExecutor(),
                 ObservationRegistry.create(),
                 objectMapper);
@@ -259,11 +258,11 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_enablesDocumentPartDependencies() {
+    void aggregate_expandsBeneficialOwnerDependencies() {
         AggregateService service = aggregateServiceWith(List.of(
-                new AccountEnrichment(accountClient, objectMapper),
-                new OwnersEnrichment(ownersClient, objectMapper),
-                dependentDocumentPart("beneficialOwners", "owners")));
+                AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
+                OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient, objectMapper),
+                dependentNoopEnrichment("beneficialOwners", "owners")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("beneficialOwners"));
         JsonNode accountGroupResponse = json("""
             {
@@ -308,8 +307,8 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsFailedDocumentParts() {
-        AggregateService service = aggregateServiceWith(List.of(failingDocumentPart("optionalAudit")));
+    void aggregate_skipsFailedEnrichments() {
+        AggregateService service = aggregateServiceWith(List.of(failingFetchEnrichment("optionalAudit")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -329,8 +328,8 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsUnsupportedDocumentParts() {
-        AggregateService service = aggregateServiceWith(List.of(unsupportedDocumentPart("optionalAudit")));
+    void aggregate_skipsUnsupportedEnrichments() {
+        AggregateService service = aggregateServiceWith(List.of(unsupportedEnrichment("optionalAudit")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -344,7 +343,7 @@ class AggregateServiceTest {
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(aggregated.has("unsupportedDocumentPartRan")).isFalse();
+                    assertThat(aggregated.has("unsupportedEnrichmentRan")).isFalse();
                 })
                 .verifyComplete();
     }
@@ -352,7 +351,8 @@ class AggregateServiceTest {
     @Test
     void aggregate_enablesEnrichmentDependencies() {
         AggregateService service = aggregateServiceWith(List.of(
-                new AccountEnrichment(accountClient, objectMapper), dependentEnrichment("auditTrail", "account")));
+                AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
+                dependentEnrichment("auditTrail", "account")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
@@ -417,9 +417,9 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_appliesSameLevelDocumentPartPatchWithoutWipingEnrichmentResult() {
+    void aggregate_appliesSameLevelEnrichmentPatchesWithoutWipingSiblingResults() {
         AggregateService service = aggregateServiceWith(
-                List.of(rootFlagEnrichment("account", "enriched"), rootFlagDocumentPart("optionalAudit", "audited")));
+                List.of(rootFlagEnrichment("account", "enriched"), rootFlagEnrichment("optionalAudit", "audited")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -609,6 +609,61 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_preservesSameLevelAccountAndOwnersEnrichmentsOnDataItems() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "owners"));
+
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "id": "item-1",
+                  "accounts": [
+                    {"id": "acc-a"}
+                  ],
+                  "basicDetails": {
+                    "owners": [
+                      {"id": "owner-a"}
+                    ]
+                  }
+                }
+              ]
+            }
+            """);
+        JsonNode accountResponse = json("""
+            {
+              "data": [
+                {"id": "acc-a", "amount": 10.50}
+              ]
+            }
+            """);
+        JsonNode ownersResponse = json("""
+            {
+              "data": [
+                {"individual": {"number": "owner-a"}, "name": "Ada"}
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountResponse));
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(ownersResponse));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> {
+                    JsonNode item = aggregated.path("data").path(0);
+                    assertThat(item.path("account1").path(0).path("amount").decimalValue())
+                            .isEqualByComparingTo("10.5");
+                    assertThat(item.path("owners1").path(0).path("name").asString())
+                            .isEqualTo("Ada");
+                })
+                .verifyComplete();
+    }
+
+    @Test
     void aggregate_embedsOwnersIntoDataEntrySiblingArray() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("owners"));
 
@@ -793,6 +848,28 @@ class AggregateServiceTest {
         };
     }
 
+    private AggregationEnrichment dependentNoopEnrichment(String name, String dependency) {
+        return new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of(dependency);
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.just(objectMapper.createObjectNode());
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {}
+        };
+    }
+
     private AggregationEnrichment rootFlagEnrichment(String name, String flag) {
         return new AggregationEnrichment() {
             @Override
@@ -842,55 +919,27 @@ class AggregateServiceTest {
         };
     }
 
-    private AggregationDocumentPart dependentDocumentPart(String name, String dependency) {
-        return new AggregationDocumentPart() {
+    private AggregationEnrichment failingFetchEnrichment(String name) {
+        return new AggregationEnrichment() {
             @Override
             public String name() {
                 return name;
             }
 
             @Override
-            public Set<String> dependencies() {
-                return Set.of(dependency);
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.error(new IllegalStateException("enrichment down"));
             }
 
             @Override
-            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
-                return Mono.empty();
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                root.put("failedEnrichmentMerged", true);
             }
         };
     }
 
-    private AggregationDocumentPart rootFlagDocumentPart(String name, String flag) {
-        return new AggregationDocumentPart() {
-            @Override
-            public String name() {
-                return name;
-            }
-
-            @Override
-            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
-                return Mono.fromRunnable(() -> root.put(flag, true));
-            }
-        };
-    }
-
-    private AggregationDocumentPart failingDocumentPart(String name) {
-        return new AggregationDocumentPart() {
-            @Override
-            public String name() {
-                return name;
-            }
-
-            @Override
-            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
-                return Mono.error(new IllegalStateException("document part down"));
-            }
-        };
-    }
-
-    private AggregationDocumentPart unsupportedDocumentPart(String name) {
-        return new AggregationDocumentPart() {
+    private AggregationEnrichment unsupportedEnrichment(String name) {
+        return new AggregationEnrichment() {
             @Override
             public String name() {
                 return name;
@@ -902,8 +951,13 @@ class AggregateServiceTest {
             }
 
             @Override
-            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
-                return Mono.fromRunnable(() -> root.put("unsupportedDocumentPartRan", true));
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.just(objectMapper.createObjectNode());
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                root.put("unsupportedEnrichmentRan", true);
             }
         };
     }

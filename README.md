@@ -355,6 +355,9 @@ Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The pa
 
 ## Enrichment Rules
 
+Business-specific enrichment parts live under `enrichment.<name>`. Shared keyed-join mechanics live under
+`enrichment.support.keyed`.
+
 Keyed enrichment parts are configured with `EnrichmentRule`:
 
 ```java
