@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.beneficialowners;
+package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
