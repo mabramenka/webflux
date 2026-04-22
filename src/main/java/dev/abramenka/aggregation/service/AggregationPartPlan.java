@@ -12,15 +12,13 @@ record AggregationPartPlan(
         List<AggregationEnrichment> selectedEnrichments,
         List<AggregationPostProcessor> selectedPostProcessors) {
 
-    List<AggregationEnrichment> supportedEnrichments(AggregationContext context) {
-        return selectedEnrichments.stream()
-                .filter(enrichment -> enrichment.supports(context))
-                .toList();
-    }
-
-    List<AggregationPostProcessor> supportedPostProcessors(AggregationContext context) {
-        return selectedPostProcessors.stream()
-                .filter(postProcessor -> postProcessor.supports(context))
-                .toList();
+    AggregationPartExecutionPlan executionPlan(AggregationContext context) {
+        return new AggregationPartExecutionPlan(
+                selectedEnrichments.stream()
+                        .filter(enrichment -> enrichment.supports(context))
+                        .toList(),
+                selectedPostProcessors.stream()
+                        .filter(postProcessor -> postProcessor.supports(context))
+                        .toList());
     }
 }

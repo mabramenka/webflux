@@ -73,7 +73,7 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedPostProcessors())
                 .extracting(AggregationPostProcessor::name)
                 .containsExactly("beneficialOwners");
-        assertThat(plan.supportedPostProcessors(context())).isEmpty();
+        assertThat(plan.executionPlan(context()).postProcessorPhase()).isEmpty();
     }
 
     @Test
