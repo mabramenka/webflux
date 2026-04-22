@@ -24,14 +24,15 @@ class AggregationPartExecutor {
             AggregationContext context,
             AggregationPartPlan partPlan) {
         List<AggregationEnrichment> enabledEnrichments = partPlan.supportedEnrichments(context);
+        List<AggregationPostProcessor> enabledPostProcessors = partPlan.supportedPostProcessors(context);
         ObjectNode root = aggregationMerger.mutableRoot(rootClientName, accountGroupResponse);
         int concurrency = Math.max(1, enabledEnrichments.size());
         return Flux.fromIterable(enabledEnrichments)
                 .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
                 .collectList()
                 .map(results -> aggregationMerger.merge(root, enabledEnrichments, results))
-                .flatMap(merged -> runPostProcessors(partPlan.selectedPostProcessors(), root, context)
-                        .thenReturn(merged));
+                .flatMap(merged ->
+                        runPostProcessors(enabledPostProcessors, root, context).thenReturn(merged));
     }
 
     private static Mono<Void> runPostProcessors(

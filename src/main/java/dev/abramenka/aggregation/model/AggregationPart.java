@@ -9,4 +9,8 @@ public interface AggregationPart {
     default Set<String> dependencies() {
         return Set.of();
     }
+
+    default boolean supports(AggregationContext context) {
+        return true;
+    }
 }

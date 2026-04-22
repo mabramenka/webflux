@@ -29,9 +29,9 @@ Aggregation pipeline in `AggregateService.aggregate`:
 
 1. Build `AggregationPartSelection` from `request.include()` and validate unknown names up front.
 2. POST ids to the `account-group` downstream. Unreadable/error responses are mapped to `DownstreamClientException` (→ 502 problem+json via Spring's ProblemDetails).
-3. Filter registered `AggregationEnrichment` beans by selection and by `supports(context)` (shape check against the account-group response).
-4. `EnrichmentExecutor` fetches the remaining enrichments in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
-5. `AggregationMerger` mutates a copy of the account-group response and applies each enrichment's `merge(root, response)` in registered order.
+3. Expand dependencies and filter registered aggregation parts by selection and by `supports(context)`.
+4. `EnrichmentExecutor` fetches supported enrichments in dependency order with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
+5. `AggregationMerger` mutates a copy of the account-group response, then supported post-processors run in dependency order.
 
 Key collaborators:
 
@@ -39,9 +39,11 @@ Key collaborators:
 - `DownstreamClientErrorFilter` (per-group WebClient filter) maps 4xx/5xx to `DownstreamClientException` with the human client name from `HttpServiceGroups.downstreamClientName`.
 - `GlobalExceptionHandler` only handles internal `IllegalStateException` → 500. Validation and downstream problems are produced by Spring's ProblemDetails + `DownstreamClientException.toProblemDetail`. Problem type URIs live in `AggregationProblemTypes`.
 
-Enrichments (`enrichment/` package):
+Aggregation parts:
 
-- `AggregationEnrichment` is the SPI: `name()`, `supports(context)`, `fetch(context)`, `merge(root, response)`. Registration order of these beans is the merge order.
+- `AggregationPart` is the common SPI for optional pipeline behavior: `name()`, `dependencies()`, `supports(context)`.
+- `AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`.
+- `AggregationPostProcessor` adds `apply(root, context)`.
 - `KeyedArrayEnrichment` (base class for `AccountEnrichment`, `OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`).
 - `PathExpression` is an intentionally tiny JSONPath-like engine: only `$`, `$.field`, `$.field[*]`, `$.field[*].nested`. No filters/slices/indexes/brackets/recursive descent — do not extend it casually; keep paths within this grammar.
 

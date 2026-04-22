@@ -17,4 +17,10 @@ record AggregationPartPlan(
                 .filter(enrichment -> enrichment.supports(context))
                 .toList();
     }
+
+    List<AggregationPostProcessor> supportedPostProcessors(AggregationContext context) {
+        return selectedPostProcessors.stream()
+                .filter(postProcessor -> postProcessor.supports(context))
+                .toList();
+    }
 }

@@ -306,6 +306,27 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_skipsUnsupportedPostProcessors() {
+        AggregateService service = aggregateServiceWith(List.of(), List.of(unsupportedPostProcessor("optionalAudit")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> {
+                    assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
+                    assertThat(aggregated.has("unsupportedPostProcessorRan")).isFalse();
+                })
+                .verifyComplete();
+    }
+
+    @Test
     void aggregate_enablesEnrichmentDependencies() {
         AggregateService service = aggregateServiceWith(
                 List.of(
@@ -728,6 +749,25 @@ class AggregateServiceTest {
             @Override
             public Mono<Void> apply(ObjectNode root, AggregationContext context) {
                 return Mono.empty();
+            }
+        };
+    }
+
+    private AggregationPostProcessor unsupportedPostProcessor(String name) {
+        return new AggregationPostProcessor() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public boolean supports(AggregationContext context) {
+                return false;
+            }
+
+            @Override
+            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
+                return Mono.fromRunnable(() -> root.put("unsupportedPostProcessorRan", true));
             }
         };
     }
