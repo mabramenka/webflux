@@ -10,16 +10,16 @@ public final class AggregationContext {
 
     private final JsonNode accountGroupResponse;
     private final ClientRequestContext clientRequestContext;
-    private final EnrichmentSelection enrichmentSelection;
+    private final AggregationPartSelection partSelection;
     private final ConcurrentMap<Object, Object> memo = new ConcurrentHashMap<>();
 
     public AggregationContext(
             JsonNode accountGroupResponse,
             ClientRequestContext clientRequestContext,
-            EnrichmentSelection enrichmentSelection) {
+            AggregationPartSelection partSelection) {
         this.accountGroupResponse = Objects.requireNonNull(accountGroupResponse, "accountGroupResponse");
         this.clientRequestContext = Objects.requireNonNull(clientRequestContext, "clientRequestContext");
-        this.enrichmentSelection = Objects.requireNonNull(enrichmentSelection, "enrichmentSelection");
+        this.partSelection = Objects.requireNonNull(partSelection, "partSelection");
     }
 
     public JsonNode accountGroupResponse() {
@@ -30,8 +30,8 @@ public final class AggregationContext {
         return clientRequestContext;
     }
 
-    public EnrichmentSelection enrichmentSelection() {
-        return enrichmentSelection;
+    public AggregationPartSelection partSelection() {
+        return partSelection;
     }
 
     public <T> T memoize(Object key, Function<JsonNode, T> compute) {

@@ -67,7 +67,7 @@ public final class AggregationErrorResponseAdvice extends ResponseEntityExceptio
     }
 
     // ErrorResponseException subclasses (DownstreamClientException, RequestValidationException,
-    // UnsupportedAggregationEnrichmentException) are matched by the parent's more-specific
+    // UnsupportedAggregationPartException) are matched by the parent's more-specific
     // handleException first; this runs only for truly unexpected throwables.
     @ExceptionHandler(Exception.class)
     public Mono<ResponseEntity<Object>> handleUnexpectedException(Exception ex, ServerWebExchange exchange) {

@@ -33,9 +33,9 @@ public class EnrichmentExecutor {
                 });
     }
 
-    private void recordFetch(String enrichmentName, String outcome) {
+    private void recordFetch(String partName, String outcome) {
         meterRegistry
-                .counter("aggregation.enrichment.requests", "enrichment", enrichmentName, "outcome", outcome)
+                .counter("aggregation.part.requests", "part", partName, "outcome", outcome)
                 .increment();
     }
 }

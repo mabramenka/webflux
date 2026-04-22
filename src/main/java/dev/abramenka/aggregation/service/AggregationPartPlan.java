@@ -2,13 +2,13 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.model.AggregationContext;
-import dev.abramenka.aggregation.model.EnrichmentSelection;
+import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.List;
 
 record AggregationPartPlan(
-        EnrichmentSelection requestedSelection,
-        EnrichmentSelection effectiveSelection,
+        AggregationPartSelection requestedSelection,
+        AggregationPartSelection effectiveSelection,
         List<AggregationEnrichment> selectedEnrichments,
         List<AggregationPostProcessor> selectedPostProcessors) {
 

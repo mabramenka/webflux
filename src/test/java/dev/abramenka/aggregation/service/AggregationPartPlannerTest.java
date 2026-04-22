@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
-import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException;
+import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.List;
@@ -40,7 +40,7 @@ class AggregationPartPlannerTest {
         AggregationPartPlanner planner = new AggregationPartPlanner(List.of(enrichment("account")), List.of());
 
         assertThatThrownBy(() -> planner.plan(List.of("missing")))
-                .isInstanceOf(UnsupportedAggregationEnrichmentException.class)
+                .isInstanceOf(UnsupportedAggregationPartException.class)
                 .hasMessageContaining("missing");
     }
 
