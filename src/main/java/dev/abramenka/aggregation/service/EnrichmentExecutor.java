@@ -10,7 +10,7 @@ import reactor.core.publisher.Mono;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class EnrichmentExecutor {
+class EnrichmentExecutor {
 
     private final AggregationPartMetrics metrics;
 
