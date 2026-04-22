@@ -30,7 +30,6 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Set;
-import org.jspecify.annotations.NonNull;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -909,22 +908,17 @@ class AggregateServiceTest {
     private AggregationEnrichment emptyEnrichment() {
         return new AggregationEnrichment() {
             @Override
-            public @NonNull String name() {
+            public String name() {
                 return "empty";
             }
 
             @Override
-            public boolean supports(@NonNull AggregationContext context) {
-                return true;
-            }
-
-            @Override
-            public @NonNull Mono<JsonNode> fetch(@NonNull AggregationContext context) {
+            public Mono<JsonNode> fetch(AggregationContext context) {
                 return Mono.empty();
             }
 
             @Override
-            public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
                 throw new IllegalStateException("Empty enrichment should not be merged");
             }
         };
@@ -933,24 +927,19 @@ class AggregateServiceTest {
     private AggregationEnrichment failingMergeEnrichment() {
         return new AggregationEnrichment() {
             @Override
-            public @NonNull String name() {
+            public String name() {
                 return "mergeFailure";
             }
 
             @Override
-            public boolean supports(@NonNull AggregationContext context) {
-                return true;
-            }
-
-            @Override
-            public @NonNull Mono<JsonNode> fetch(@NonNull AggregationContext context) {
+            public Mono<JsonNode> fetch(AggregationContext context) {
                 ObjectNode response = objectMapper.createObjectNode();
                 response.put("status", "ok");
                 return Mono.just(response);
             }
 
             @Override
-            public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
                 root.put("failedMergeWasAttempted", true);
                 throw new IllegalStateException("merge failed");
             }

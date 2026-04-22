@@ -83,7 +83,7 @@ class HttpServiceExternalClientsTest {
     @MethodSource("clients")
     void fetch_mapsErrorStatusToIllegalStateException(WebClientCase clientCase) {
         ProblemCatalog expectedCatalog =
-                clientCase.main() ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
+                clientCase.isMain() ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
         WebClient webClient = webClient(ClientResponse.create(HttpStatus.BAD_REQUEST)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
                 .body("client unavailable")
@@ -107,16 +107,14 @@ class HttpServiceExternalClientsTest {
     @MethodSource("clients")
     void fetch_usesDefaultErrorMessageForEmptyErrorBody(WebClientCase clientCase) {
         ProblemCatalog expectedCatalog =
-                clientCase.main() ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
+                clientCase.isMain() ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
         WebClient webClient = webClient(
                 ClientResponse.create(HttpStatus.BAD_GATEWAY).body(" ").build());
 
         StepVerifier.create(clientCase.invocationFactory().apply(webClient).fetch(REQUEST, CLIENT_REQUEST_CONTEXT))
-                .expectErrorSatisfies(error -> {
-                    assertThat(error)
-                            .isInstanceOf(DownstreamClientException.class)
-                            .hasMessage(expectedCatalog.defaultDetail());
-                })
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .hasMessage(expectedCatalog.defaultDetail()))
                 .verify();
     }
 
@@ -139,7 +137,7 @@ class HttpServiceExternalClientsTest {
     @MethodSource("clients")
     void fetch_mapsTransportErrorToDownstreamClientException(WebClientCase clientCase) {
         ProblemCatalog expectedCatalog =
-                clientCase.main() ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
+                clientCase.isMain() ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
         WebClient webClient = WebClient.builder()
                 .baseUrl("https://client.example")
                 .exchangeFunction(request -> Mono.error(new IOException("connection refused")))
@@ -245,7 +243,7 @@ class HttpServiceExternalClientsTest {
 
     private record WebClientCase(
             String path, String errorPrefix, Function<WebClient, WebClientInvocation> invocationFactory) {
-        boolean main() {
+        boolean isMain() {
             return "Account group".equals(errorPrefix);
         }
     }

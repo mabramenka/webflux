@@ -13,7 +13,6 @@ import java.util.Set;
 final class AggregationPartGraph {
 
     private final List<AggregationPart> parts;
-    private final List<AggregationPart> orderedParts;
     private final Map<String, AggregationPart> partsByName;
     private final AggregationPartLevelPlanner levelPlanner;
 
@@ -21,8 +20,8 @@ final class AggregationPartGraph {
         this.parts = List.copyOf(parts);
         this.partsByName = buildPartsIndex(this.parts);
         validateDependencies(this.parts, this.partsByName);
-        this.orderedParts = orderByDependencies(this.parts, this.partsByName);
-        this.levelPlanner = new AggregationPartLevelPlanner(this.orderedParts, this.partsByName);
+        List<AggregationPart> orderedParts = orderByDependencies(this.parts, this.partsByName);
+        this.levelPlanner = new AggregationPartLevelPlanner(orderedParts, this.partsByName);
     }
 
     static AggregationPartGraph from(List<AggregationPart> registeredParts) {

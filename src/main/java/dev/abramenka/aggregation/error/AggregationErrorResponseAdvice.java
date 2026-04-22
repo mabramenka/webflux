@@ -186,8 +186,7 @@ public final class AggregationErrorResponseAdvice extends ResponseEntityExceptio
             return body;
         }
         ProblemCatalog catalog = catalogForFrameworkStatus(status);
-        ProblemDetail contractBody = FacadeException.problemDetail(catalog, null, List.of());
-        return contractBody;
+        return FacadeException.problemDetail(catalog, null, List.of());
     }
 
     private static ProblemCatalog catalogForFrameworkStatus(HttpStatusCode status) {

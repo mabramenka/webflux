@@ -6,7 +6,6 @@ import java.net.SocketTimeoutException;
 import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.codec.DecodingException;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 
 public final class DownstreamClientException extends FacadeException {
@@ -28,7 +27,7 @@ public final class DownstreamClientException extends FacadeException {
 
     public static DownstreamClientException contractViolation(String clientName) {
         return new DownstreamClientException(
-                main(clientName) ? ProblemCatalog.MAIN_CONTRACT_VIOLATION : ProblemCatalog.ENRICH_CONTRACT_VIOLATION,
+                isMain(clientName) ? ProblemCatalog.MAIN_CONTRACT_VIOLATION : ProblemCatalog.ENRICH_CONTRACT_VIOLATION,
                 clientName,
                 null,
                 null);
@@ -53,30 +52,24 @@ public final class DownstreamClientException extends FacadeException {
     }
 
     private static ProblemCatalog catalogForStatus(String clientName, HttpStatusCode status) {
-        if (status.value() == HttpStatus.UNAUTHORIZED.value() || status.value() == HttpStatus.FORBIDDEN.value()) {
-            return main(clientName) ? ProblemCatalog.MAIN_AUTH_FAILED : ProblemCatalog.ENRICH_AUTH_FAILED;
-        }
-        if (status.value() == HttpStatus.REQUEST_TIMEOUT.value()
-                || status.value() == HttpStatus.GATEWAY_TIMEOUT.value()) {
-            return main(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
-        }
-        if (status.value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
-            return main(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
-        }
-        if (status.value() == HttpStatus.NOT_FOUND.value()) {
-            return main(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_CONTRACT_VIOLATION;
-        }
-        return main(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
+        return switch (status.value()) {
+            case 401, 403 -> isMain(clientName) ? ProblemCatalog.MAIN_AUTH_FAILED : ProblemCatalog.ENRICH_AUTH_FAILED;
+            case 408, 504 -> isMain(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
+            case 503 -> isMain(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
+            case 404 ->
+                isMain(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_CONTRACT_VIOLATION;
+            default -> isMain(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
+        };
     }
 
     private static ProblemCatalog catalogForTransport(String clientName, @Nullable Throwable cause) {
         if (isTimeout(cause)) {
-            return main(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
+            return isMain(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
         }
         if (isInvalidPayload(cause)) {
-            return main(clientName) ? ProblemCatalog.MAIN_INVALID_PAYLOAD : ProblemCatalog.ENRICH_INVALID_PAYLOAD;
+            return isMain(clientName) ? ProblemCatalog.MAIN_INVALID_PAYLOAD : ProblemCatalog.ENRICH_INVALID_PAYLOAD;
         }
-        return main(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
+        return isMain(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
     }
 
     private static boolean isTimeout(@Nullable Throwable cause) {
@@ -104,7 +97,7 @@ public final class DownstreamClientException extends FacadeException {
         return false;
     }
 
-    private static boolean main(String clientName) {
+    private static boolean isMain(String clientName) {
         return MAIN_CLIENT_NAME.equals(clientName);
     }
 
@@ -112,7 +105,7 @@ public final class DownstreamClientException extends FacadeException {
         if (catalog.category() == ProblemCategory.CLIENT_REQUEST) {
             return null;
         }
-        if (main(clientName)) {
+        if (isMain(clientName)) {
             return "main";
         }
         return switch (clientName) {
