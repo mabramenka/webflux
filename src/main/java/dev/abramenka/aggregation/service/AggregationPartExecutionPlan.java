@@ -1,8 +1,6 @@
 package dev.abramenka.aggregation.service;
 
-import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
-import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
+import dev.abramenka.aggregation.model.AggregationPart;
 import java.util.List;
 
-record AggregationPartExecutionPlan(
-        List<AggregationEnrichment> enrichmentPhase, List<AggregationPostProcessor> postProcessorPhase) {}
+record AggregationPartExecutionPlan(List<List<AggregationPart>> levels) {}

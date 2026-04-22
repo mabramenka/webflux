@@ -2,6 +2,7 @@ package dev.abramenka.aggregation.enrichment;
 
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
+import dev.abramenka.aggregation.model.AggregationPartResult;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -11,4 +12,14 @@ public interface AggregationEnrichment extends AggregationPart {
     Mono<JsonNode> fetch(AggregationContext context);
 
     void merge(ObjectNode root, JsonNode enrichmentResponse);
+
+    @Override
+    default Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
+        return fetch(context)
+                .map(response -> AggregationPartResult.mutation(name(), root -> {
+                    ObjectNode workingRoot = root.deepCopy();
+                    merge(workingRoot, response);
+                    AggregationPartResult.patch(name(), root, workingRoot).applyTo(root);
+                }));
+    }
 }

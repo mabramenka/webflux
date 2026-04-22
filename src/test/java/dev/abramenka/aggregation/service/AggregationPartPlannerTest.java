@@ -6,16 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
-import dev.abramenka.aggregation.model.AggregationPartSelection;
-import dev.abramenka.aggregation.model.ClientRequestContext;
-import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class AggregationPartPlannerTest {
@@ -37,6 +34,9 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedPostProcessors())
                 .extracting(AggregationPostProcessor::name)
                 .containsExactly("beneficialOwners");
+        assertThat(plan.executionPlan().levels())
+                .extracting(AggregationPartPlannerTest::partNames)
+                .containsExactly(List.of("account"), List.of("auditTrail"), List.of("beneficialOwners"));
     }
 
     @Test
@@ -49,6 +49,9 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedEnrichments())
                 .extracting(AggregationEnrichment::name)
                 .containsExactly("account", "auditTrail");
+        assertThat(plan.executionPlan().levels())
+                .extracting(AggregationPartPlannerTest::partNames)
+                .containsExactly(List.of("account"), List.of("auditTrail"));
     }
 
     @Test
@@ -61,10 +64,13 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedPostProcessors())
                 .extracting(AggregationPostProcessor::name)
                 .containsExactly("beneficialOwners", "summary");
+        assertThat(plan.executionPlan().levels())
+                .extracting(AggregationPartPlannerTest::partNames)
+                .containsExactly(List.of("beneficialOwners"), List.of("summary"));
     }
 
     @Test
-    void plan_filtersUnsupportedPostProcessors() {
+    void plan_keepsSelectedPartsForRuntimeSupportCheck() {
         AggregationPartPlanner planner =
                 new AggregationPartPlanner(List.of(), List.of(unsupportedPostProcessor("beneficialOwners")));
 
@@ -73,7 +79,9 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedPostProcessors())
                 .extracting(AggregationPostProcessor::name)
                 .containsExactly("beneficialOwners");
-        assertThat(plan.executionPlan(context()).postProcessorPhase()).isEmpty();
+        assertThat(plan.executionPlan().levels())
+                .extracting(AggregationPartPlannerTest::partNames)
+                .containsExactly(List.of("beneficialOwners"));
     }
 
     @Test
@@ -109,13 +117,15 @@ class AggregationPartPlannerTest {
     }
 
     @Test
-    void constructor_rejectsEnrichmentDependingOnPostProcessor() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(
-                        List.of(enrichment("auditTrail", "beneficialOwners")),
-                        List.of(postProcessor("beneficialOwners"))))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining(
-                        "Aggregation enrichment auditTrail depends on post-processor(s): beneficialOwners");
+    void constructor_allowsDependenciesAcrossPartTypes() {
+        AggregationPartPlanner planner = new AggregationPartPlanner(
+                List.of(enrichment("auditTrail", "beneficialOwners")), List.of(postProcessor("beneficialOwners")));
+
+        AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
+
+        assertThat(plan.executionPlan().levels())
+                .extracting(AggregationPartPlannerTest::partNames)
+                .containsExactly(List.of("beneficialOwners"), List.of("auditTrail"));
     }
 
     private static AggregationEnrichment enrichment(String name, String... dependencies) {
@@ -183,10 +193,7 @@ class AggregationPartPlannerTest {
         };
     }
 
-    private static AggregationContext context() {
-        return new AggregationContext(
-                JsonMapper.builder().build().createObjectNode(),
-                new ClientRequestContext(ForwardedHeaders.builder().build(), null),
-                AggregationPartSelection.from(null));
+    private static List<String> partNames(List<AggregationPart> parts) {
+        return parts.stream().map(AggregationPart::name).toList();
     }
 }

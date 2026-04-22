@@ -34,6 +34,10 @@ public final class AggregationContext {
         return partSelection;
     }
 
+    public AggregationContext withAccountGroupResponse(JsonNode accountGroupResponse) {
+        return new AggregationContext(accountGroupResponse, clientRequestContext, partSelection);
+    }
+
     public <T> T memoize(Object key, Function<JsonNode, T> compute) {
         @SuppressWarnings("unchecked")
         T value = (T) memo.computeIfAbsent(key, k -> compute.apply(accountGroupResponse));
