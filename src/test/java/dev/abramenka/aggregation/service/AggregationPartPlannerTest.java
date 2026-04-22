@@ -36,6 +36,30 @@ class AggregationPartPlannerTest {
     }
 
     @Test
+    void plan_ordersSelectedEnrichmentsByDependencies() {
+        AggregationPartPlanner planner = new AggregationPartPlanner(
+                List.of(enrichment("auditTrail", "account"), enrichment("account")), List.of());
+
+        AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
+
+        assertThat(plan.selectedEnrichments())
+                .extracting(AggregationEnrichment::name)
+                .containsExactly("account", "auditTrail");
+    }
+
+    @Test
+    void plan_ordersSelectedPostProcessorsByDependencies() {
+        AggregationPartPlanner planner = new AggregationPartPlanner(
+                List.of(), List.of(postProcessor("summary", "beneficialOwners"), postProcessor("beneficialOwners")));
+
+        AggregationPartPlan plan = planner.plan(List.of("summary"));
+
+        assertThat(plan.selectedPostProcessors())
+                .extracting(AggregationPostProcessor::name)
+                .containsExactly("beneficialOwners", "summary");
+    }
+
+    @Test
     void plan_rejectsUnknownRequestedPart() {
         AggregationPartPlanner planner = new AggregationPartPlanner(List.of(enrichment("account")), List.of());
 
@@ -57,6 +81,24 @@ class AggregationPartPlannerTest {
         assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account", "missing")), List.of()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unknown aggregation component dependency for account: missing");
+    }
+
+    @Test
+    void constructor_rejectsCyclicDependencies() {
+        assertThatThrownBy(() -> new AggregationPartPlanner(
+                        List.of(enrichment("account", "owners"), enrichment("owners", "account")), List.of()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cyclic aggregation component dependency");
+    }
+
+    @Test
+    void constructor_rejectsEnrichmentDependingOnPostProcessor() {
+        assertThatThrownBy(() -> new AggregationPartPlanner(
+                        List.of(enrichment("auditTrail", "beneficialOwners")),
+                        List.of(postProcessor("beneficialOwners"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(
+                        "Aggregation enrichment auditTrail depends on post-processor(s): beneficialOwners");
     }
 
     private static AggregationEnrichment enrichment(String name, String... dependencies) {
