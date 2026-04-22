@@ -14,7 +14,7 @@ import dev.abramenka.aggregation.config.ServerClientRequestContextArgumentResolv
 import dev.abramenka.aggregation.config.WebFluxConfig;
 import dev.abramenka.aggregation.error.AggregationErrorResponseAdvice;
 import dev.abramenka.aggregation.error.DownstreamClientException;
-import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException;
+import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.service.AggregateService;
 import java.util.List;
@@ -262,7 +262,7 @@ class AggregateControllerTest {
     @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
         when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
-                .thenReturn(Mono.error(new UnsupportedAggregationEnrichmentException(List.of("foo"))));
+                .thenReturn(Mono.error(new UnsupportedAggregationPartException(List.of("foo"))));
 
         webTestClient
                 .post()
@@ -276,12 +276,17 @@ class AggregateControllerTest {
                 .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT)
                 .expectHeader()
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
-                .expectBody(String.class)
-                .value(body -> assertThat(body)
-                        .contains("\"status\":" + HttpStatus.UNPROCESSABLE_CONTENT.value())
-                        .contains("Unsupported aggregation enrichment(s): foo")
-                        .contains("/problems/unsupported-aggregation-enrichment")
-                        .contains("/api/v1/aggregate"));
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/unsupported-aggregation-part")
+                .jsonPath("$.status")
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT.value())
+                .jsonPath("$.detail")
+                .isEqualTo("Unsupported aggregation part(s): foo")
+                .jsonPath("$.parts[0]")
+                .isEqualTo("foo")
+                .jsonPath("$.instance")
+                .isEqualTo("/api/v1/aggregate");
     }
 
     @Test

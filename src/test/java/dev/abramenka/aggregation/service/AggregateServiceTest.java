@@ -15,7 +15,7 @@ import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.enrichment.OwnersEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.RequestValidationException;
-import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException;
+import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
@@ -107,7 +107,7 @@ class AggregateServiceTest {
                             .isFalse();
                 })
                 .verifyComplete();
-        assertEnrichmentMetric("account", "failure", 1);
+        assertPartMetric("account", "failure", 1);
 
         JsonNode accountResponse = json("""
             {
@@ -134,11 +134,11 @@ class AggregateServiceTest {
                     assertThat(root.has("account1")).isFalse();
                 })
                 .verifyComplete();
-        assertEnrichmentMetric("account", "success", 1);
+        assertPartMetric("account", "success", 1);
     }
 
     @Test
-    void aggregate_fetchesOnlyEnrichmentSelection() {
+    void aggregate_fetchesOnlyPartSelection() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
 
         JsonNode accountGroupResponse = json("""
@@ -190,12 +190,12 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_rejectsUnknownEnrichmentSelectionBeforeCallingAccountGroup() {
+    void aggregate_rejectsUnknownPartSelectionBeforeCallingAccountGroup() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("unknown"));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(UnsupportedAggregationEnrichmentException.class)
+                        .isInstanceOf(UnsupportedAggregationPartException.class)
                         .hasMessageContaining("unknown"))
                 .verify();
 
@@ -203,7 +203,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_rejectsBlankEnrichmentSelectionBeforeCallingAccountGroup() {
+    void aggregate_rejectsBlankPartSelectionBeforeCallingAccountGroup() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of(" "));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
@@ -253,7 +253,7 @@ class AggregateServiceTest {
                         assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
                 .verifyComplete();
 
-        assertEnrichmentMetric("empty", "empty", 1);
+        assertPartMetric("empty", "empty", 1);
     }
 
     @Test
@@ -372,7 +372,7 @@ class AggregateServiceTest {
                 })
                 .verifyComplete();
 
-        assertEnrichmentMetric("mergeFailure", "success", 1);
+        assertPartMetric("mergeFailure", "success", 1);
     }
 
     @Test
@@ -732,10 +732,10 @@ class AggregateServiceTest {
         };
     }
 
-    private void assertEnrichmentMetric(String enrichment, String outcome, double count) {
+    private void assertPartMetric(String part, String outcome, double count) {
         assertThat(meterRegistry
-                        .get("aggregation.enrichment.requests")
-                        .tag("enrichment", enrichment)
+                        .get("aggregation.part.requests")
+                        .tag("part", part)
                         .tag("outcome", outcome)
                         .counter()
                         .count())

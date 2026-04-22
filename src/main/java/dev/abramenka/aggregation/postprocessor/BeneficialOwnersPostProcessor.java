@@ -20,7 +20,7 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
     static final String NAME = "beneficialOwners";
     private static final String TARGET_FIELD = "beneficialOwnersDetails";
     private static final String TREE_METRIC = "aggregation.beneficial_owners.tree";
-    private static final String PHASE_METRIC = "aggregation.enrichment.requests";
+    private static final String PHASE_METRIC = "aggregation.part.requests";
 
     private final OwnershipResolver resolver;
     private final MeterRegistry meterRegistry;
@@ -95,9 +95,7 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
     }
 
     private void recordPhase(String outcome) {
-        meterRegistry
-                .counter(PHASE_METRIC, "enrichment", NAME, "outcome", outcome)
-                .increment();
+        meterRegistry.counter(PHASE_METRIC, "part", NAME, "outcome", outcome).increment();
     }
 
     private record ResolvedEntity(ObjectNode entity, ArrayNode array) {}

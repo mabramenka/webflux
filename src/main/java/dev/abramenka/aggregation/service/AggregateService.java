@@ -47,9 +47,9 @@ public class AggregateService {
             Observation observation = Observation.start("aggregation.request", observationRegistry);
             AggregationPartPlan partPlan = partPlanner.plan(request.include());
             observation.lowCardinalityKeyValue(
-                    "enrichment_selection", partPlan.requestedSelection().all() ? "all" : "subset");
+                    "part_selection", partPlan.requestedSelection().all() ? "all" : "subset");
             observation.lowCardinalityKeyValue(
-                    "requested_enrichments",
+                    "requested_parts",
                     Integer.toString(partPlan.requestedSelection().names().size()));
 
             ObjectNode accountGroupRequest = toAccountGroupRequest(request.ids());

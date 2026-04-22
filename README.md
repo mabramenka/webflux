@@ -205,17 +205,17 @@ Emitted for unreadable or malformed inputs below the validation layer (for examp
 
 No `errors` array is emitted for this type.
 
-### 422 Unprocessable Content — unsupported enrichment name
+### 422 Unprocessable Content — unsupported aggregation part name
 
-Emitted when `include` contains a name that is not a registered enrichment or post-processor. Validation runs before the account group service is called.
+Emitted when `include` contains a name that is not a registered aggregation part. Validation runs before the account group service is called.
 
 ```json
 {
-  "type": "/problems/unsupported-aggregation-enrichment",
+  "type": "/problems/unsupported-aggregation-part",
   "title": "Unprocessable Content",
   "status": 422,
-  "detail": "Unsupported aggregation enrichment(s): foo",
-  "enrichments": ["foo"]
+  "detail": "Unsupported aggregation part(s): foo",
+  "parts": ["foo"]
 }
 ```
 
@@ -405,8 +405,8 @@ All other Actuator endpoints are disabled by default.
 
 Custom metric names:
 
-- `aggregation.request`, tagged by `enrichment_selection` and `requested_enrichments`
-- `aggregation.enrichment.requests`, tagged by `enrichment` and `outcome` (emitted by enrichments and post-processors)
+- `aggregation.request`, tagged by `part_selection` and `requested_parts`
+- `aggregation.part.requests`, tagged by `part` and `outcome` (emitted by enrichments and post-processors)
 - `aggregation.beneficial_owners.tree`, tagged by `outcome` (per root entity resolved by the beneficial-owners post-processor)
 
 ## Quality Gates

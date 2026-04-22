@@ -8,8 +8,8 @@ import static org.mockito.Mockito.when;
 
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.ClientRequestContext;
-import dev.abramenka.aggregation.model.EnrichmentSelection;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.HashSet;
@@ -257,13 +257,13 @@ class BeneficialOwnersPostProcessorTest {
         return new AggregationContext(
                 objectMapper.createObjectNode(),
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null),
-                EnrichmentSelection.from(null));
+                AggregationPartSelection.from(null));
     }
 
     private void assertPhaseMetric(String outcome, double count) {
         assertThat(meterRegistry
-                        .get("aggregation.enrichment.requests")
-                        .tag("enrichment", BeneficialOwnersPostProcessor.NAME)
+                        .get("aggregation.part.requests")
+                        .tag("part", BeneficialOwnersPostProcessor.NAME)
                         .tag("outcome", outcome)
                         .counter()
                         .count())

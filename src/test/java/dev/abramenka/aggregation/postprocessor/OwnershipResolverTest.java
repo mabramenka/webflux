@@ -9,8 +9,8 @@ import static org.mockito.Mockito.when;
 
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.ClientRequestContext;
-import dev.abramenka.aggregation.model.EnrichmentSelection;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -236,6 +236,6 @@ class OwnershipResolverTest {
         ClientRequestContext clientRequestContext =
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null);
         ObjectNode accountGroupResponse = objectMapper.createObjectNode();
-        return new AggregationContext(accountGroupResponse, clientRequestContext, EnrichmentSelection.from(null));
+        return new AggregationContext(accountGroupResponse, clientRequestContext, AggregationPartSelection.from(null));
     }
 }

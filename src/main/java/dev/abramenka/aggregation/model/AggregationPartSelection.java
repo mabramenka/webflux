@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
-public record EnrichmentSelection(boolean all, Set<String> names) {
+public record AggregationPartSelection(boolean all, Set<String> names) {
 
-    public static EnrichmentSelection from(@Nullable List<String> include) {
+    public static AggregationPartSelection from(@Nullable List<String> include) {
         if (include == null) {
-            return new EnrichmentSelection(true, Set.of());
+            return new AggregationPartSelection(true, Set.of());
         }
 
         Set<String> requested = new LinkedHashSet<>();
@@ -27,8 +27,8 @@ public record EnrichmentSelection(boolean all, Set<String> names) {
         return subset(requested);
     }
 
-    public static EnrichmentSelection subset(Set<String> names) {
-        return new EnrichmentSelection(false, Collections.unmodifiableSet(new LinkedHashSet<>(names)));
+    public static AggregationPartSelection subset(Set<String> names) {
+        return new AggregationPartSelection(false, Collections.unmodifiableSet(new LinkedHashSet<>(names)));
     }
 
     public boolean includes(String name) {

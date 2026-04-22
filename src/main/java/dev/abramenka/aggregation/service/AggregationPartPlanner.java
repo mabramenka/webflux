@@ -1,9 +1,9 @@
 package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
-import dev.abramenka.aggregation.error.UnsupportedAggregationEnrichmentException;
+import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationPart;
-import dev.abramenka.aggregation.model.EnrichmentSelection;
+import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,9 +31,9 @@ class AggregationPartPlanner {
     }
 
     AggregationPartPlan plan(@Nullable List<String> include) {
-        EnrichmentSelection requestedSelection = EnrichmentSelection.from(include);
+        AggregationPartSelection requestedSelection = AggregationPartSelection.from(include);
         validateSelection(requestedSelection);
-        EnrichmentSelection effectiveSelection = expandDependencies(requestedSelection);
+        AggregationPartSelection effectiveSelection = expandDependencies(requestedSelection);
         return new AggregationPartPlan(
                 requestedSelection,
                 effectiveSelection,
@@ -41,38 +41,38 @@ class AggregationPartPlanner {
                 selectedPostProcessors(effectiveSelection));
     }
 
-    private List<AggregationEnrichment> selectedEnrichments(EnrichmentSelection effectiveSelection) {
+    private List<AggregationEnrichment> selectedEnrichments(AggregationPartSelection effectiveSelection) {
         return enrichments.stream()
                 .filter(enrichment -> effectiveSelection.includes(enrichment.name()))
                 .toList();
     }
 
-    private List<AggregationPostProcessor> selectedPostProcessors(EnrichmentSelection effectiveSelection) {
+    private List<AggregationPostProcessor> selectedPostProcessors(AggregationPartSelection effectiveSelection) {
         return postProcessors.stream()
                 .filter(postProcessor -> effectiveSelection.includes(postProcessor.name()))
                 .toList();
     }
 
-    private void validateSelection(EnrichmentSelection enrichmentSelection) {
-        if (enrichmentSelection.all()) {
+    private void validateSelection(AggregationPartSelection partSelection) {
+        if (partSelection.all()) {
             return;
         }
 
-        List<String> unknownParts = enrichmentSelection.names().stream()
+        List<String> unknownParts = partSelection.names().stream()
                 .filter(name -> !knownNames.contains(name))
                 .toList();
 
         if (!unknownParts.isEmpty()) {
-            throw new UnsupportedAggregationEnrichmentException(unknownParts);
+            throw new UnsupportedAggregationPartException(unknownParts);
         }
     }
 
-    private EnrichmentSelection expandDependencies(EnrichmentSelection enrichmentSelection) {
-        if (enrichmentSelection.all()) {
-            return enrichmentSelection;
+    private AggregationPartSelection expandDependencies(AggregationPartSelection partSelection) {
+        if (partSelection.all()) {
+            return partSelection;
         }
 
-        Set<String> effectiveNames = new LinkedHashSet<>(enrichmentSelection.names());
+        Set<String> effectiveNames = new LinkedHashSet<>(partSelection.names());
         boolean changed;
         do {
             changed = false;
@@ -82,7 +82,7 @@ class AggregationPartPlanner {
                 }
             }
         } while (changed);
-        return EnrichmentSelection.subset(effectiveNames);
+        return AggregationPartSelection.subset(effectiveNames);
     }
 
     private static List<AggregationPart> parts(

@@ -27,7 +27,7 @@ Entry: `POST /api/v1/aggregate` → `AggregateController` (`@Valid` on `Aggregat
 
 Aggregation pipeline in `AggregateService.aggregate`:
 
-1. Build `EnrichmentSelection` from `request.include()` and validate unknown names up front.
+1. Build `AggregationPartSelection` from `request.include()` and validate unknown names up front.
 2. POST ids to the `account-group` downstream. Unreadable/error responses are mapped to `DownstreamClientException` (→ 502 problem+json via Spring's ProblemDetails).
 3. Filter registered `AggregationEnrichment` beans by selection and by `supports(context)` (shape check against the account-group response).
 4. `EnrichmentExecutor` fetches the remaining enrichments in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
@@ -45,7 +45,7 @@ Enrichments (`enrichment/` package):
 - `KeyedArrayEnrichment` (base class for `AccountEnrichment`, `OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`).
 - `PathExpression` is an intentionally tiny JSONPath-like engine: only `$`, `$.field`, `$.field[*]`, `$.field[*].nested`. No filters/slices/indexes/brackets/recursive descent — do not extend it casually; keep paths within this grammar.
 
-Metrics (Micrometer): `aggregation.request` tagged by `enrichment_selection` (`all`/`subset`) and `requested_enrichments` (count); `aggregation.enrichment.requests` tagged by `enrichment` and `outcome`.
+Metrics (Micrometer): `aggregation.request` tagged by `part_selection` (`all`/`subset`) and `requested_parts` (count); `aggregation.part.requests` tagged by `part` and `outcome`.
 
 Config profiles: `application.yaml` is the default; `application-structured.yaml` switches logging to ECS JSON (activate with `--spring.profiles.active=structured`). Actuator exposure is locked down to `health`, `info`, `metrics` (plus liveness/readiness probes).
 
