@@ -6,12 +6,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationPartSelection;
+import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class AggregationPartPlannerTest {
@@ -57,6 +61,19 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedPostProcessors())
                 .extracting(AggregationPostProcessor::name)
                 .containsExactly("beneficialOwners", "summary");
+    }
+
+    @Test
+    void plan_filtersUnsupportedPostProcessors() {
+        AggregationPartPlanner planner =
+                new AggregationPartPlanner(List.of(), List.of(unsupportedPostProcessor("beneficialOwners")));
+
+        AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
+
+        assertThat(plan.selectedPostProcessors())
+                .extracting(AggregationPostProcessor::name)
+                .containsExactly("beneficialOwners");
+        assertThat(plan.supportedPostProcessors(context())).isEmpty();
     }
 
     @Test
@@ -145,5 +162,31 @@ class AggregationPartPlannerTest {
                 return Mono.empty();
             }
         };
+    }
+
+    private static AggregationPostProcessor unsupportedPostProcessor(String name) {
+        return new AggregationPostProcessor() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public boolean supports(AggregationContext context) {
+                return false;
+            }
+
+            @Override
+            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
+                return Mono.empty();
+            }
+        };
+    }
+
+    private static AggregationContext context() {
+        return new AggregationContext(
+                JsonMapper.builder().build().createObjectNode(),
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null),
+                AggregationPartSelection.from(null));
     }
 }

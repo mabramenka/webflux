@@ -8,8 +8,6 @@ import tools.jackson.databind.node.ObjectNode;
 
 public interface AggregationEnrichment extends AggregationPart {
 
-    boolean supports(AggregationContext context);
-
     Mono<JsonNode> fetch(AggregationContext context);
 
     void merge(ObjectNode root, JsonNode enrichmentResponse);
