@@ -32,8 +32,8 @@ class AggregationPartExecutor {
                 .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
                 .collectList()
                 .map(results -> aggregationMerger.merge(root, enabledEnrichments, results))
-                .flatMap(merged ->
-                        runPostProcessors(enabledPostProcessors, root, context).thenReturn(merged));
+                .flatMap(mergedRoot -> runPostProcessors(enabledPostProcessors, mergedRoot, context)
+                        .thenReturn(mergedRoot));
     }
 
     private Mono<Void> runPostProcessors(

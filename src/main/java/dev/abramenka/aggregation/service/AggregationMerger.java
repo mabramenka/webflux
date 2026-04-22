@@ -22,7 +22,7 @@ public class AggregationMerger {
         return (ObjectNode) accountGroupResponse.deepCopy();
     }
 
-    JsonNode merge(
+    ObjectNode merge(
             ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentFetchResult> results) {
         Map<String, Success> successByName = HashMap.newHashMap(results.size());
         for (EnrichmentFetchResult result : results) {
