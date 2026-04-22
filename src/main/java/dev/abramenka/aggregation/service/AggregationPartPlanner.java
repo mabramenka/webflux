@@ -6,6 +6,7 @@ import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,17 +18,17 @@ import org.springframework.stereotype.Component;
 @Component
 class AggregationPartPlanner {
 
-    private final List<AggregationEnrichment> enrichments;
-    private final List<AggregationPostProcessor> postProcessors;
     private final List<AggregationPart> parts;
+    private final List<AggregationPart> orderedParts;
+    private final Map<String, AggregationPart> partsByName;
     private final Set<String> knownNames;
 
     AggregationPartPlanner(List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
-        this.enrichments = List.copyOf(enrichments);
-        this.postProcessors = List.copyOf(postProcessors);
-        this.parts = parts(this.enrichments, this.postProcessors);
-        this.knownNames = buildKnownNamesIndex(this.parts);
-        validateDependencies(this.parts, this.knownNames);
+        this.parts = parts(List.copyOf(enrichments), List.copyOf(postProcessors));
+        this.partsByName = buildPartsIndex(this.parts);
+        this.knownNames = Set.copyOf(this.partsByName.keySet());
+        validateDependencies(this.parts, this.partsByName);
+        this.orderedParts = orderByDependencies(this.parts, this.partsByName);
     }
 
     AggregationPartPlan plan(@Nullable List<String> include) {
@@ -42,14 +43,18 @@ class AggregationPartPlanner {
     }
 
     private List<AggregationEnrichment> selectedEnrichments(AggregationPartSelection effectiveSelection) {
-        return enrichments.stream()
-                .filter(enrichment -> effectiveSelection.includes(enrichment.name()))
+        return orderedParts.stream()
+                .filter(AggregationEnrichment.class::isInstance)
+                .map(AggregationEnrichment.class::cast)
+                .filter(part -> effectiveSelection.includes(part.name()))
                 .toList();
     }
 
     private List<AggregationPostProcessor> selectedPostProcessors(AggregationPartSelection effectiveSelection) {
-        return postProcessors.stream()
-                .filter(postProcessor -> effectiveSelection.includes(postProcessor.name()))
+        return orderedParts.stream()
+                .filter(AggregationPostProcessor.class::isInstance)
+                .map(AggregationPostProcessor.class::cast)
+                .filter(part -> effectiveSelection.includes(part.name()))
                 .toList();
     }
 
@@ -94,30 +99,87 @@ class AggregationPartPlanner {
         return List.copyOf(parts);
     }
 
-    private static Set<String> buildKnownNamesIndex(List<AggregationPart> registeredParts) {
-        Set<String> names = new LinkedHashSet<>();
-        Map<String, Object> seen = new LinkedHashMap<>();
-        registeredParts.forEach(part -> addUnique(seen, names, part.name(), part));
-        return Set.copyOf(names);
+    private static Map<String, AggregationPart> buildPartsIndex(List<AggregationPart> registeredParts) {
+        Map<String, AggregationPart> index = new LinkedHashMap<>();
+        registeredParts.forEach(part -> addUnique(index, part.name(), part));
+        return Map.copyOf(index);
     }
 
-    private static void validateDependencies(List<AggregationPart> registeredParts, Set<String> knownNames) {
+    private static void validateDependencies(
+            List<AggregationPart> registeredParts, Map<String, AggregationPart> partsByName) {
         for (AggregationPart part : registeredParts) {
             List<String> unknownDependencies = part.dependencies().stream()
-                    .filter(dependency -> !knownNames.contains(dependency))
+                    .filter(dependency -> !partsByName.containsKey(dependency))
                     .toList();
             if (!unknownDependencies.isEmpty()) {
                 throw new IllegalStateException("Unknown aggregation component dependency for " + part.name() + ": "
                         + String.join(", ", unknownDependencies));
             }
+            validatePhaseDependencies(part, partsByName);
         }
     }
 
-    private static void addUnique(Map<String, Object> seen, Set<String> names, String name, Object owner) {
-        Object previous = seen.putIfAbsent(name, owner);
+    private static void validatePhaseDependencies(AggregationPart part, Map<String, AggregationPart> partsByName) {
+        if (!(part instanceof AggregationEnrichment)) {
+            return;
+        }
+
+        List<String> postProcessorDependencies = part.dependencies().stream()
+                .filter(dependency -> partsByName.get(dependency) instanceof AggregationPostProcessor)
+                .toList();
+        if (!postProcessorDependencies.isEmpty()) {
+            throw new IllegalStateException("Aggregation enrichment " + part.name() + " depends on post-processor(s): "
+                    + String.join(", ", postProcessorDependencies));
+        }
+    }
+
+    private static List<AggregationPart> orderByDependencies(
+            List<AggregationPart> registeredParts, Map<String, AggregationPart> partsByName) {
+        List<AggregationPart> ordered = new ArrayList<>(registeredParts.size());
+        Set<String> visiting = new HashSet<>();
+        Set<String> visited = new HashSet<>();
+
+        for (AggregationPart part : registeredParts) {
+            appendWithDependencies(part, partsByName, visiting, visited, ordered);
+        }
+
+        return List.copyOf(ordered);
+    }
+
+    private static void appendWithDependencies(
+            AggregationPart part,
+            Map<String, AggregationPart> partsByName,
+            Set<String> visiting,
+            Set<String> visited,
+            List<AggregationPart> ordered) {
+        if (visited.contains(part.name())) {
+            return;
+        }
+        if (!visiting.add(part.name())) {
+            throw new IllegalStateException("Cyclic aggregation component dependency involving " + part.name());
+        }
+
+        for (String dependency : part.dependencies()) {
+            appendWithDependencies(partByName(partsByName, dependency), partsByName, visiting, visited, ordered);
+        }
+
+        visiting.remove(part.name());
+        visited.add(part.name());
+        ordered.add(part);
+    }
+
+    private static AggregationPart partByName(Map<String, AggregationPart> partsByName, String name) {
+        AggregationPart part = partsByName.get(name);
+        if (part == null) {
+            throw new IllegalStateException("Unknown aggregation component dependency: " + name);
+        }
+        return part;
+    }
+
+    private static void addUnique(Map<String, AggregationPart> index, String name, AggregationPart owner) {
+        AggregationPart previous = index.putIfAbsent(name, owner);
         if (previous != null) {
             throw new IllegalStateException("Duplicate aggregation component name: " + name);
         }
-        names.add(name);
     }
 }
