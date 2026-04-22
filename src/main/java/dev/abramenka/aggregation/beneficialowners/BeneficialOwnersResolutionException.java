@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.postprocessor;
+package dev.abramenka.aggregation.beneficialowners;
 
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;

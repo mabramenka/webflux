@@ -37,7 +37,7 @@ Key collaborators:
 
 - `ClientRequestContext` (a per-invocation POJO, not a Spring scope bean — built by `ClientRequestContextFactory` + `ServerClientRequestContextArgumentResolver`) carries forwarded headers (`Authorization`, `X-Request-Id`, `X-Correlation-Id`, `Accept-Language`) and the `detokenize` query flag. On the downstream side, `ClientRequestContextHttpServiceArgumentResolver` (registered via `WebClientHttpServiceGroupConfigurer`) turns it into `WebClient` headers/query params for HTTP exchange methods.
 - `dev.abramenka.aggregation.part.execution` owns the optional-part execution engine: selection planning, dependency graph levels, per-part execution, metrics, and root result application.
-- `AggregationPartPlanner` receives one ordered `List<AggregationPart>` from Spring. Do not reintroduce separate enrichment/post-processor planning paths inside the engine.
+- `AggregationPartPlanner` receives one ordered `List<AggregationPart>` from Spring. Do not reintroduce separate type-specific planning paths inside the engine.
 - Cross-package engine entry points are `AggregationPartPlanner`, `AggregationPartExecutor`, and `AggregationPartPlan`; keep runner, metrics, merger, result applicator, graph, and execution state package-private.
 - `DownstreamClientErrorFilter` (per-group WebClient filter) maps 4xx/5xx to `DownstreamClientException` with the human client name from `HttpServiceGroups.downstreamClientName`.
 - `AggregationErrorResponseAdvice` maps validation, unreadable request content, downstream `ErrorResponseException` subclasses, and unexpected failures to RFC 9457-style `ProblemDetail` responses.
@@ -47,7 +47,7 @@ Aggregation parts:
 - `AggregationPart` is the common SPI for optional pipeline behavior: `name()`, `dependencies()`, `supports(context)`, `execute(rootSnapshot, context)`.
 - `AggregationPartResult` is data, not an apply callback: parts return either a root replacement or a merge patch derived from a snapshot.
 - `AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`; its default execution merges into a snapshot and returns a patch result.
-- `AggregationPostProcessor` is a compatibility adapter for in-place document logic; its default execution mutates a snapshot and returns a patch result.
+- `AggregationDocumentPart` adapts in-place document mutation logic to the common `AggregationPart` result contract; its default execution mutates a snapshot and returns a patch result.
 - `KeyedArrayEnrichment` (base class for `AccountEnrichment`, `OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`).
 - `PathExpression` is an intentionally tiny JSONPath-like engine: only `$`, `$.field`, `$.field[*]`, `$.field[*].nested`. No filters/slices/indexes/brackets/recursive descent — do not extend it casually; keep paths within this grammar.
 

@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.postprocessor;
+package dev.abramenka.aggregation.part;
 
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
@@ -6,7 +6,7 @@ import dev.abramenka.aggregation.model.AggregationPartResult;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.node.ObjectNode;
 
-public interface AggregationPostProcessor extends AggregationPart {
+public interface AggregationDocumentPart extends AggregationPart {
 
     Mono<Void> apply(ObjectNode root, AggregationContext context);
 

@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.postprocessor;
+package dev.abramenka.aggregation.beneficialowners;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -26,7 +26,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 @ExtendWith(MockitoExtension.class)
-class BeneficialOwnersPostProcessorTest {
+class BeneficialOwnersPartTest {
 
     private final JsonMapper objectMapper = JsonMapper.builder().build();
 
@@ -34,13 +34,12 @@ class BeneficialOwnersPostProcessorTest {
     private Owners ownersClient;
 
     private SimpleMeterRegistry meterRegistry;
-    private BeneficialOwnersPostProcessor postProcessor;
+    private BeneficialOwnersPart documentPart;
 
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        postProcessor =
-                new BeneficialOwnersPostProcessor(new OwnershipResolver(ownersClient, objectMapper), meterRegistry);
+        documentPart = new BeneficialOwnersPart(new OwnershipResolver(ownersClient, objectMapper), meterRegistry);
     }
 
     @Test
@@ -80,7 +79,7 @@ class BeneficialOwnersPostProcessorTest {
                     return Mono.just(response);
                 });
 
-        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+        StepVerifier.create(documentPart.apply(root, context())).verifyComplete();
 
         JsonNode owners = root.path("data").path(0).path("owners1");
         assertThat(owners.path(0).has("beneficialOwnersDetails")).isFalse();
@@ -137,7 +136,7 @@ class BeneficialOwnersPostProcessorTest {
                     return Mono.error(new RuntimeException("owners 5xx"));
                 });
 
-        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+        StepVerifier.create(documentPart.apply(root, context())).verifyComplete();
 
         JsonNode owners = root.path("data").path(0).path("owners1");
         assertThat(owners.path(0).path("beneficialOwnersDetails").size()).isEqualTo(1);
@@ -161,7 +160,7 @@ class BeneficialOwnersPostProcessorTest {
             }
             """);
 
-        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+        StepVerifier.create(documentPart.apply(root, context())).verifyComplete();
 
         assertThat(root.path("data").path(0).path("owners1").path(0).has("beneficialOwnersDetails"))
                 .isFalse();
@@ -210,7 +209,7 @@ class BeneficialOwnersPostProcessorTest {
                     return Mono.just(response);
                 });
 
-        StepVerifier.create(postProcessor.apply(root, context())).verifyComplete();
+        StepVerifier.create(documentPart.apply(root, context())).verifyComplete();
 
         JsonNode firstOwner = root.path("data").path(0).path("owners1").path(0);
         JsonNode secondOwner = root.path("data").path(1).path("owners1").path(0);
@@ -233,7 +232,7 @@ class BeneficialOwnersPostProcessorTest {
 
     @Test
     void dependencies_includeOwnersEnrichment() {
-        assertThat(postProcessor.dependencies()).containsExactly("owners");
+        assertThat(documentPart.dependencies()).containsExactly("owners");
     }
 
     private JsonNode individual(String number) {
