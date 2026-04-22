@@ -269,7 +269,7 @@ Returned by the catch-all handler for any exception not mapped by a more specifi
 2. Build and send the account group request to `/account-groups`.
 3. Expand aggregation part dependencies for the requested `include` set.
 4. Skip optional parts that do not support the returned account group shape.
-5. Execute the enrichment phase in dependency order, fetching supported enrichments in parallel.
+5. Fetch supported enrichments in parallel with per-part failure isolation.
 6. Ignore failed optional enrichments and keep the account group response.
 7. Merge successful enrichment responses in dependency order.
 8. Execute the post-processor phase sequentially against the merged document. Post-processor failures are swallowed and do not affect the response.

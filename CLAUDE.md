@@ -30,8 +30,8 @@ Aggregation pipeline in `AggregateService.aggregate`:
 1. Build `AggregationPartSelection` from `request.include()` and validate unknown names up front.
 2. POST ids to the `account-group` downstream. Unreadable/error responses are mapped to `DownstreamClientException` (→ 502 problem+json via Spring's ProblemDetails).
 3. Expand dependencies and filter registered aggregation parts by selection and by `supports(context)`.
-4. `EnrichmentExecutor` fetches supported enrichments in dependency order with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
-5. `AggregationMerger` mutates a copy of the account-group response, then supported post-processors run in dependency order.
+4. `EnrichmentExecutor` fetches supported enrichments in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
+5. `AggregationMerger` mutates a copy of the account-group response in dependency order, then supported post-processors run in dependency order.
 
 Key collaborators:
 
