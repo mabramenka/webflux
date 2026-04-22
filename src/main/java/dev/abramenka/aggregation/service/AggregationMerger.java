@@ -2,7 +2,7 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.DownstreamClientException;
-import dev.abramenka.aggregation.service.EnrichmentFetchResult.Success;
+import dev.abramenka.aggregation.service.EnrichmentPhaseResult.Success;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,9 +23,9 @@ public class AggregationMerger {
     }
 
     ObjectNode merge(
-            ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentFetchResult> results) {
+            ObjectNode root, List<AggregationEnrichment> enabledEnrichments, List<EnrichmentPhaseResult> results) {
         Map<String, Success> successByName = HashMap.newHashMap(results.size());
-        for (EnrichmentFetchResult result : results) {
+        for (EnrichmentPhaseResult result : results) {
             if (result instanceof Success success) {
                 successByName.put(success.name(), success);
             }
