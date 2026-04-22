@@ -468,7 +468,7 @@ class AggregateServiceTest {
                 })
                 .verifyComplete();
 
-        assertPartMetric("mergeFailure", "success", 1);
+        assertPartMetric("mergeFailure", "failure", 1);
     }
 
     @Test

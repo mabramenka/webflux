@@ -62,11 +62,8 @@ class AggregationPartExecutorTest {
 
     @Test
     void execute_skipsDependentPartWhenDependencyIsUnsupported() {
-        AggregationPart dependency = part(
-                "source",
-                context -> false,
-                (root, context) ->
-                        Mono.just(AggregationPartResult.mutation("source", target -> target.put("sourceRan", true))));
+        AggregationPart dependency =
+                part("source", context -> false, (root, context) -> Mono.just(flagResult("source", root, "sourceRan")));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
@@ -87,8 +84,7 @@ class AggregationPartExecutorTest {
                 "dependent",
                 Set.of("source"),
                 context -> context.accountGroupResponse().path("sourceRan").asBoolean(false),
-                (root, context) -> Mono.just(
-                        AggregationPartResult.mutation("dependent", target -> target.put("dependentRan", true))));
+                (root, context) -> Mono.just(flagResult("dependent", root, "dependentRan")));
 
         StepVerifier.create(execute(dependency, dependent))
                 .assertNext(result -> {
@@ -124,7 +120,13 @@ class AggregationPartExecutorTest {
                 name,
                 Set.of(dependencies),
                 context -> true,
-                (root, context) -> Mono.just(AggregationPartResult.mutation(name, target -> target.put(flag, true))));
+                (root, context) -> Mono.just(flagResult(name, root, flag)));
+    }
+
+    private static AggregationPartResult flagResult(String name, ObjectNode rootSnapshot, String flag) {
+        ObjectNode replacement = rootSnapshot.deepCopy();
+        replacement.put(flag, true);
+        return AggregationPartResult.patch(name, rootSnapshot, replacement);
     }
 
     private static AggregationPart part(

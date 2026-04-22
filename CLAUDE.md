@@ -43,7 +43,8 @@ Key collaborators:
 Aggregation parts:
 
 - `AggregationPart` is the common SPI for optional pipeline behavior: `name()`, `dependencies()`, `supports(context)`, `execute(rootSnapshot, context)`.
-- `AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`; its default execution returns a root mutation result.
+- `AggregationPartResult` is data, not an apply callback: parts return either a root replacement or a merge patch derived from a snapshot.
+- `AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`; its default execution merges into a snapshot and returns a patch result.
 - `AggregationPostProcessor` is a compatibility adapter for in-place document logic; its default execution mutates a snapshot and returns a patch result.
 - `KeyedArrayEnrichment` (base class for `AccountEnrichment`, `OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`).
 - `PathExpression` is an intentionally tiny JSONPath-like engine: only `$`, `$.field`, `$.field[*]`, `$.field[*].nested`. No filters/slices/indexes/brackets/recursive descent — do not extend it casually; keep paths within this grammar.

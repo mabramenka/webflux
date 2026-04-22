@@ -15,11 +15,10 @@ public interface AggregationEnrichment extends AggregationPart {
 
     @Override
     default Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
-        return fetch(context)
-                .map(response -> AggregationPartResult.mutation(name(), root -> {
-                    ObjectNode workingRoot = root.deepCopy();
-                    merge(workingRoot, response);
-                    AggregationPartResult.patch(name(), root, workingRoot).applyTo(root);
-                }));
+        return fetch(context).map(response -> {
+            ObjectNode workingRoot = rootSnapshot.deepCopy();
+            merge(workingRoot, response);
+            return AggregationPartResult.patch(name(), rootSnapshot, workingRoot);
+        });
     }
 }
