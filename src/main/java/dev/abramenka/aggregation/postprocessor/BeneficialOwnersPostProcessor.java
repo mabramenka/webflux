@@ -20,7 +20,6 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
     static final String NAME = "beneficialOwners";
     private static final String TARGET_FIELD = "beneficialOwnersDetails";
     private static final String TREE_METRIC = "aggregation.beneficial_owners.tree";
-    private static final String PHASE_METRIC = "aggregation.part.requests";
 
     private final OwnershipResolver resolver;
     private final MeterRegistry meterRegistry;
@@ -44,7 +43,6 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
     public Mono<Void> apply(ObjectNode root, AggregationContext context) {
         List<ObjectNode> rootEntities = collectRootEntities(root);
         if (rootEntities.isEmpty()) {
-            recordPhase("success");
             return Mono.empty();
         }
         int concurrency = Math.max(1, rootEntities.size());
@@ -52,9 +50,7 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
                 .flatMap(entityNode -> resolveOne(entityNode, context), concurrency)
                 .collectList()
                 .doOnNext(pairs -> pairs.forEach(pair -> pair.entity.set(TARGET_FIELD, pair.array)))
-                .then()
-                .doOnSuccess(unused -> recordPhase("success"))
-                .doOnError(ex -> recordPhase("failure"));
+                .then();
     }
 
     private Mono<ResolvedEntity> resolveOne(ObjectNode entityNode, AggregationContext context) {
@@ -92,10 +88,6 @@ class BeneficialOwnersPostProcessor implements AggregationPostProcessor {
 
     private void recordTree(String outcome) {
         meterRegistry.counter(TREE_METRIC, "outcome", outcome).increment();
-    }
-
-    private void recordPhase(String outcome) {
-        meterRegistry.counter(PHASE_METRIC, "part", NAME, "outcome", outcome).increment();
     }
 
     private record ResolvedEntity(ObjectNode entity, ArrayNode array) {}

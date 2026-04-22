@@ -92,7 +92,6 @@ class BeneficialOwnersPostProcessorTest {
         assertThat(resolvedArray.path(1).path("individual").path("number").asString())
                 .isEqualTo("P-2");
 
-        assertPhaseMetric("success", 1);
         assertTreeMetric("success", 1);
     }
 
@@ -144,7 +143,6 @@ class BeneficialOwnersPostProcessorTest {
         assertThat(owners.path(0).path("beneficialOwnersDetails").size()).isEqualTo(1);
         assertThat(owners.path(1).has("beneficialOwnersDetails")).isFalse();
 
-        assertPhaseMetric("success", 1);
         assertTreeMetric("success", 1);
         assertTreeMetric("failure", 1);
     }
@@ -168,7 +166,6 @@ class BeneficialOwnersPostProcessorTest {
         assertThat(root.path("data").path(0).path("owners1").path(0).has("beneficialOwnersDetails"))
                 .isFalse();
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
-        assertPhaseMetric("success", 1);
     }
 
     @Test
@@ -258,16 +255,6 @@ class BeneficialOwnersPostProcessorTest {
                 objectMapper.createObjectNode(),
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null),
                 AggregationPartSelection.from(null));
-    }
-
-    private void assertPhaseMetric(String outcome, double count) {
-        assertThat(meterRegistry
-                        .get("aggregation.part.requests")
-                        .tag("part", BeneficialOwnersPostProcessor.NAME)
-                        .tag("outcome", outcome)
-                        .counter()
-                        .count())
-                .isEqualTo(count);
     }
 
     private void assertTreeMetric(String outcome, double count) {
