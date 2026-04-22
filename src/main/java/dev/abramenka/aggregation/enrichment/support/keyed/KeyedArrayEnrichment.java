@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.enrichment.support.keyed;
 
+import dev.abramenka.aggregation.error.EnrichmentDependencyException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationEnrichment;
 import java.util.LinkedHashSet;
@@ -66,8 +67,7 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
                 .filter(key -> !entriesByKey.containsKey(key))
                 .forEach(missingKeys::add);
         if (!missingKeys.isEmpty()) {
-            throw new IllegalStateException("Required aggregation part '" + name()
-                    + "' response is missing entries for key(s): " + String.join(", ", missingKeys));
+            throw EnrichmentDependencyException.contractViolation(name(), null);
         }
     }
 }

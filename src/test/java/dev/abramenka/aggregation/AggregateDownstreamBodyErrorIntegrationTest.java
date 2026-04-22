@@ -66,11 +66,15 @@ class AggregateDownstreamBodyErrorIntegrationTest {
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/downstream-client-error")
-                .jsonPath("$.client")
-                .isEqualTo("Account group")
+                .isEqualTo("/problems/main/invalid-payload")
+                .jsonPath("$.errorCode")
+                .isEqualTo("MAIN-INVALID-PAYLOAD")
+                .jsonPath("$.category")
+                .isEqualTo("MAIN_DEPENDENCY")
+                .jsonPath("$.dependency")
+                .isEqualTo("main")
                 .jsonPath("$.detail")
-                .isEqualTo("Account group client request failed");
+                .isEqualTo("The main dependency returned a payload that could not be read.");
     }
 
     private static void startServer() {

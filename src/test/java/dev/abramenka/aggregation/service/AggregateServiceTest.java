@@ -13,6 +13,9 @@ import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
 import dev.abramenka.aggregation.enrichment.owners.OwnersEnrichmentTestFactory;
 import dev.abramenka.aggregation.error.DownstreamClientException;
+import dev.abramenka.aggregation.error.EnrichmentDependencyException;
+import dev.abramenka.aggregation.error.OrchestrationException;
+import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.error.RequestValidationException;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
@@ -34,6 +37,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.codec.DecodingException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
@@ -72,7 +76,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_failsWhenSelectedEnrichmentFails_andMergesSuccessfulSelectedResults() {
-        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
         ClientRequestContext clientRequestContext = new ClientRequestContext(
                 ForwardedHeaders.builder().authorization("Bearer token").build(), true);
 
@@ -97,8 +101,12 @@ class AggregateServiceTest {
                 .thenReturn(Mono.error(new RuntimeException("account down")));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext))
-                .expectErrorSatisfies(error ->
-                        assertThat(error).isInstanceOf(RuntimeException.class).hasMessage("account down"))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.ENRICH_UNAVAILABLE.type())))
                 .verify();
         assertPartMetric("account", "failure", 1);
 
@@ -189,7 +197,7 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(UnsupportedAggregationPartException.class)
-                        .hasMessageContaining("unknown"))
+                        .hasMessage("One or more request fields failed validation."))
                 .verify();
 
         verify(accountGroupClient, never()).fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class));
@@ -221,11 +229,106 @@ class AggregateServiceTest {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
                         .isInstanceOf(DownstreamClientException.class)
-                        .hasMessage("Account group client request failed"))
+                        .hasMessage("The main dependency payload does not satisfy the required contract."))
                 .verify();
 
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
         verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_rejectsEmptyAccountGroupResponse() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of());
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.empty());
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.MAIN_CONTRACT_VIOLATION.type())))
+                .verify();
+    }
+
+    @Test
+    void aggregate_rejectsSelectedPartWhenMainPayloadHasNoRequiredKeys() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.MAIN_CONTRACT_VIOLATION.type())))
+                .verify();
+
+        verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_mapsEmptySelectedEnrichmentResponseToContractViolation() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {"accounts": [{"id": "acc-a"}]}
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.empty());
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.ENRICH_CONTRACT_VIOLATION.type())))
+                .verify();
+    }
+
+    @Test
+    void aggregate_mapsUnreadableSelectedEnrichmentResponseToInvalidPayload() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {"accounts": [{"id": "acc-a"}]}
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new DecodingException("bad json")));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.ENRICH_INVALID_PAYLOAD.type())))
+                .verify();
     }
 
     @Test
@@ -243,8 +346,8 @@ class AggregateServiceTest {
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(IllegalStateException.class)
-                        .hasMessage("Required aggregation part 'empty' returned an empty result"))
+                        .isInstanceOf(OrchestrationException.class)
+                        .hasMessage("The service detected an internal aggregation invariant violation."))
                 .verify();
 
         assertPartMetric("empty", "empty", 1);
@@ -315,15 +418,15 @@ class AggregateServiceTest {
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(IllegalStateException.class)
-                        .hasMessage("enrichment down"))
+                        .isInstanceOf(OrchestrationException.class)
+                        .hasMessage("The service detected an internal aggregation invariant violation."))
                 .verify();
 
         assertPartMetric("auditTrail", "failure", 1);
     }
 
     @Test
-    void aggregate_skipsUnsupportedEnrichments() {
+    void aggregate_failsWhenSelectedEnrichmentIsUnsupportedByCurrentPayload() {
         AggregateService service = aggregateServiceWith(List.of(unsupportedEnrichment("auditTrail")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
@@ -336,11 +439,13 @@ class AggregateServiceTest {
                 .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
-                .assertNext(aggregated -> {
-                    assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(aggregated.has("unsupportedEnrichmentRan")).isFalse();
-                })
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.MAIN_CONTRACT_VIOLATION.type())))
+                .verify();
     }
 
     @Test
@@ -448,8 +553,8 @@ class AggregateServiceTest {
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(IllegalStateException.class)
-                        .hasMessage("merge failed"))
+                        .isInstanceOf(OrchestrationException.class)
+                        .hasMessage("The service could not assemble the aggregated response."))
                 .verify();
 
         assertPartMetric("mergeFailure", "failure", 1);
@@ -570,9 +675,8 @@ class AggregateServiceTest {
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(IllegalStateException.class)
-                        .hasMessage(
-                                "Required aggregation part 'account' response is missing entries for key(s): acc-b"))
+                        .isInstanceOf(EnrichmentDependencyException.class)
+                        .hasMessage("A required enrichment dependency payload does not satisfy the required contract."))
                 .verify();
 
         assertPartMetric("account", "failure", 1);

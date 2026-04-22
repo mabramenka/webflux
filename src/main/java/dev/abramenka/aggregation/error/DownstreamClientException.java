@@ -1,15 +1,17 @@
 package dev.abramenka.aggregation.error;
 
-import java.net.URI;
+import io.netty.channel.ConnectTimeoutException;
+import io.netty.handler.timeout.ReadTimeoutException;
+import java.net.SocketTimeoutException;
+import java.util.concurrent.TimeoutException;
 import org.jspecify.annotations.Nullable;
+import org.springframework.core.codec.DecodingException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
-import org.springframework.http.ProblemDetail;
-import org.springframework.web.ErrorResponseException;
 
-public final class DownstreamClientException extends ErrorResponseException {
+public final class DownstreamClientException extends FacadeException {
 
-    public static final URI TYPE = URI.create("/problems/downstream-client-error");
+    private static final String MAIN_CLIENT_NAME = "Account group";
 
     private final String clientName;
 
@@ -17,16 +19,27 @@ public final class DownstreamClientException extends ErrorResponseException {
     private final HttpStatusCode downstreamStatusCode;
 
     public static DownstreamClientException upstreamStatus(String clientName, HttpStatusCode status) {
-        return new DownstreamClientException(clientName, status, null);
+        return new DownstreamClientException(catalogForStatus(clientName, status), clientName, status, null);
     }
 
     public static DownstreamClientException transport(String clientName, @Nullable Throwable cause) {
-        return new DownstreamClientException(clientName, null, cause);
+        return new DownstreamClientException(catalogForTransport(clientName, cause), clientName, null, cause);
+    }
+
+    public static DownstreamClientException contractViolation(String clientName) {
+        return new DownstreamClientException(
+                main(clientName) ? ProblemCatalog.MAIN_CONTRACT_VIOLATION : ProblemCatalog.ENRICH_CONTRACT_VIOLATION,
+                clientName,
+                null,
+                null);
     }
 
     private DownstreamClientException(
-            String clientName, @Nullable HttpStatusCode downstreamStatusCode, @Nullable Throwable cause) {
-        super(HttpStatus.BAD_GATEWAY, problemDetail(clientName, downstreamStatusCode), cause);
+            ProblemCatalog catalog,
+            String clientName,
+            @Nullable HttpStatusCode downstreamStatusCode,
+            @Nullable Throwable cause) {
+        super(catalog, dependency(clientName, catalog), cause);
         this.clientName = clientName;
         this.downstreamStatusCode = downstreamStatusCode;
     }
@@ -39,22 +52,73 @@ public final class DownstreamClientException extends ErrorResponseException {
         return downstreamStatusCode;
     }
 
-    @Override
-    public String getMessage() {
-        String detail = getBody().getDetail();
-        return detail != null ? detail : super.getMessage();
+    private static ProblemCatalog catalogForStatus(String clientName, HttpStatusCode status) {
+        if (status.value() == HttpStatus.UNAUTHORIZED.value() || status.value() == HttpStatus.FORBIDDEN.value()) {
+            return main(clientName) ? ProblemCatalog.MAIN_AUTH_FAILED : ProblemCatalog.ENRICH_AUTH_FAILED;
+        }
+        if (status.value() == HttpStatus.REQUEST_TIMEOUT.value()
+                || status.value() == HttpStatus.GATEWAY_TIMEOUT.value()) {
+            return main(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
+        }
+        if (status.value() == HttpStatus.SERVICE_UNAVAILABLE.value()) {
+            return main(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
+        }
+        if (status.value() == HttpStatus.NOT_FOUND.value()) {
+            return main(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_CONTRACT_VIOLATION;
+        }
+        return main(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
     }
 
-    private static ProblemDetail problemDetail(String clientName, @Nullable HttpStatusCode downstreamStatusCode) {
-        String detail = downstreamStatusCode != null
-                ? clientName + " client returned an error response"
-                : clientName + " client request failed";
-        ProblemDetail body = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, detail);
-        body.setType(TYPE);
-        body.setProperty("client", clientName);
-        if (downstreamStatusCode != null) {
-            body.setProperty("downstreamStatus", downstreamStatusCode.value());
+    private static ProblemCatalog catalogForTransport(String clientName, @Nullable Throwable cause) {
+        if (isTimeout(cause)) {
+            return main(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
         }
-        return body;
+        if (isInvalidPayload(cause)) {
+            return main(clientName) ? ProblemCatalog.MAIN_INVALID_PAYLOAD : ProblemCatalog.ENRICH_INVALID_PAYLOAD;
+        }
+        return main(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
+    }
+
+    private static boolean isTimeout(@Nullable Throwable cause) {
+        Throwable current = cause;
+        while (current != null) {
+            if (current instanceof TimeoutException
+                    || current instanceof SocketTimeoutException
+                    || current instanceof ConnectTimeoutException
+                    || current instanceof ReadTimeoutException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isInvalidPayload(@Nullable Throwable cause) {
+        Throwable current = cause;
+        while (current != null) {
+            if (current instanceof DecodingException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean main(String clientName) {
+        return MAIN_CLIENT_NAME.equals(clientName);
+    }
+
+    private static @Nullable String dependency(String clientName, ProblemCatalog catalog) {
+        if (catalog.category() == ProblemCategory.CLIENT_REQUEST) {
+            return null;
+        }
+        if (main(clientName)) {
+            return "main";
+        }
+        return switch (clientName) {
+            case "Account" -> "enricher:account";
+            case "Owners" -> "enricher:owners";
+            default -> null;
+        };
     }
 }

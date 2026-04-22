@@ -2,7 +2,9 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
-import dev.abramenka.aggregation.error.DownstreamClientException;
+import dev.abramenka.aggregation.client.DownstreamClientResponses;
+import dev.abramenka.aggregation.client.HttpServiceGroups;
+import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.ClientRequestContext;
@@ -23,7 +25,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class AggregateService {
 
-    private static final String ACCOUNT_GROUP_CLIENT_NAME = "Account group";
+    private static final String ACCOUNT_GROUP_CLIENT_NAME =
+            HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT_GROUP);
     private static final String IDS_FIELD = "ids";
 
     private final AccountGroups accountGroupClient;
@@ -55,15 +58,16 @@ public class AggregateService {
                     "requested_parts",
                     Integer.toString(partPlan.requestedSelection().names().size()));
 
-            ObjectNode accountGroupRequest = toAccountGroupRequest(request.ids());
+            ObjectNode accountGroupRequest;
+            try {
+                accountGroupRequest = toAccountGroupRequest(request.ids());
+            } catch (Exception ex) {
+                throw OrchestrationException.mappingFailed(ex);
+            }
 
-            return accountGroupClient
-                    .fetchAccountGroup(accountGroupRequest, clientRequestContext)
-                    // Catches DecodingException and other codec failures that surface after the
-                    // WebClient filter chain; DownstreamClientErrorFilter only sees HTTP-layer errors.
-                    .onErrorMap(
-                            ex -> !(ex instanceof DownstreamClientException),
-                            ex -> DownstreamClientException.transport(ACCOUNT_GROUP_CLIENT_NAME, ex))
+            return DownstreamClientResponses.requireBody(
+                            ACCOUNT_GROUP_CLIENT_NAME,
+                            accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext))
                     .flatMap(accountGroupResponse -> {
                         AggregationContext context = new AggregationContext(
                                 accountGroupResponse, clientRequestContext, partPlan.effectiveSelection());

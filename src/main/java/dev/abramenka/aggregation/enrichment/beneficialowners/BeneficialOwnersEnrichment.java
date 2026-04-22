@@ -1,5 +1,7 @@
 package dev.abramenka.aggregation.enrichment.beneficialowners;
 
+import dev.abramenka.aggregation.error.EnrichmentDependencyException;
+import dev.abramenka.aggregation.error.FacadeException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationEnrichment;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -82,7 +84,16 @@ class BeneficialOwnersEnrichment implements AggregationEnrichment {
                     recordTree("failure");
                     log.warn("Beneficial-owners resolution for a root entity failed: {}", ex.getMessage());
                 })
+                .onErrorMap(BeneficialOwnersResolutionException.class, this::mapResolutionException)
                 .map(array -> new ResolvedEntity(entity.dataIndex(), entity.ownerIndex(), array));
+    }
+
+    private Throwable mapResolutionException(BeneficialOwnersResolutionException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof FacadeException facadeException) {
+            return facadeException;
+        }
+        return EnrichmentDependencyException.contractViolation(NAME, ex);
     }
 
     private ObjectNode response(List<ResolvedEntity> resolvedEntities) {

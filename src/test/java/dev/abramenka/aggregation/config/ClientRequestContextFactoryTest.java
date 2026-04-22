@@ -41,7 +41,7 @@ class ClientRequestContextFactoryTest {
                 .isInstanceOf(RequestValidationException.class)
                 .satisfies(error -> assertThat(
                                 ((RequestValidationException) error).getBody().getProperties())
-                        .containsKey("errors"));
+                        .containsKey("violations"));
     }
 
     @Test

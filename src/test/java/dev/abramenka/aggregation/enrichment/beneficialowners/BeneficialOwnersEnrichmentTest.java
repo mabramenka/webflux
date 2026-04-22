@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import dev.abramenka.aggregation.client.Owners;
+import dev.abramenka.aggregation.error.DownstreamClientException;
+import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.ClientRequestContext;
@@ -139,8 +141,11 @@ class BeneficialOwnersEnrichmentTest {
 
         StepVerifier.create(fetchAndMerge(root))
                 .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(BeneficialOwnersResolutionException.class)
-                        .hasMessage("owners client failed while resolving beneficial owners"))
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
+                                        .getBody()
+                                        .getType())
+                                .isEqualTo(ProblemCatalog.ENRICH_UNAVAILABLE.type())))
                 .verify();
 
         JsonNode owners = root.path("data").path(0).path("owners1");
