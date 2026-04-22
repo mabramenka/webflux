@@ -15,12 +15,14 @@ final class AggregationPartGraph {
     private final List<AggregationPart> parts;
     private final List<AggregationPart> orderedParts;
     private final Map<String, AggregationPart> partsByName;
+    private final AggregationPartLevelPlanner levelPlanner;
 
     private AggregationPartGraph(List<AggregationPart> parts) {
         this.parts = List.copyOf(parts);
         this.partsByName = buildPartsIndex(this.parts);
         validateDependencies(this.parts, this.partsByName);
         this.orderedParts = orderByDependencies(this.parts, this.partsByName);
+        this.levelPlanner = new AggregationPartLevelPlanner(this.orderedParts, this.partsByName);
     }
 
     static AggregationPartGraph from(List<AggregationPart> registeredParts) {
@@ -51,14 +53,7 @@ final class AggregationPartGraph {
     }
 
     List<List<AggregationPart>> selectedLevels(AggregationPartSelection effectiveSelection) {
-        Map<Integer, List<AggregationPart>> levels = new LinkedHashMap<>();
-        Map<String, Integer> depths = new LinkedHashMap<>();
-        orderedParts.stream()
-                .filter(part -> effectiveSelection.includes(part.name()))
-                .forEach(part -> levels.computeIfAbsent(
-                                depth(part, effectiveSelection, depths), ignored -> new ArrayList<>())
-                        .add(part));
-        return levels.values().stream().map(List::copyOf).toList();
+        return levelPlanner.selectedLevels(effectiveSelection);
     }
 
     private static Map<String, AggregationPart> buildPartsIndex(List<AggregationPart> registeredParts) {
@@ -121,22 +116,6 @@ final class AggregationPartGraph {
             throw new IllegalStateException("Unknown aggregation component dependency: " + name);
         }
         return part;
-    }
-
-    private int depth(AggregationPart part, AggregationPartSelection effectiveSelection, Map<String, Integer> depths) {
-        Integer existing = depths.get(part.name());
-        if (existing != null) {
-            return existing;
-        }
-
-        int depth = part.dependencies().stream()
-                .filter(effectiveSelection::includes)
-                .map(dependency -> partByName(partsByName, dependency))
-                .mapToInt(dependency -> depth(dependency, effectiveSelection, depths) + 1)
-                .max()
-                .orElse(0);
-        depths.put(part.name(), depth);
-        return depth;
     }
 
     private static void addUnique(Map<String, AggregationPart> index, String name, AggregationPart owner) {
