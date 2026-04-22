@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.beneficialowners;
+package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;

@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.beneficialowners;
+package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.part.AggregationDocumentPart;
