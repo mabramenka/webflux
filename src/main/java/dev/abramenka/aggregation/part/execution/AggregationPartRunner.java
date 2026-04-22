@@ -12,7 +12,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class AggregationPartRunner {
+class AggregationPartRunner {
 
     private final AggregationPartMetrics metrics;
 

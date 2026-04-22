@@ -10,7 +10,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
-public class AggregationPartResultApplicator {
+class AggregationPartResultApplicator {
 
     void apply(AggregationPartResult result, ObjectNode root) {
         switch (result) {

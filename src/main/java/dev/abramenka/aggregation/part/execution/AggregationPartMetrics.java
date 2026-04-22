@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class AggregationPartMetrics {
+class AggregationPartMetrics {
 
     private static final String PART_REQUESTS_METRIC = "aggregation.part.requests";
     private static final String PART_TAG = "part";

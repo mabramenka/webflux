@@ -19,12 +19,9 @@ import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
-import dev.abramenka.aggregation.part.execution.AggregationMerger;
 import dev.abramenka.aggregation.part.execution.AggregationPartExecutor;
-import dev.abramenka.aggregation.part.execution.AggregationPartMetrics;
+import dev.abramenka.aggregation.part.execution.AggregationPartExecutorFactory;
 import dev.abramenka.aggregation.part.execution.AggregationPartPlanner;
-import dev.abramenka.aggregation.part.execution.AggregationPartResultApplicator;
-import dev.abramenka.aggregation.part.execution.AggregationPartRunner;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
@@ -727,9 +724,7 @@ class AggregateServiceTest {
     }
 
     private AggregationPartExecutor partExecutor() {
-        AggregationPartMetrics partMetrics = new AggregationPartMetrics(meterRegistry);
-        return new AggregationPartExecutor(
-                new AggregationPartRunner(partMetrics), new AggregationMerger(), new AggregationPartResultApplicator());
+        return AggregationPartExecutorFactory.create(meterRegistry);
     }
 
     private AggregationEnrichment emptyEnrichment() {
