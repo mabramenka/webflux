@@ -23,11 +23,7 @@ public class AggregationPartPlanner {
         validateSelection(requestedSelection);
         AggregationPartSelection effectiveSelection = partGraph.expandDependencies(requestedSelection);
         return new AggregationPartPlan(
-                requestedSelection,
-                effectiveSelection,
-                partGraph.selectedEnrichments(effectiveSelection),
-                partGraph.selectedPostProcessors(effectiveSelection),
-                partGraph.selectedLevels(effectiveSelection));
+                requestedSelection, effectiveSelection, partGraph.selectedLevels(effectiveSelection));
     }
 
     private void validateSelection(AggregationPartSelection partSelection) {
