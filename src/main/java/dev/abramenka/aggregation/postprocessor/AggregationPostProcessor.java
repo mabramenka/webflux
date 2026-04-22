@@ -13,6 +13,7 @@ public interface AggregationPostProcessor extends AggregationPart {
     @Override
     default Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
         ObjectNode workingRoot = rootSnapshot.deepCopy();
-        return apply(workingRoot, context).thenReturn(AggregationPartResult.patch(name(), rootSnapshot, workingRoot));
+        return apply(workingRoot, context)
+                .then(Mono.fromSupplier(() -> AggregationPartResult.patch(name(), rootSnapshot, workingRoot)));
     }
 }
