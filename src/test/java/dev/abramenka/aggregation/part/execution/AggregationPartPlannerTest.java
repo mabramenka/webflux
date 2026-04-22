@@ -28,12 +28,6 @@ class AggregationPartPlannerTest {
         assertThat(plan.requestedSelection().names()).containsExactly("beneficialOwners");
         assertThat(plan.effectiveSelection().names())
                 .containsExactlyInAnyOrder("beneficialOwners", "auditTrail", "account");
-        assertThat(plan.selectedEnrichments())
-                .extracting(AggregationEnrichment::name)
-                .containsExactly("account", "auditTrail");
-        assertThat(plan.selectedPostProcessors())
-                .extracting(AggregationPostProcessor::name)
-                .containsExactly("beneficialOwners");
         assertThat(plan.executionPlan().levels())
                 .extracting(AggregationPartPlannerTest::partNames)
                 .containsExactly(List.of("account"), List.of("auditTrail"), List.of("beneficialOwners"));
@@ -46,9 +40,6 @@ class AggregationPartPlannerTest {
 
         AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
 
-        assertThat(plan.selectedEnrichments())
-                .extracting(AggregationEnrichment::name)
-                .containsExactly("account", "auditTrail");
         assertThat(plan.executionPlan().levels())
                 .extracting(AggregationPartPlannerTest::partNames)
                 .containsExactly(List.of("account"), List.of("auditTrail"));
@@ -61,9 +52,6 @@ class AggregationPartPlannerTest {
 
         AggregationPartPlan plan = planner.plan(List.of("summary"));
 
-        assertThat(plan.selectedPostProcessors())
-                .extracting(AggregationPostProcessor::name)
-                .containsExactly("beneficialOwners", "summary");
         assertThat(plan.executionPlan().levels())
                 .extracting(AggregationPartPlannerTest::partNames)
                 .containsExactly(List.of("beneficialOwners"), List.of("summary"));
@@ -76,9 +64,6 @@ class AggregationPartPlannerTest {
 
         AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
 
-        assertThat(plan.selectedPostProcessors())
-                .extracting(AggregationPostProcessor::name)
-                .containsExactly("beneficialOwners");
         assertThat(plan.executionPlan().levels())
                 .extracting(AggregationPartPlannerTest::partNames)
                 .containsExactly(List.of("beneficialOwners"));

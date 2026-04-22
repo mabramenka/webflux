@@ -55,22 +55,6 @@ final class AggregationPartGraph {
         return AggregationPartSelection.subset(effectiveNames);
     }
 
-    List<AggregationEnrichment> selectedEnrichments(AggregationPartSelection effectiveSelection) {
-        return orderedParts.stream()
-                .filter(AggregationEnrichment.class::isInstance)
-                .map(AggregationEnrichment.class::cast)
-                .filter(part -> effectiveSelection.includes(part.name()))
-                .toList();
-    }
-
-    List<AggregationPostProcessor> selectedPostProcessors(AggregationPartSelection effectiveSelection) {
-        return orderedParts.stream()
-                .filter(AggregationPostProcessor.class::isInstance)
-                .map(AggregationPostProcessor.class::cast)
-                .filter(part -> effectiveSelection.includes(part.name()))
-                .toList();
-    }
-
     List<List<AggregationPart>> selectedLevels(AggregationPartSelection effectiveSelection) {
         Map<Integer, List<AggregationPart>> levels = new LinkedHashMap<>();
         Map<String, Integer> depths = new LinkedHashMap<>();

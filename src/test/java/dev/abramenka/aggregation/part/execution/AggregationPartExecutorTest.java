@@ -102,8 +102,6 @@ class AggregationPartExecutorTest {
         AggregationPartPlan plan = new AggregationPartPlan(
                 AggregationPartSelection.from(null),
                 AggregationPartSelection.from(null),
-                List.of(),
-                List.of(),
                 List.of(List.of(dependency), List.of(dependent)));
         return executor.execute("Account group", root, context(root), plan).cast(ObjectNode.class);
     }
