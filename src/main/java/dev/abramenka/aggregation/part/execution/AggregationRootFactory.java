@@ -6,7 +6,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
-class AggregationMerger {
+class AggregationRootFactory {
 
     ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
         if (!accountGroupResponse.isObject()) {

@@ -9,7 +9,7 @@ public final class AggregationPartExecutorFactory {
     public static AggregationPartExecutor create(MeterRegistry meterRegistry) {
         return new AggregationPartExecutor(
                 new AggregationPartRunner(new AggregationPartMetrics(meterRegistry)),
-                new AggregationMerger(),
+                new AggregationRootFactory(),
                 new AggregationPartResultApplicator());
     }
 }

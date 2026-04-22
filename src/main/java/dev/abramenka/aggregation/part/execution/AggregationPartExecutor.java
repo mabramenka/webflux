@@ -19,7 +19,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class AggregationPartExecutor {
 
     private final AggregationPartRunner partRunner;
-    private final AggregationMerger aggregationMerger;
+    private final AggregationRootFactory rootFactory;
     private final AggregationPartResultApplicator resultApplicator;
 
     public Mono<JsonNode> execute(
@@ -28,7 +28,7 @@ public class AggregationPartExecutor {
             AggregationContext context,
             AggregationPartPlan partPlan) {
         AggregationPartExecutionPlan executionPlan = partPlan.executionPlan();
-        ObjectNode root = aggregationMerger.mutableRoot(rootClientName, accountGroupResponse);
+        ObjectNode root = rootFactory.mutableRoot(rootClientName, accountGroupResponse);
         AggregationPartExecutionState executionState = new AggregationPartExecutionState();
         return Flux.fromIterable(executionPlan.levels())
                 .concatMap(level -> runLevel(level, root, context, executionState))
