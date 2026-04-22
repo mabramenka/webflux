@@ -16,6 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 class AggregationPartExecutor {
 
     private final EnrichmentExecutor enrichmentExecutor;
+    private final PostProcessorExecutor postProcessorExecutor;
     private final AggregationMerger aggregationMerger;
 
     Mono<JsonNode> execute(
@@ -35,14 +36,13 @@ class AggregationPartExecutor {
                         runPostProcessors(enabledPostProcessors, root, context).thenReturn(merged));
     }
 
-    private static Mono<Void> runPostProcessors(
+    private Mono<Void> runPostProcessors(
             List<AggregationPostProcessor> enabledPostProcessors, ObjectNode root, AggregationContext context) {
         if (enabledPostProcessors.isEmpty()) {
             return Mono.empty();
         }
         return Flux.fromIterable(enabledPostProcessors)
-                .concatMap(postProcessor ->
-                        postProcessor.apply(root, context).onErrorResume(Exception.class, ex -> Mono.empty()))
+                .concatMap(postProcessor -> postProcessorExecutor.apply(postProcessor, root, context))
                 .then();
     }
 }

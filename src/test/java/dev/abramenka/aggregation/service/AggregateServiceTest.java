@@ -302,7 +302,29 @@ class AggregateServiceTest {
                         .isEqualTo("Ada"))
                 .verifyComplete();
 
+        assertPartMetric("beneficialOwners", "success", 1);
         verify(accountClient, never()).fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class));
+    }
+
+    @Test
+    void aggregate_skipsFailedPostProcessors() {
+        AggregateService service = aggregateServiceWith(List.of(), List.of(failingPostProcessor("optionalAudit")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated ->
+                        assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
+                .verifyComplete();
+
+        assertPartMetric("optionalAudit", "failure", 1);
     }
 
     @Test
@@ -651,7 +673,10 @@ class AggregateServiceTest {
     }
 
     private AggregationPartExecutor partExecutor() {
-        return new AggregationPartExecutor(new EnrichmentExecutor(meterRegistry), new AggregationMerger());
+        return new AggregationPartExecutor(
+                new EnrichmentExecutor(meterRegistry),
+                new PostProcessorExecutor(meterRegistry),
+                new AggregationMerger());
     }
 
     private AggregationEnrichment emptyEnrichment() {
@@ -749,6 +774,20 @@ class AggregateServiceTest {
             @Override
             public Mono<Void> apply(ObjectNode root, AggregationContext context) {
                 return Mono.empty();
+            }
+        };
+    }
+
+    private AggregationPostProcessor failingPostProcessor(String name) {
+        return new AggregationPostProcessor() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
+                return Mono.error(new IllegalStateException("post-processor down"));
             }
         };
     }
