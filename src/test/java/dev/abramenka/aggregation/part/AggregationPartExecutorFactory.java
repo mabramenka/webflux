@@ -7,9 +7,11 @@ public final class AggregationPartExecutorFactory {
     private AggregationPartExecutorFactory() {}
 
     public static AggregationPartExecutor create(MeterRegistry meterRegistry) {
+        AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         return new AggregationPartExecutor(
-                new AggregationPartRunner(new AggregationPartMetrics(meterRegistry)),
+                new AggregationPartRunner(metrics),
                 new AggregationRootFactory(),
-                new AggregationPartResultApplicator());
+                new AggregationPartResultApplicator(),
+                metrics);
     }
 }

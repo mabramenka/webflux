@@ -78,12 +78,9 @@ class BeneficialOwnersEnrichment implements AggregationEnrichment {
     private Mono<ResolvedEntity> resolveOne(RootEntityTarget entity, AggregationContext context) {
         return resolver.resolveTree(entity.node(), context)
                 .doOnSuccess(array -> recordTree("success"))
-                .onErrorResume(ex -> {
+                .doOnError(ex -> {
                     recordTree("failure");
-                    log.warn(
-                            "Beneficial-owners resolution for a root entity failed and will be skipped: {}",
-                            ex.getMessage());
-                    return Mono.empty();
+                    log.warn("Beneficial-owners resolution for a root entity failed: {}", ex.getMessage());
                 })
                 .map(array -> new ResolvedEntity(entity.dataIndex(), entity.ownerIndex(), array));
     }

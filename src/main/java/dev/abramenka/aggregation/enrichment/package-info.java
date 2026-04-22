@@ -1,5 +1,5 @@
 /**
- * Optional aggregation enrichments applied by the aggregation part planner.
+ * Aggregation enrichments applied by the aggregation part planner.
  *
  * <p>To add a new enrichment, create a package under {@code enrichment.<name>} with a Spring
  * {@code @Component} implementing {@code AggregationPart} or {@code AggregationEnrichment} from

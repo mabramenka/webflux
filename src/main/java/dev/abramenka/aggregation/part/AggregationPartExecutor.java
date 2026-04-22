@@ -22,6 +22,7 @@ public class AggregationPartExecutor {
     private final AggregationPartRunner partRunner;
     private final AggregationRootFactory rootFactory;
     private final AggregationPartResultApplicator resultApplicator;
+    private final AggregationPartMetrics metrics;
 
     public Mono<JsonNode> execute(
             String rootClientName,
@@ -67,12 +68,12 @@ public class AggregationPartExecutor {
             if (result != null) {
                 try {
                     resultApplicator.apply(result, root);
+                    metrics.record(part.name(), "success");
                     executionState.markApplied(part);
                 } catch (Exception ex) {
-                    log.warn(
-                            "Optional aggregation part '{}' failed during result merge and will be skipped",
-                            part.name(),
-                            ex);
+                    metrics.record(part.name(), "failure");
+                    throw new IllegalStateException(
+                            "Required aggregation part '" + part.name() + "' failed during result merge", ex);
                 }
             }
         }
@@ -84,7 +85,7 @@ public class AggregationPartExecutor {
             return true;
         }
         log.warn(
-                "Optional aggregation part '{}' will be skipped because dependency result(s) are missing: {}",
+                "Aggregation part '{}' is not applicable because dependency result(s) are missing: {}",
                 part.name(),
                 String.join(", ", missingDependencies));
         return false;

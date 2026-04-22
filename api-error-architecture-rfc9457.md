@@ -11,7 +11,7 @@ This document defines the error-handling model for an API facade that:
 1. calls a **main REST endpoint**,
 2. receives a JSON payload,
 3. calls additional **downstream REST APIs** based on the main payload,
-4. enriches the main response with optional data.
+4. enriches the main response with selected data.
 
 The design is based on **RFC 9457 Problem Details for HTTP APIs** and follows a **Domain Facade** approach.
 
@@ -27,13 +27,12 @@ Downstream error contracts are normalized and are **not exposed directly** to AP
 The main downstream call is required to build the response.
 If the main flow fails, the entire request fails.
 
-### 2.3 Enrichment Is Optional
-Enrichment failures do **not** fail the whole request.
-If enrichment cannot be loaded, the related field is omitted.
+### 2.3 Selected Enrichment Is Required
+When the client selects an enrichment, either explicitly or by omitting `include`, that enrichment must complete successfully when it is applicable to the current payload.
+Execution failures, empty enrichment responses, downstream failures, malformed enrichment responses, and merge failures fail the request.
 
-### 2.4 RFC 9457 Is Used Only for Terminal Failures
-`application/problem+json` is returned only when the request ends in an actual failure.
-A successful but incomplete response is represented as a normal business payload with explicit metadata.
+### 2.4 RFC 9457 Is Used For Terminal Failures
+`application/problem+json` is returned when the request ends in an actual failure, including failure of a selected enrichment.
 
 ---
 
@@ -66,49 +65,7 @@ Recommended extensions:
 - `violations` (for validation errors)
 
 ## 3.2 Successful Response
-Used when the main flow succeeds.
-Optional enrichment failures are represented in response metadata.
-
-Example:
-
-```json
-{
-  "data": {
-    "id": "123",
-    "name": "Alice"
-  },
-  "meta": {
-    "responseStatus": "PARTIAL",
-    "traceId": "8f5c2c0d",
-    "missingFields": [
-      "/customer/addresses",
-      "/customer/preferences"
-    ],
-    "warnings": [
-      {
-        "code": "ADDRESS_ENRICHMENT_TIMEOUT",
-        "message": "Addresses are temporarily unavailable"
-      },
-      {
-        "code": "PREFERENCES_ENRICHMENT_INVALID_RESPONSE",
-        "message": "Preferences could not be loaded"
-      }
-    ],
-    "enrichmentStatuses": [
-      {
-        "name": "addresses",
-        "status": "TIMEOUT",
-        "retryable": true
-      },
-      {
-        "name": "preferences",
-        "status": "INVALID_RESPONSE",
-        "retryable": true
-      }
-    ]
-  }
-}
-```
+Used when the main flow succeeds and every applicable selected enrichment succeeds.
 
 ---
 
@@ -120,7 +77,7 @@ Example:
 | MAIN_DEPENDENCY | Main downstream API | Yes | RFC 9457 |
 | ORCHESTRATION | Internal merge/composition logic | Yes | RFC 9457 |
 | PLATFORM | Timeout, circuit breaker, resource exhaustion affecting the core flow | Yes | RFC 9457 |
-| ENRICHMENT_OPTIONAL | Optional downstream enrichment API | No | Success payload with metadata |
+| ENRICHMENT_SELECTED | Selected downstream enrichment API | Yes | RFC 9457 |
 
 ---
 
@@ -150,15 +107,15 @@ Example:
 | Upstream 422 | 422 | `/problems/main-business-rule-violated` | No | Business rule violation preserved in facade semantics |
 | Upstream 5xx | 502 or 503 | `/problems/main-dependency-failed` | Yes | Use 502 vs 503 based on failure nature |
 
-## 5.3 Optional Enrichment Errors
+## 5.3 Selected Enrichment Errors
 
 | Scenario | Overall HTTP Status | Problem Response | Behavior |
 |---|---:|---|---|
-| Enrichment timeout | 200 | No | Omit field, mark response as partial |
-| Enrichment unavailable | 200 | No | Omit field, add warning |
-| Enrichment returns 404 | 200 | No | Omit field, mark enrichment status as `NOT_FOUND` |
-| Enrichment returns invalid JSON | 200 | No | Omit field, add warning |
-| Enrichment returns 429 | 200 | No | Omit field, mark as rate-limited |
+| Enrichment timeout | 502 / 504 | Yes | Fail the request |
+| Enrichment unavailable | 502 / 503 | Yes | Fail the request |
+| Enrichment returns 404 | 502 or facade-specific status | Yes | Fail the request |
+| Enrichment returns invalid JSON | 502 | Yes | Fail the request |
+| Enrichment returns 429 | 502 / 429 | Yes | Fail the request based on facade policy |
 
 ## 5.4 Orchestration Errors
 
@@ -171,33 +128,17 @@ Example:
 
 ---
 
-## 6. Partial Success Policy
+## 6. Required Selection Policy
 
 ### 6.1 Rule
-If the main flow succeeds and an optional enrichment fails:
+If the main flow succeeds and a selected applicable enrichment fails:
 
-- return `200 OK`,
-- omit the failed enrichment field,
-- set `meta.responseStatus = PARTIAL`,
-- include `missingFields`,
-- include a structured warning and enrichment status.
+- return a terminal problem response,
+- do not return a partially enriched success payload,
+- preserve the facade's stable problem type and safe detail.
 
-### 6.2 Why Not 206 Partial Content
-`206 Partial Content` is primarily associated with HTTP range requests.
-For an aggregation facade, `200 OK` with explicit partial-response metadata is clearer and more interoperable.
-
-### 6.3 Recommended Enrichment Status Values
-
-| Status | Meaning |
-|---|---|
-| `SUCCESS` | Enrichment loaded successfully |
-| `SKIPPED` | Enrichment not applicable by business rule |
-| `TIMEOUT` | Downstream did not respond in time |
-| `UNAVAILABLE` | Downstream service is unavailable |
-| `NOT_FOUND` | Enrichment data does not exist |
-| `INVALID_RESPONSE` | Downstream response is malformed or unusable |
-| `RATE_LIMITED` | Downstream returned 429 |
-| `FAILED` | Generic fallback status |
+### 6.2 Non-applicable Parts
+If an enrichment is selected but is not applicable to the current payload, it may be skipped without failing the request.
 
 ---
 
@@ -292,7 +233,7 @@ Do **not** expose the following in `detail` or extensions:
 
 ## 11. Logging and Observability Policy
 
-For every failure, including optional enrichment failures, log structured data:
+For every failure, including selected enrichment failures, log structured data:
 
 | Field | Purpose |
 |---|---|
@@ -303,7 +244,7 @@ For every failure, including optional enrichment failures, log structured data:
 | enrichment attempts | Downstream enrichment diagnostics |
 | latency per call | Performance analysis |
 | retry count | Retry visibility |
-| final classification | `SUCCESS`, `PARTIAL_SUCCESS`, `FAILURE` |
+| final classification | `SUCCESS`, `FAILURE` |
 | final problem type and status | Contract visibility |
 
 ---
@@ -315,16 +256,15 @@ Identify the source of the issue:
 
 - client request,
 - main dependency,
-- optional enrichment,
+- selected enrichment,
 - orchestration logic,
 - platform.
 
 ### Step 2
-If the issue is in optional enrichment:
+If the issue is in a selected applicable enrichment:
 
-- do not fail the request,
-- omit the affected field,
-- return partial-success metadata.
+- classify it,
+- fail the request with a facade problem response.
 
 ### Step 3
 If the issue is in the main flow or core orchestration:
@@ -361,25 +301,20 @@ Always emit structured logs and tracing metadata.
 - facade returns `502`,
 - problem type: `/problems/main-dependency-invalid-response`.
 
-### 13.5 Optional Enrichment Timeout
+### 13.5 Selected Enrichment Timeout
 - main flow succeeds,
-- one enrichment times out,
-- facade returns `200`,
-- enrichment field is omitted,
-- `responseStatus = PARTIAL`.
+- one selected applicable enrichment times out,
+- facade returns a problem response.
 
-### 13.6 Multiple Optional Enrichment Failures
+### 13.6 Multiple Selected Enrichment Failures
 - main flow succeeds,
-- multiple enrichments fail,
-- facade returns `200`,
-- all failed optional fields are omitted,
-- metadata contains multiple warnings and statuses.
+- one or more selected applicable enrichments fail,
+- facade returns a terminal problem response.
 
 ### 13.7 Conditional Enrichment Skipped
 - main flow succeeds,
 - enrichment not applicable by business rule,
 - facade returns `200`,
-- enrichment status is `SKIPPED`,
 - overall response may still be considered `FULL`.
 
 ### 13.8 Orchestration Merge Failure
@@ -394,10 +329,9 @@ Always emit structured logs and tracing metadata.
 
 - The API is a **Domain Facade**.
 - The main downstream flow is **mandatory**.
-- Enrichment is **optional**.
-- RFC 9457 is used only for **terminal failures**.
-- Optional enrichment failures never fail the whole request.
-- Partial responses are represented explicitly in the success payload.
+- Selected enrichment is **required** when applicable.
+- RFC 9457 is used for **terminal failures**.
+- Selected enrichment failures fail the request.
 - Only facade-defined problem types are exposed externally.
 - All failures and degradations are logged in a structured way.
 
@@ -411,4 +345,4 @@ Use this document as the baseline for:
 2. API standards documentation,
 3. a team-wide error-handling guideline,
 4. implementation rules for global exception handling,
-5. OpenAPI documentation examples for both problem responses and partial success responses.
+5. OpenAPI documentation examples for problem responses.
