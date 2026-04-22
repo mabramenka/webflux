@@ -31,7 +31,7 @@ Aggregation pipeline in `AggregateService.aggregate`:
 2. POST ids to the `account-group` downstream. Unreadable/error responses are mapped to `DownstreamClientException` (→ 502 problem+json via Spring's ProblemDetails).
 3. Expand dependencies and build dependency levels for the selected aggregation parts.
 4. `AggregationPartExecutor` evaluates `supports(context)` against the current root snapshot for each level, then runs supported parts in that level in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
-5. Successful part results are applied to the mutable root in stable graph order before the next dependency level starts.
+5. Successful part results are applied to the mutable root in stable graph order before the next dependency level starts; parts whose dependencies did not apply are skipped.
 
 Key collaborators:
 

@@ -10,7 +10,7 @@ public interface AggregationPart {
 
     /**
      * Dependencies expand requested includes and order execution levels. Parts in the same level run concurrently;
-     * dependent parts run only after dependency results are applied to the root document.
+     * dependent parts run only after dependency results are successfully applied to the root document.
      */
     default Set<String> dependencies() {
         return Set.of();

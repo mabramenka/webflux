@@ -272,6 +272,7 @@ Returned by the catch-all handler for any exception not mapped by a more specifi
 5. For each level, evaluate `supports(context)` against the current root snapshot.
 6. Execute supported parts in the same level in parallel with per-part failure isolation.
 7. Apply successful results in stable graph order before the next dependency level starts.
+8. Skip parts whose dependencies did not produce an applied result.
 
 Default optional part dependency order:
 
