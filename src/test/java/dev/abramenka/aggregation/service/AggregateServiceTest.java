@@ -396,6 +396,54 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_evaluatesDependentSupportAfterDependencyResultApplied() {
+        AggregateService service = aggregateServiceWith(
+                List.of(
+                        rootFlagEnrichment("account", "accountReady"),
+                        dependentSupportEnrichment("auditTrail", "account", "accountReady", "auditTrailRan")),
+                List.of());
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> {
+                    assertThat(aggregated.path("accountReady").asBoolean()).isTrue();
+                    assertThat(aggregated.path("auditTrailRan").asBoolean()).isTrue();
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void aggregate_appliesSameLevelPostProcessorPatchWithoutWipingEnrichmentResult() {
+        AggregateService service = aggregateServiceWith(
+                List.of(rootFlagEnrichment("account", "enriched")),
+                List.of(rootFlagPostProcessor("optionalAudit", "audited")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "optionalAudit"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> {
+                    assertThat(aggregated.path("enriched").asBoolean()).isTrue();
+                    assertThat(aggregated.path("audited").asBoolean()).isTrue();
+                })
+                .verifyComplete();
+    }
+
+    @Test
     void aggregate_skipsOptionalEnrichmentWhenMergeFails() {
         AggregateService service = aggregateServiceWith(failingMergeEnrichment());
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
@@ -674,8 +722,7 @@ class AggregateServiceTest {
 
     private AggregationPartExecutor partExecutor() {
         AggregationPartMetrics partMetrics = new AggregationPartMetrics(meterRegistry);
-        return new AggregationPartExecutor(
-                new EnrichmentExecutor(partMetrics), new PostProcessorExecutor(partMetrics), new AggregationMerger());
+        return new AggregationPartExecutor(new AggregationPartRunner(partMetrics), new AggregationMerger());
     }
 
     private AggregationEnrichment emptyEnrichment() {
@@ -758,6 +805,55 @@ class AggregateServiceTest {
         };
     }
 
+    private AggregationEnrichment rootFlagEnrichment(String name, String flag) {
+        return new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.just(objectMapper.createObjectNode());
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                root.put(flag, true);
+            }
+        };
+    }
+
+    private AggregationEnrichment dependentSupportEnrichment(
+            String name, String dependency, String requiredFlag, String targetFlag) {
+        return new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of(dependency);
+            }
+
+            @Override
+            public boolean supports(AggregationContext context) {
+                return context.accountGroupResponse().path(requiredFlag).asBoolean(false);
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                return Mono.just(objectMapper.createObjectNode());
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                root.put(targetFlag, true);
+            }
+        };
+    }
+
     private AggregationPostProcessor dependentPostProcessor(String name, String dependency) {
         return new AggregationPostProcessor() {
             @Override
@@ -773,6 +869,20 @@ class AggregateServiceTest {
             @Override
             public Mono<Void> apply(ObjectNode root, AggregationContext context) {
                 return Mono.empty();
+            }
+        };
+    }
+
+    private AggregationPostProcessor rootFlagPostProcessor(String name, String flag) {
+        return new AggregationPostProcessor() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Mono<Void> apply(ObjectNode root, AggregationContext context) {
+                return Mono.fromRunnable(() -> root.put(flag, true));
             }
         };
     }

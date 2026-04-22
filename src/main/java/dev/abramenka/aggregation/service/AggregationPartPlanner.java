@@ -25,7 +25,8 @@ class AggregationPartPlanner {
                 requestedSelection,
                 effectiveSelection,
                 partGraph.selectedEnrichments(effectiveSelection),
-                partGraph.selectedPostProcessors(effectiveSelection));
+                partGraph.selectedPostProcessors(effectiveSelection),
+                partGraph.selectedLevels(effectiveSelection));
     }
 
     private void validateSelection(AggregationPartSelection partSelection) {

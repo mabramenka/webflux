@@ -12,7 +12,7 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=code_smells&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=duplicated_lines_density&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 
-Reactive Spring Boot service that calls an account group service, optionally fetches additional JSON parts in parallel, and merges successful optional responses back into the account group JSON document.
+Reactive Spring Boot service that calls an account group service, executes optional JSON aggregation parts by dependency levels, and merges successful optional results back into the account group JSON document.
 
 The service keeps downstream payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
 
@@ -23,7 +23,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 - Dependency-ordered optional aggregation parts with per-part failure isolation
 - Declarative path-based enrichment rules for keyed array joins
 - Fallback key paths for inconsistent downstream schemas
-- Recursive beneficial-owners post-processing with bounded depth
+- Recursive beneficial-owners aggregation with bounded depth
 - Header and query parameter forwarding to downstream calls
 - RFC 9457-style problem responses for validation and downstream failures
 - Actuator health, readiness, liveness, info, and metrics endpoints
@@ -268,17 +268,15 @@ Returned by the catch-all handler for any exception not mapped by a more specifi
 1. Validate the inbound request and `include` selection.
 2. Build and send the account group request to `/account-groups`.
 3. Expand aggregation part dependencies for the requested `include` set.
-4. Skip optional parts that do not support the returned account group shape.
-5. Fetch supported enrichments in parallel with per-part failure isolation.
-6. Ignore failed optional enrichments and keep the account group response.
-7. Merge successful enrichment responses in dependency order.
-8. Execute the post-processor phase sequentially against the merged document. Post-processor failures are swallowed and do not affect the response.
+4. Build dependency levels from the selected aggregation parts.
+5. For each level, evaluate `supports(context)` against the current root snapshot.
+6. Execute supported parts in the same level in parallel with per-part failure isolation.
+7. Apply successful results in stable graph order before the next dependency level starts.
 
 Default optional part dependency order:
 
-1. `account` (enrichment)
-2. `owners` (enrichment)
-3. `beneficialOwners` (post-processor)
+1. `account` and `owners` can run in parallel.
+2. `beneficialOwners` waits for `owners`, then runs against the merged owner data.
 
 ## Optional Parts
 
@@ -340,15 +338,11 @@ Appends matched response entries to the owning `data[*]` item under:
 owners1
 ```
 
-## Post-Processors
-
-Post-processors run after all supported enrichments have been merged. They receive the mutable merged document and the aggregation context, and operate by mutating the document in place. Unlike enrichments, post-processors are invoked sequentially and may issue their own downstream calls.
-
 ### Beneficial Owners
 
 Resolves the ownership tree rooted at entity owners already merged under `owners1`.
 
-For every `data[*]` item, the post-processor walks each entry in `owners1` whose shape identifies an entity (non-individual) and repeatedly fetches `/owners` in level-by-level batches, following the child numbers on each resolved entity. Individuals encountered anywhere in the tree are collected (deduplicated by number, first-seen order) and attached to the owning entity under:
+For every `data[*]` item, the part walks each entry in `owners1` whose shape identifies an entity (non-individual) and repeatedly fetches `/owners` in level-by-level batches, following the child numbers on each resolved entity. Individuals encountered anywhere in the tree are collected (deduplicated by number, first-seen order) and attached to the owning entity under:
 
 ```text
 beneficialOwnersDetails
@@ -356,7 +350,7 @@ beneficialOwnersDetails
 
 Traversal is bounded by a maximum depth of 6 levels. Downstream failures, malformed responses, or depth violations abort the tree for that entity only; the enclosing `data[*]` item keeps all previously merged data.
 
-Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The post-processor name also participates in the unknown-name validation that is applied to the `include` set.
+Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The part name also participates in the unknown-name validation that is applied to the `include` set.
 
 ## Enrichment Rules
 
@@ -406,8 +400,8 @@ All other Actuator endpoints are disabled by default.
 Custom metric names:
 
 - `aggregation.request`, tagged by `part_selection` and `requested_parts`
-- `aggregation.part.requests`, tagged by `part` and `outcome` (emitted by enrichments and post-processors)
-- `aggregation.beneficial_owners.tree`, tagged by `outcome` (per root entity resolved by the beneficial-owners post-processor)
+- `aggregation.part.requests`, tagged by `part` and `outcome` (emitted by optional aggregation parts)
+- `aggregation.beneficial_owners.tree`, tagged by `outcome` (per root entity resolved by the beneficial-owners part)
 
 ## Quality Gates
 

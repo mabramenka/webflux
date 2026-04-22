@@ -71,6 +71,17 @@ final class AggregationPartGraph {
                 .toList();
     }
 
+    List<List<AggregationPart>> selectedLevels(AggregationPartSelection effectiveSelection) {
+        Map<Integer, List<AggregationPart>> levels = new LinkedHashMap<>();
+        Map<String, Integer> depths = new LinkedHashMap<>();
+        orderedParts.stream()
+                .filter(part -> effectiveSelection.includes(part.name()))
+                .forEach(part -> levels.computeIfAbsent(
+                                depth(part, effectiveSelection, depths), ignored -> new ArrayList<>())
+                        .add(part));
+        return levels.values().stream().map(List::copyOf).toList();
+    }
+
     private static Map<String, AggregationPart> buildPartsIndex(List<AggregationPart> registeredParts) {
         Map<String, AggregationPart> index = new LinkedHashMap<>();
         registeredParts.forEach(part -> addUnique(index, part.name(), part));
@@ -87,21 +98,6 @@ final class AggregationPartGraph {
                 throw new IllegalStateException("Unknown aggregation component dependency for " + part.name() + ": "
                         + String.join(", ", unknownDependencies));
             }
-            validatePhaseDependencies(part, partsByName);
-        }
-    }
-
-    private static void validatePhaseDependencies(AggregationPart part, Map<String, AggregationPart> partsByName) {
-        if (!(part instanceof AggregationEnrichment)) {
-            return;
-        }
-
-        List<String> postProcessorDependencies = part.dependencies().stream()
-                .filter(dependency -> partsByName.get(dependency) instanceof AggregationPostProcessor)
-                .toList();
-        if (!postProcessorDependencies.isEmpty()) {
-            throw new IllegalStateException("Aggregation enrichment " + part.name() + " depends on post-processor(s): "
-                    + String.join(", ", postProcessorDependencies));
         }
     }
 
@@ -146,6 +142,22 @@ final class AggregationPartGraph {
             throw new IllegalStateException("Unknown aggregation component dependency: " + name);
         }
         return part;
+    }
+
+    private int depth(AggregationPart part, AggregationPartSelection effectiveSelection, Map<String, Integer> depths) {
+        Integer existing = depths.get(part.name());
+        if (existing != null) {
+            return existing;
+        }
+
+        int depth = part.dependencies().stream()
+                .filter(effectiveSelection::includes)
+                .map(dependency -> partByName(partsByName, dependency))
+                .mapToInt(dependency -> depth(dependency, effectiveSelection, depths) + 1)
+                .max()
+                .orElse(0);
+        depths.put(part.name(), depth);
+        return depth;
     }
 
     private static void addUnique(Map<String, AggregationPart> index, String name, AggregationPart owner) {

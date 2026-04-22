@@ -29,9 +29,9 @@ Aggregation pipeline in `AggregateService.aggregate`:
 
 1. Build `AggregationPartSelection` from `request.include()` and validate unknown names up front.
 2. POST ids to the `account-group` downstream. Unreadable/error responses are mapped to `DownstreamClientException` (→ 502 problem+json via Spring's ProblemDetails).
-3. Expand dependencies and filter registered aggregation parts by selection and by `supports(context)`.
-4. `EnrichmentExecutor` fetches supported enrichments in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
-5. `AggregationMerger` mutates a copy of the account-group response in dependency order, then supported post-processors run in dependency order.
+3. Expand dependencies and build dependency levels for the selected aggregation parts.
+4. `AggregationPartExecutor` evaluates `supports(context)` against the current root snapshot for each level, then runs supported parts in that level in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
+5. Successful part results are applied to the mutable root in stable graph order before the next dependency level starts.
 
 Key collaborators:
 
@@ -41,9 +41,9 @@ Key collaborators:
 
 Aggregation parts:
 
-- `AggregationPart` is the common SPI for optional pipeline behavior: `name()`, `dependencies()`, `supports(context)`.
-- `AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`.
-- `AggregationPostProcessor` adds `apply(root, context)`.
+- `AggregationPart` is the common SPI for optional pipeline behavior: `name()`, `dependencies()`, `supports(context)`, `execute(rootSnapshot, context)`.
+- `AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`; its default execution returns a root mutation result.
+- `AggregationPostProcessor` is a compatibility adapter for in-place document logic; its default execution mutates a snapshot and returns a patch result.
 - `KeyedArrayEnrichment` (base class for `AccountEnrichment`, `OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`).
 - `PathExpression` is an intentionally tiny JSONPath-like engine: only `$`, `$.field`, `$.field[*]`, `$.field[*].nested`. No filters/slices/indexes/brackets/recursive descent — do not extend it casually; keep paths within this grammar.
 
