@@ -18,16 +18,14 @@ class AggregationPartRunner {
 
     Mono<AggregationPartResult> execute(AggregationPart part, ObjectNode rootSnapshot, AggregationContext context) {
         return part.execute(rootSnapshot, context)
-                .doOnNext(result -> metrics.record(part.name(), "success"))
+                .doOnError(Exception.class, ex -> {
+                    metrics.record(part.name(), "failure");
+                    log.warn("Required aggregation part '{}' failed", part.name(), ex);
+                })
                 .switchIfEmpty(Mono.defer(() -> {
                     metrics.record(part.name(), "empty");
-                    log.warn("Optional aggregation part '{}' returned an empty result", part.name());
-                    return Mono.<AggregationPartResult>empty();
-                }))
-                .onErrorResume(Exception.class, ex -> {
-                    metrics.record(part.name(), "failure");
-                    log.warn("Optional aggregation part '{}' failed and will be skipped", part.name(), ex);
-                    return Mono.empty();
-                });
+                    return Mono.error(new IllegalStateException(
+                            "Required aggregation part '" + part.name() + "' returned an empty result"));
+                }));
     }
 }

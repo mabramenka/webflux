@@ -12,7 +12,7 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=code_smells&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=duplicated_lines_density&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 
-Reactive Spring Boot service that calls an account group service, executes optional JSON aggregation parts by dependency levels, and merges successful optional results back into the account group JSON document.
+Reactive Spring Boot service that calls an account group service, executes selected JSON aggregation parts by dependency levels, and merges their results back into the account group JSON document.
 
 The service keeps downstream payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
 
@@ -20,7 +20,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 - Dynamic JSON aggregation without fixed downstream response DTOs
 - Spring Boot 4 HTTP service clients backed by reactive `WebClient`
-- Dependency-ordered optional aggregation parts with per-part failure isolation
+- Dependency-ordered aggregation parts that are required once selected
 - Declarative path-based enrichment rules for keyed array joins
 - Fallback key paths for inconsistent downstream schemas
 - Recursive beneficial-owners aggregation with bounded depth
@@ -142,12 +142,13 @@ Fields sent to the account group service:
 
 - `ids`: required non-empty array of non-blank, pattern-matching strings (bounded by `AccountGroupIds.MAX_PER_REQUEST`)
 
-`include` controls optional aggregation parts:
+`include` controls aggregation parts:
 
-- omitted or `null`: all registered parts are enabled
+- omitted or `null`: all registered parts are selected
 - empty array: only the account group response is returned
 - supported values: `account`, `owners`, `beneficialOwners`
 - unknown values fail before calling the account group service
+- selected parts are required: execution, downstream, empty-result, or merge failures fail the request
 
 ### Query Parameters
 
@@ -270,16 +271,16 @@ Returned by the catch-all handler for any exception not mapped by a more specifi
 3. Expand aggregation part dependencies for the requested `include` set.
 4. Build dependency levels from the selected aggregation parts.
 5. For each level, evaluate `supports(context)` against the current root snapshot.
-6. Execute supported parts in the same level in parallel with per-part failure isolation.
+6. Execute supported parts in the same level in parallel; a selected part failure fails the request.
 7. Apply successful results in stable graph order before the next dependency level starts.
-8. Skip parts whose dependencies did not produce an applied result.
+8. Skip non-applicable parts whose dependencies did not produce an applied result.
 
-Default optional part dependency order:
+Default part dependency order:
 
 1. `account` and `owners` can run in parallel.
 2. `beneficialOwners` waits for `owners`, then runs against the merged owner data.
 
-## Optional Parts
+## Aggregation Parts
 
 ### Account
 
@@ -349,7 +350,7 @@ For every `data[*]` item, the part walks each entry in `owners1` whose shape ide
 beneficialOwnersDetails
 ```
 
-Traversal is bounded by a maximum depth of 6 levels. Downstream failures, malformed responses, or depth violations abort the tree for that entity only; the enclosing `data[*]` item keeps all previously merged data.
+Traversal is bounded by a maximum depth of 6 levels. Downstream failures, malformed responses, or depth violations fail the selected `beneficialOwners` part and therefore fail the request.
 
 Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The part name also participates in the unknown-name validation that is applied to the `include` set.
 
@@ -404,7 +405,7 @@ All other Actuator endpoints are disabled by default.
 Custom metric names:
 
 - `aggregation.request`, tagged by `part_selection` and `requested_parts`
-- `aggregation.part.requests`, tagged by `part` and `outcome` (emitted by optional aggregation parts)
+- `aggregation.part.requests`, tagged by `part` and `outcome` (emitted by aggregation parts)
 - `aggregation.beneficial_owners.tree`, tagged by `outcome` (per root entity resolved by the beneficial-owners part)
 
 ## Quality Gates

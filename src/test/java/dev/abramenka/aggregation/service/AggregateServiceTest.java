@@ -71,7 +71,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_handlesOptionalFailuresAndMergesSuccessfulOptionalResults() {
+    void aggregate_failsWhenSelectedEnrichmentFails_andMergesSuccessfulSelectedResults() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         ClientRequestContext clientRequestContext = new ClientRequestContext(
                 ForwardedHeaders.builder().authorization("Bearer token").build(), true);
@@ -97,17 +97,9 @@ class AggregateServiceTest {
                 .thenReturn(Mono.error(new RuntimeException("account down")));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext))
-                .assertNext(aggregated -> {
-                    ObjectNode root = (ObjectNode) aggregated;
-                    assertThat(root.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(root.path("data")
-                                    .path(0)
-                                    .path("accounts")
-                                    .path(0)
-                                    .has("account1"))
-                            .isFalse();
-                })
-                .verifyComplete();
+                .expectErrorSatisfies(error ->
+                        assertThat(error).isInstanceOf(RuntimeException.class).hasMessage("account down"))
+                .verify();
         assertPartMetric("account", "failure", 1);
 
         JsonNode accountResponse = json("""
@@ -237,7 +229,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_treatsEmptyOptionalEnrichmentResponseAsFailedEnrichment() {
+    void aggregate_failsWhenSelectedEnrichmentReturnsEmpty() {
         AggregateService service = aggregateServiceWith(emptyEnrichment());
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         JsonNode accountGroupResponse = json("""
@@ -250,11 +242,13 @@ class AggregateServiceTest {
                 .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
-                .assertNext(aggregated ->
-                        assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage("Required aggregation part 'empty' returned an empty result"))
+                .verify();
 
         assertPartMetric("empty", "empty", 1);
+        assertPartMetricMissing("empty", "failure");
     }
 
     @Test
@@ -307,9 +301,9 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsFailedEnrichments() {
-        AggregateService service = aggregateServiceWith(List.of(failingFetchEnrichment("optionalAudit")));
-        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
+    void aggregate_failsSelectedEnrichmentWhenFetchFails() {
+        AggregateService service = aggregateServiceWith(List.of(failingFetchEnrichment("auditTrail")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
@@ -320,17 +314,18 @@ class AggregateServiceTest {
                 .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
-                .assertNext(aggregated ->
-                        assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1"))
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage("enrichment down"))
+                .verify();
 
-        assertPartMetric("optionalAudit", "failure", 1);
+        assertPartMetric("auditTrail", "failure", 1);
     }
 
     @Test
     void aggregate_skipsUnsupportedEnrichments() {
-        AggregateService service = aggregateServiceWith(List.of(unsupportedEnrichment("optionalAudit")));
-        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
+        AggregateService service = aggregateServiceWith(List.of(unsupportedEnrichment("auditTrail")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
@@ -352,7 +347,7 @@ class AggregateServiceTest {
     void aggregate_enablesEnrichmentDependencies() {
         AggregateService service = aggregateServiceWith(List.of(
                 AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
-                dependentEnrichment("auditTrail", "account")));
+                dependentNoopEnrichment("auditTrail", "account")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
@@ -419,8 +414,8 @@ class AggregateServiceTest {
     @Test
     void aggregate_appliesSameLevelEnrichmentPatchesWithoutWipingSiblingResults() {
         AggregateService service = aggregateServiceWith(
-                List.of(rootFlagEnrichment("account", "enriched"), rootFlagEnrichment("optionalAudit", "audited")));
-        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "optionalAudit"));
+                List.of(rootFlagEnrichment("account", "enriched"), rootFlagEnrichment("auditTrail", "audited")));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
               "customerId": "cust-1"
@@ -439,7 +434,7 @@ class AggregateServiceTest {
     }
 
     @Test
-    void aggregate_skipsOptionalEnrichmentWhenMergeFails() {
+    void aggregate_failsSelectedEnrichmentWhenMergeFails() {
         AggregateService service = aggregateServiceWith(failingMergeEnrichment());
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         JsonNode accountGroupResponse = json("""
@@ -452,11 +447,10 @@ class AggregateServiceTest {
                 .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
-                .assertNext(aggregated -> {
-                    assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(aggregated.has("partialMerge")).isFalse();
-                })
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage("merge failed"))
+                .verify();
 
         assertPartMetric("mergeFailure", "failure", 1);
     }
@@ -813,37 +807,8 @@ class AggregateServiceTest {
 
             @Override
             public void merge(@NonNull ObjectNode root, @NonNull JsonNode enrichmentResponse) {
-                root.put("partialMerge", true);
+                root.put("failedMergeWasAttempted", true);
                 throw new IllegalStateException("merge failed");
-            }
-        };
-    }
-
-    private AggregationEnrichment dependentEnrichment(String name, String dependency) {
-        return new AggregationEnrichment() {
-            @Override
-            public String name() {
-                return name;
-            }
-
-            @Override
-            public Set<String> dependencies() {
-                return Set.of(dependency);
-            }
-
-            @Override
-            public boolean supports(AggregationContext context) {
-                return true;
-            }
-
-            @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.empty();
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                throw new IllegalStateException("Empty enrichment should not be merged");
             }
         };
     }
@@ -970,5 +935,14 @@ class AggregateServiceTest {
                         .counter()
                         .count())
                 .isEqualTo(count);
+    }
+
+    private void assertPartMetricMissing(String part, String outcome) {
+        assertThat(meterRegistry
+                        .find("aggregation.part.requests")
+                        .tag("part", part)
+                        .tag("outcome", outcome)
+                        .counter())
+                .isNull();
     }
 }

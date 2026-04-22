@@ -96,7 +96,7 @@ class BeneficialOwnersEnrichmentTest {
     }
 
     @Test
-    void enrichment_isolatesFailureOfOneRootEntityFromSiblings() {
+    void enrichment_failsWhenAnyRootEntityResolutionFails() {
         ObjectNode root = json("""
             {
               "data": [
@@ -137,10 +137,14 @@ class BeneficialOwnersEnrichmentTest {
                     return Mono.error(new RuntimeException("owners 5xx"));
                 });
 
-        StepVerifier.create(fetchAndMerge(root)).verifyComplete();
+        StepVerifier.create(fetchAndMerge(root))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(BeneficialOwnersResolutionException.class)
+                        .hasMessage("owners client failed while resolving beneficial owners"))
+                .verify();
 
         JsonNode owners = root.path("data").path(0).path("owners1");
-        assertThat(owners.path(0).path("beneficialOwnersDetails").size()).isEqualTo(1);
+        assertThat(owners.path(0).has("beneficialOwnersDetails")).isFalse();
         assertThat(owners.path(1).has("beneficialOwnersDetails")).isFalse();
 
         assertTreeMetric("success", 1);

@@ -31,33 +31,39 @@ class AggregationPartExecutorTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
+        AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         executor = new AggregationPartExecutor(
-                new AggregationPartRunner(new AggregationPartMetrics(meterRegistry)),
+                new AggregationPartRunner(metrics),
                 new AggregationRootFactory(),
-                new AggregationPartResultApplicator());
+                new AggregationPartResultApplicator(),
+                metrics);
     }
 
     @Test
-    void execute_skipsDependentPartWhenDependencyReturnsEmpty() {
+    void execute_failsWhenSelectedDependencyReturnsEmpty() {
         AggregationPart dependency = part("source", (root, context) -> Mono.empty());
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
-                .assertNext(result -> assertThat(result.has("dependentRan")).isFalse())
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage("Required aggregation part 'source' returned an empty result"))
+                .verify();
 
         assertPartMetric("source", "empty", 1);
-        assertPartMetricMissing("dependent", "success");
+        assertPartMetricMissing("source", "failure");
     }
 
     @Test
-    void execute_skipsDependentPartWhenDependencyFails() {
+    void execute_failsWhenSelectedDependencyFails() {
         AggregationPart dependency = part("source", (root, context) -> Mono.error(new IllegalStateException("down")));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
-                .assertNext(result -> assertThat(result.has("dependentRan")).isFalse())
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage("down"))
+                .verify();
 
         assertPartMetric("source", "failure", 1);
         assertPartMetricMissing("dependent", "success");
