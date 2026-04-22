@@ -24,19 +24,23 @@ class AggregationPartExecutor {
             JsonNode accountGroupResponse,
             AggregationContext context,
             AggregationPartPlan partPlan) {
-        List<AggregationEnrichment> enabledEnrichments = partPlan.supportedEnrichments(context);
-        List<AggregationPostProcessor> enabledPostProcessors = partPlan.supportedPostProcessors(context);
+        AggregationPartExecutionPlan executionPlan = partPlan.executionPlan(context);
         ObjectNode root = aggregationMerger.mutableRoot(rootClientName, accountGroupResponse);
+        return runEnrichmentPhase(executionPlan.enrichmentPhase(), root, context)
+                .flatMap(mergedRoot -> runPostProcessorPhase(executionPlan.postProcessorPhase(), mergedRoot, context)
+                        .thenReturn(mergedRoot));
+    }
+
+    private Mono<ObjectNode> runEnrichmentPhase(
+            List<AggregationEnrichment> enabledEnrichments, ObjectNode root, AggregationContext context) {
         int concurrency = Math.max(1, enabledEnrichments.size());
         return Flux.fromIterable(enabledEnrichments)
                 .flatMap(enrichment -> enrichmentExecutor.fetch(enrichment, context), concurrency)
                 .collectList()
-                .map(results -> aggregationMerger.merge(root, enabledEnrichments, results))
-                .flatMap(mergedRoot -> runPostProcessors(enabledPostProcessors, mergedRoot, context)
-                        .thenReturn(mergedRoot));
+                .map(results -> aggregationMerger.merge(root, enabledEnrichments, results));
     }
 
-    private Mono<Void> runPostProcessors(
+    private Mono<Void> runPostProcessorPhase(
             List<AggregationPostProcessor> enabledPostProcessors, ObjectNode root, AggregationContext context) {
         if (enabledPostProcessors.isEmpty()) {
             return Mono.empty();
