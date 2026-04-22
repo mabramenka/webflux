@@ -32,7 +32,7 @@ class AggregationPartExecutorTest {
         meterRegistry = new SimpleMeterRegistry();
         executor = new AggregationPartExecutor(
                 new AggregationPartRunner(new AggregationPartMetrics(meterRegistry)),
-                new AggregationMerger(),
+                new AggregationRootFactory(),
                 new AggregationPartResultApplicator());
     }
 
