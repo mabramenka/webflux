@@ -148,7 +148,7 @@ Fields sent to the account group service:
 - empty array: only the account group response is returned
 - supported values: `account`, `owners`, `beneficialOwners`
 - unknown values fail before calling the account group service
-- selected parts are required: execution, downstream, empty-result, or merge failures fail the request
+- selected parts are required: execution, downstream, empty-result, missing keyed-response entry, or merge failures fail the request
 
 ### Query Parameters
 

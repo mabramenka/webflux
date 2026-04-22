@@ -539,6 +539,46 @@ class AggregateServiceTest {
     }
 
     @Test
+    void aggregate_failsAccountEnrichmentWhenDownstreamOmitsRequestedKey() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
+
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "accounts": [
+                    {"id": "acc-a"},
+                    {"id": "acc-b"}
+                  ]
+                }
+              ]
+            }
+            """);
+        JsonNode accountResponse = json("""
+            {
+              "data": [
+                {"id": "acc-a", "amount": 10.50}
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+        when(accountClient.fetchAccounts(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountResponse));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(IllegalStateException.class)
+                        .hasMessage(
+                                "Required aggregation part 'account' response is missing entries for key(s): acc-b"))
+                .verify();
+
+        assertPartMetric("account", "failure", 1);
+    }
+
+    @Test
     void aggregate_deduplicatesAccountRequestIdsButMergesAllMatchingItems() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
 
