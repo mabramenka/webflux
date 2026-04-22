@@ -36,6 +36,7 @@ Aggregation pipeline in `AggregateService.aggregate`:
 Key collaborators:
 
 - `ClientRequestContext` (a per-invocation POJO, not a Spring scope bean — built by `ClientRequestContextFactory` + `ServerClientRequestContextArgumentResolver`) carries forwarded headers (`Authorization`, `X-Request-Id`, `X-Correlation-Id`, `Accept-Language`) and the `detokenize` query flag. On the downstream side, `ClientRequestContextHttpServiceArgumentResolver` (registered via `WebClientHttpServiceGroupConfigurer`) turns it into `WebClient` headers/query params for HTTP exchange methods.
+- `dev.abramenka.aggregation.part.execution` owns the optional-part execution engine: selection planning, dependency graph levels, per-part execution, metrics, and root result application.
 - `DownstreamClientErrorFilter` (per-group WebClient filter) maps 4xx/5xx to `DownstreamClientException` with the human client name from `HttpServiceGroups.downstreamClientName`.
 - `AggregationErrorResponseAdvice` maps validation, unreadable request content, downstream `ErrorResponseException` subclasses, and unexpected failures to RFC 9457-style `ProblemDetail` responses.
 
