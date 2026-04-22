@@ -1,6 +1,7 @@
 package dev.abramenka.aggregation.config;
 
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.TraceContext;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.Ordered;
@@ -22,8 +23,13 @@ public class RequestContextMdcFilter implements WebFilter, Ordered {
         String effectiveRequestId =
                 requestId != null ? requestId : UUID.randomUUID().toString();
         String correlationId = firstNonBlank(headers.getFirst(ForwardedHeaders.CORRELATION_ID_HEADER));
+        String traceparent = firstNonBlank(headers.getFirst(TraceContext.TRACEPARENT_HEADER));
+        String effectiveTraceparent = traceparent != null && TraceContext.traceIdFromTraceparent(traceparent) != null
+                ? traceparent
+                : TraceContext.newTraceparent();
 
         exchange.getResponse().getHeaders().set(ForwardedHeaders.REQUEST_ID_HEADER, effectiveRequestId);
+        exchange.getResponse().getHeaders().set(TraceContext.TRACEPARENT_HEADER, effectiveTraceparent);
 
         Context context = Context.of(MdcPropagationConfig.REQUEST_ID_KEY, effectiveRequestId);
         if (correlationId != null) {

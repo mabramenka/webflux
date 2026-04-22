@@ -1,5 +1,7 @@
 package dev.abramenka.aggregation.part;
 
+import dev.abramenka.aggregation.error.FacadeException;
+import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartResult;
@@ -24,8 +26,9 @@ class AggregationPartRunner {
                 })
                 .switchIfEmpty(Mono.defer(() -> {
                     metrics.record(part.name(), "empty");
-                    return Mono.error(new IllegalStateException(
-                            "Required aggregation part '" + part.name() + "' returned an empty result"));
-                }));
+                    return Mono.error(OrchestrationException.invariantViolated(
+                            new IllegalStateException("Required aggregation part returned an empty result")));
+                }))
+                .onErrorMap(ex -> !(ex instanceof FacadeException), OrchestrationException::invariantViolated);
     }
 }

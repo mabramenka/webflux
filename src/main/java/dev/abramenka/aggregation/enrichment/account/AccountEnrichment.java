@@ -1,6 +1,8 @@
 package dev.abramenka.aggregation.enrichment.account;
 
 import dev.abramenka.aggregation.client.Accounts;
+import dev.abramenka.aggregation.client.DownstreamClientResponses;
+import dev.abramenka.aggregation.client.HttpServiceGroups;
 import dev.abramenka.aggregation.enrichment.support.keyed.EnrichmentRule;
 import dev.abramenka.aggregation.enrichment.support.keyed.KeyedArrayEnrichment;
 import dev.abramenka.aggregation.model.AggregationContext;
@@ -15,6 +17,8 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 @Order(Ordered.LOWEST_PRECEDENCE - 2)
 class AccountEnrichment extends KeyedArrayEnrichment {
+
+    private static final String CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT);
 
     private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
             .mainItems("$.data[*]", "accounts[*].id")
@@ -38,6 +42,7 @@ class AccountEnrichment extends KeyedArrayEnrichment {
     @Override
     public Mono<JsonNode> fetch(AggregationContext context) {
         ObjectNode request = requestWithKeys(context);
-        return accountClient.fetchAccounts(request, context.clientRequestContext());
+        return DownstreamClientResponses.requireBody(
+                CLIENT_NAME, accountClient.fetchAccounts(request, context.clientRequestContext()));
     }
 }

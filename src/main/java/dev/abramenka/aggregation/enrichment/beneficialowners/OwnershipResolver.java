@@ -1,5 +1,7 @@
 package dev.abramenka.aggregation.enrichment.beneficialowners;
 
+import dev.abramenka.aggregation.client.DownstreamClientResponses;
+import dev.abramenka.aggregation.client.HttpServiceGroups;
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.model.AggregationContext;
 import java.util.HashMap;
@@ -17,6 +19,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 class OwnershipResolver {
 
+    private static final String CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.OWNERS);
     static final int MAX_DEPTH = 6;
     private static final String IDS_FIELD = "ids";
 
@@ -80,18 +83,28 @@ class OwnershipResolver {
         ObjectNode request = objectMapper.createObjectNode();
         ArrayNode ids = request.putArray(IDS_FIELD);
         numbers.forEach(ids::add);
-        return ownersClient
-                .fetchOwners(request, context.clientRequestContext())
-                .switchIfEmpty(Mono.error(() -> new BeneficialOwnersResolutionException(
-                        BeneficialOwnersResolutionException.Reason.MALFORMED_RESPONSE,
-                        "owners client returned an empty response")))
+        return DownstreamClientResponses.requireBody(
+                        CLIENT_NAME, ownersClient.fetchOwners(request, context.clientRequestContext()))
                 .map(this::indexByNumber)
+                .map(responseByNumber -> requireAllRequestedNumbers(numbers, responseByNumber))
                 .onErrorMap(
                         ex -> !(ex instanceof BeneficialOwnersResolutionException),
                         ex -> new BeneficialOwnersResolutionException(
                                 BeneficialOwnersResolutionException.Reason.DOWNSTREAM_FAILED,
                                 "owners client failed while resolving beneficial owners",
                                 ex));
+    }
+
+    private Map<String, JsonNode> requireAllRequestedNumbers(
+            Set<String> numbers, Map<String, JsonNode> responseByNumber) {
+        for (String number : numbers) {
+            if (!responseByNumber.containsKey(number)) {
+                throw new BeneficialOwnersResolutionException(
+                        BeneficialOwnersResolutionException.Reason.MALFORMED_RESPONSE,
+                        "owners response is missing a requested owner");
+            }
+        }
+        return responseByNumber;
     }
 
     private Map<String, JsonNode> indexByNumber(JsonNode response) {

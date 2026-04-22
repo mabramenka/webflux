@@ -142,6 +142,22 @@ class OwnershipResolverTest {
     }
 
     @Test
+    void resolveTree_failsWhenResponseOmitsRequestedNumber() {
+        OwnershipResolver resolver = new OwnershipResolver(ownersClient, objectMapper);
+        JsonNode root = entity("R", List.of("A"), List.of());
+        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(respond()));
+
+        StepVerifier.create(resolver.resolveTree(root, aggregationContext()))
+                .expectErrorSatisfies(ex -> {
+                    assertThat(ex).isInstanceOf(BeneficialOwnersResolutionException.class);
+                    assertThat(((BeneficialOwnersResolutionException) ex).reason())
+                            .isEqualTo(BeneficialOwnersResolutionException.Reason.MALFORMED_RESPONSE);
+                })
+                .verify();
+    }
+
+    @Test
     void resolveTree_skipsMissingMembersAndReturnsCollectedIndividuals() {
         OwnershipResolver resolver = new OwnershipResolver(ownersClient, objectMapper);
         JsonNode root = objectMapper

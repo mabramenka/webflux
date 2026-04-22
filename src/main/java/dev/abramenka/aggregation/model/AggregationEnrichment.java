@@ -1,5 +1,7 @@
 package dev.abramenka.aggregation.model;
 
+import dev.abramenka.aggregation.error.FacadeException;
+import dev.abramenka.aggregation.error.OrchestrationException;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -14,7 +16,13 @@ public interface AggregationEnrichment extends AggregationPart {
     default Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
         return fetch(context).map(response -> {
             ObjectNode workingRoot = rootSnapshot.deepCopy();
-            merge(workingRoot, response);
+            try {
+                merge(workingRoot, response);
+            } catch (FacadeException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                throw OrchestrationException.mergeFailed(ex);
+            }
             return AggregationPartResult.patch(name(), rootSnapshot, workingRoot);
         });
     }

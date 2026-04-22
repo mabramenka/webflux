@@ -10,7 +10,7 @@ class AggregationRootFactory {
 
     ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
         if (!accountGroupResponse.isObject()) {
-            throw DownstreamClientException.transport(clientName, null);
+            throw DownstreamClientException.contractViolation(clientName);
         }
         return (ObjectNode) accountGroupResponse.deepCopy();
     }

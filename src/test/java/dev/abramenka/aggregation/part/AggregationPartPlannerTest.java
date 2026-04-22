@@ -77,7 +77,7 @@ class AggregationPartPlannerTest {
 
         assertThatThrownBy(() -> planner.plan(List.of("missing")))
                 .isInstanceOf(UnsupportedAggregationPartException.class)
-                .hasMessageContaining("missing");
+                .hasMessage("One or more request fields failed validation.");
     }
 
     @Test

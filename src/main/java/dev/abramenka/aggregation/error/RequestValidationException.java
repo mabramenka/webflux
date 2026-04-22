@@ -1,37 +1,28 @@
 package dev.abramenka.aggregation.error;
 
-import java.net.URI;
 import java.util.List;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ProblemDetail;
-import org.springframework.web.ErrorResponseException;
 
-public final class RequestValidationException extends ErrorResponseException {
+public final class RequestValidationException extends FacadeException {
 
-    public static final URI TYPE = URI.create("/problems/request-validation-failed");
+    public static final ProblemCatalog CATALOG = ProblemCatalog.CLIENT_VALIDATION;
 
     public static RequestValidationException invalidQueryParameter(String parameter, String message) {
-        return new RequestValidationException(new ValidationError("query", parameter, message));
+        return new RequestValidationException(new ValidationError(pointer("query", parameter), message));
     }
 
     public static RequestValidationException invalidRequestValue(String field, String message) {
-        return new RequestValidationException(new ValidationError("request", field, message));
+        return new RequestValidationException(new ValidationError(pointer("request", field), message));
     }
 
     private RequestValidationException(ValidationError error) {
-        super(HttpStatus.BAD_REQUEST, problemDetail(error), null);
+        super(CATALOG, null, List.of(error), null);
     }
 
-    @Override
-    public String getMessage() {
-        String detail = getBody().getDetail();
-        return detail != null ? detail : super.getMessage();
+    private static String pointer(String location, String field) {
+        return "/" + escape(location) + "/" + escape(field);
     }
 
-    private static ProblemDetail problemDetail(ValidationError error) {
-        ProblemDetail body = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request validation failed.");
-        body.setType(TYPE);
-        body.setProperty("errors", List.of(error));
-        return body;
+    private static String escape(String value) {
+        return value.replace("~", "~0").replace("/", "~1");
     }
 }

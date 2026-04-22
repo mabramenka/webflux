@@ -110,7 +110,52 @@ The application registers three HTTP service client groups:
 | `account` | `Accounts` | `POST` | `/accounts` | `https://localhost:8083` |
 | `owners` | `Owners` | `POST` | `/owners` | `https://localhost:8084` |
 
-All downstream clients send and accept JSON. Downstream 4xx/5xx responses, transport failures, and unreadable account group responses are mapped to `502 Bad Gateway` problem responses.
+All downstream clients send and accept JSON. Downstream 4xx/5xx responses, transport failures, and unreadable payloads are normalized into the facade-owned RFC 9457 problem catalog.
+
+## Architecture
+
+Aggregation Gateway is a synchronous domain facade, not an owner of account, account-group, or owner data. Its boundary is response composition: it validates the caller request, calls the mandatory account-group dependency, expands the selected aggregation graph, calls required enrichment dependencies, and returns one merged JSON document.
+
+### Module Boundaries
+
+| Package | Responsibility | Owns |
+| --- | --- | --- |
+| `api` | HTTP endpoints and transport DTOs | Public request shape and route versioning |
+| `service` | Request orchestration entry point | Account-group request construction and top-level observation |
+| `part` | Aggregation graph planning, dependency levels, execution, merge application, metrics | Required selected-part execution semantics |
+| `enrichment.<name>` | Business-specific enrichment parts | Part name, dependency declaration, downstream request and merge rule |
+| `enrichment.support` | Reusable enrichment mechanics | Path selection, keyed joins, required keyed-response completeness checks |
+| `client` | Spring HTTP service clients and downstream error filter | Outbound paths, forwarded context, HTTP-layer failure normalization |
+| `error` | Problem Detail mapping | Stable validation and known domain/downstream problem shapes |
+| `config` | WebFlux, client, SSL, MDC, and context propagation wiring | Runtime plumbing and framework integration |
+
+### Runtime Flow
+
+1. `api` validates the inbound POST body or GET path/query arguments.
+2. `config` builds `ClientRequestContext` from selected inbound headers and query parameters.
+3. `service` plans selected parts before calling downstreams, so unknown part names fail before any account-group call.
+4. `service` calls the mandatory account-group downstream and requires an object-shaped JSON response.
+5. `part` expands dependencies, groups parts by dependency level, and validates every selected part against the current root snapshot.
+6. A selected part whose `supports(context)` is false fails as a main contract violation because the root payload lacks data required for mandatory enrichment.
+7. Runnable parts in the same level execute concurrently; the next level starts only after successful results are applied in graph order.
+8. A selected part is required: execution errors, empty downstream bodies, incomplete keyed responses, downstream failures, and merge failures terminate the request.
+
+### Consistency And Failure Semantics
+
+- The account-group call is the mandatory root. If it fails or returns unreadable/non-object JSON, the whole request fails.
+- `include == null` selects every registered part. Because selected parts are required, the main payload must contain the keys needed by every registered part. `include == []` returns only the account-group response.
+- Explicitly selected transitive dependencies are enabled automatically. For example, `beneficialOwners` also selects `owners`.
+- Keyed enrichments (`account`, `owners`) request every distinct key found in the root payload and require the downstream response to contain an entry for each requested key.
+- Same-level part results are generated from the same immutable root snapshot, then merged into the mutable root in stable graph order.
+- The service does not persist state and has no distributed transaction. Consistency is per request and depends on downstream responses at request time.
+
+### Error Contract Boundaries
+
+The implemented public error contract follows [error-handling-design.md](error-handling-design.md): every error response is a facade-owned RFC 9457 Problem Detail with stable `type`, `errorCode`, `category`, `retryable`, `traceId`, `timestamp`, and `instance` fields. Validation failures, unsupported aggregation parts, downstream dependency failures, missing selected-part keys, enrichment contract violations, orchestration failures, framework 4xx errors, overload failures, and unexpected platform failures are all normalized through this catalog.
+
+Selected enrichment failures are no longer anonymous internal errors. Missing keys required to run a selected part map to `/problems/main/contract-violation`; missing keyed enrichment entries map to `/problems/enrichment/contract-violation`; merge failures map to `/problems/orchestration/merge-failed`; unclassified unchecked failures map to `/problems/platform/internal`.
+
+Raw downstream `404` responses are treated as opaque dependency failures unless facade code explicitly classifies the condition as a domain not-found outcome. `ORCH-CONFIG-INVALID` is reserved for runtime configuration failures detected after startup; configuration errors found during bean creation may fail application startup before an HTTP response exists.
 
 ## API
 
@@ -169,100 +214,101 @@ The service forwards selected inbound headers to downstream services:
 
 ## Error Responses
 
-All failures are returned as RFC 7807 `application/problem+json` responses. Only the canonical RFC 7807 fields (`type`, `title`, `status`, `detail`, `instance`) are standard; a small set of documented extension members is added where useful. The `title` is derived from the HTTP status reason phrase — it is not a custom, stable identifier. Use the `type` URI as the machine-readable problem identifier.
+All failures are returned as RFC 9457 `application/problem+json` responses. The public contract is the catalog in [error-handling-design.md](error-handling-design.md); clients should use `errorCode` or `type` as machine-readable identifiers and must not parse `detail`.
 
-When the inbound request carries `X-Request-Id` or `X-Correlation-Id`, or the response pipeline has assigned a request id, those values are echoed back as `requestId` and `correlationId` extension members on every problem response.
+Every problem response contains:
 
-### 400 Bad Request — request validation failed
+- `type`, `title`, `status`, `detail`, `instance`
+- `errorCode`
+- `category`
+- `traceId`
+- `retryable`
+- `timestamp`
 
-Emitted when bean validation rejects the `@RequestBody` payload, when method-level validation rejects a path/query/header argument, or when a handler programmatically throws `RequestValidationException` (for example, an invalid `detokenize` value).
+Dependency errors also include `dependency` with a logical value such as `main`, `enricher:account`, or `enricher:owners`. Client validation errors include `violations`, where each item has a JSON-pointer-like `pointer` and a generic `message`.
+
+Every response, success or error, carries a valid W3C `traceparent` header. If the request supplied a valid `traceparent`, it is echoed; otherwise the service generates one. Problem responses expose the trace id portion as `traceId`.
+
+### 400 Bad Request — validation
 
 ```json
 {
-  "type": "/problems/request-validation-failed",
-  "title": "Bad Request",
+  "type": "/problems/validation",
+  "title": "Request validation failed",
   "status": 400,
-  "detail": "Invalid request content.",
-  "errors": [
-    {"location": "body", "field": "ids", "message": "must not be empty"}
+  "detail": "One or more request fields failed validation.",
+  "instance": "/requests/fa3c2b1d4e5f6a7b8c9d0e1f2a3b4c5d",
+  "errorCode": "CLIENT-VALIDATION",
+  "category": "CLIENT_REQUEST",
+  "traceId": "fa3c2b1d4e5f6a7b8c9d0e1f2a3b4c5d",
+  "retryable": false,
+  "timestamp": "2026-04-22T10:15:30Z",
+  "violations": [
+    {"pointer": "/ids", "message": "must not be empty"}
   ]
 }
 ```
 
-The `errors` array is always present for this problem type. Each entry has `location` (`body`, `path`, `query`, `header`, or `request`), `field` (nullable for global errors), and `message`. The `detail` varies by source: `"Invalid request content."` for body binding, `"Request validation failed."` for method-argument validation, and the programmatic message for `RequestValidationException`.
+Bean validation failures, malformed JSON, invalid query/path values, and unknown `include` values all use this catalog entry. Framework routing and negotiation failures use dedicated catalog entries such as `/problems/method-not-allowed`, `/problems/not-acceptable`, and `/problems/unsupported-media`.
 
-### 400 Bad Request — malformed request content
-
-Emitted for unreadable or malformed inputs below the validation layer (for example, a non-JSON body or a missing required value that Spring raises as `ServerWebInputException`).
+### 502 Bad Gateway — enrichment contract violation
 
 ```json
 {
-  "type": "/problems/invalid-request-content",
-  "title": "Bad Request",
-  "status": 400,
-  "detail": "Request content is malformed or unreadable."
-}
-```
-
-No `errors` array is emitted for this type.
-
-### 422 Unprocessable Content — unsupported aggregation part name
-
-Emitted when `include` contains a name that is not a registered aggregation part. Validation runs before the account group service is called.
-
-```json
-{
-  "type": "/problems/unsupported-aggregation-part",
-  "title": "Unprocessable Content",
-  "status": 422,
-  "detail": "Unsupported aggregation part(s): foo",
-  "parts": ["foo"]
-}
-```
-
-### 502 Bad Gateway — downstream client error
-
-Emitted when a downstream call fails. Two shapes are possible, differentiated by whether an HTTP status was received.
-
-Upstream returned a 4xx/5xx response:
-
-```json
-{
-  "type": "/problems/downstream-client-error",
-  "title": "Bad Gateway",
+  "type": "/problems/enrichment/contract-violation",
+  "title": "Enrichment dependency payload violates contract",
   "status": 502,
-  "detail": "Account group client returned an error response",
-  "client": "Account group",
-  "downstreamStatus": 503
+  "detail": "A required enrichment dependency payload does not satisfy the required contract.",
+  "instance": "/requests/0af7651916cd43dd8448eb211c80319c",
+  "errorCode": "ENRICH-CONTRACT-VIOLATION",
+  "category": "ENRICHMENT_DEPENDENCY",
+  "dependency": "enricher:account",
+  "traceId": "0af7651916cd43dd8448eb211c80319c",
+  "retryable": false,
+  "timestamp": "2026-04-22T10:15:30Z"
 }
 ```
 
-Transport failure, unreadable body, or other non-status error:
+This is emitted, for example, when a keyed enrichment response omits an entry for a requested key.
+
+### 502/504 — downstream dependency failure
 
 ```json
 {
-  "type": "/problems/downstream-client-error",
-  "title": "Bad Gateway",
+  "type": "/problems/main/invalid-payload",
+  "title": "Main dependency returned an invalid payload",
   "status": 502,
-  "detail": "Account group client request failed",
-  "client": "Account group"
+  "detail": "The main dependency returned a payload that could not be read.",
+  "instance": "/requests/4bf92f3577b34da6a3ce929d0e0e4736",
+  "errorCode": "MAIN-INVALID-PAYLOAD",
+  "category": "MAIN_DEPENDENCY",
+  "dependency": "main",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "retryable": false,
+  "timestamp": "2026-04-22T10:15:30Z"
 }
 ```
 
-`client` is the human-readable client name derived from the HTTP service group. `downstreamStatus` is present only when the upstream returned a status code.
+Timeout and unavailable dependency failures use `504` and `retryable: true`; bad statuses, invalid payloads, authentication failures to dependencies, and contract violations use `502` and `retryable: false`.
 
-### 500 Internal Server Error — unhandled error
-
-Returned by the catch-all handler for any exception not mapped by a more specific handler. The logs retain the stack trace; the response body is deliberately generic.
+### 500 Internal Server Error — orchestration/platform
 
 ```json
 {
-  "type": "/problems/internal-aggregation-error",
-  "title": "Internal Server Error",
+  "type": "/problems/orchestration/merge-failed",
+  "title": "Aggregation failed",
   "status": 500,
-  "detail": "The aggregation request could not be completed."
+  "detail": "The service could not assemble the aggregated response.",
+  "instance": "/requests/b7ad6b7169203331d2f2e3a6f1c8d9e0",
+  "errorCode": "ORCH-MERGE-FAILED",
+  "category": "ORCHESTRATION",
+  "traceId": "b7ad6b7169203331d2f2e3a6f1c8d9e0",
+  "retryable": false,
+  "timestamp": "2026-04-22T10:15:30Z"
 }
 ```
+
+Unclassified exceptions use `/problems/platform/internal` with `errorCode: PLATFORM-INTERNAL`.
 
 ## Aggregation Flow
 
@@ -270,10 +316,10 @@ Returned by the catch-all handler for any exception not mapped by a more specifi
 2. Build and send the account group request to `/account-groups`.
 3. Expand aggregation part dependencies for the requested `include` set.
 4. Build dependency levels from the selected aggregation parts.
-5. For each level, evaluate `supports(context)` against the current root snapshot.
-6. Execute supported parts in the same level in parallel; a selected part failure fails the request.
+5. For each level, require every selected part to support the current root snapshot.
+6. Execute runnable parts in the same level in parallel; a selected part failure fails the request.
 7. Apply successful results in stable graph order before the next dependency level starts.
-8. Skip non-applicable parts whose dependencies did not produce an applied result.
+8. Fail the request if a selected part cannot run because required dependency data is absent.
 
 Default part dependency order:
 

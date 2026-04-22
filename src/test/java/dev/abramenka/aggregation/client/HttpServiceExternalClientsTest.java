@@ -8,9 +8,12 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import dev.abramenka.aggregation.error.DownstreamClientException;
+import dev.abramenka.aggregation.error.OrchestrationException;
+import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -79,6 +82,8 @@ class HttpServiceExternalClientsTest {
     @ParameterizedTest
     @MethodSource("clients")
     void fetch_mapsErrorStatusToIllegalStateException(WebClientCase clientCase) {
+        ProblemCatalog expectedCatalog =
+                clientCase.main() ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
         WebClient webClient = webClient(ClientResponse.create(HttpStatus.BAD_REQUEST)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
                 .body("client unavailable")
@@ -88,11 +93,12 @@ class HttpServiceExternalClientsTest {
                 .expectErrorSatisfies(error -> {
                     assertThat(error)
                             .isInstanceOf(DownstreamClientException.class)
-                            .hasMessage(clientCase.errorPrefix() + " client returned an error response");
+                            .hasMessage(expectedCatalog.defaultDetail());
                     DownstreamClientException clientException = (DownstreamClientException) error;
                     assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
                     assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
                     assertThat(clientException.downstreamStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(clientException.getBody().getType()).isEqualTo(expectedCatalog.type());
                 })
                 .verify();
     }
@@ -100,6 +106,8 @@ class HttpServiceExternalClientsTest {
     @ParameterizedTest
     @MethodSource("clients")
     void fetch_usesDefaultErrorMessageForEmptyErrorBody(WebClientCase clientCase) {
+        ProblemCatalog expectedCatalog =
+                clientCase.main() ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
         WebClient webClient = webClient(
                 ClientResponse.create(HttpStatus.BAD_GATEWAY).body(" ").build());
 
@@ -107,7 +115,7 @@ class HttpServiceExternalClientsTest {
                 .expectErrorSatisfies(error -> {
                     assertThat(error)
                             .isInstanceOf(DownstreamClientException.class)
-                            .hasMessage(clientCase.errorPrefix() + " client returned an error response");
+                            .hasMessage(expectedCatalog.defaultDetail());
                 })
                 .verify();
     }
@@ -121,13 +129,17 @@ class HttpServiceExternalClientsTest {
         HttpRequestValues.Builder requestValues = HttpRequestValues.builder();
 
         assertThatThrownBy(() -> resolver.resolve(null, parameter, requestValues))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("ClientRequestContext must not be null");
+                .isInstanceOf(OrchestrationException.class)
+                .hasMessage("The service detected an internal aggregation invariant violation.")
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasRootCauseMessage("ClientRequestContext must not be null");
     }
 
     @ParameterizedTest
     @MethodSource("clients")
     void fetch_mapsTransportErrorToDownstreamClientException(WebClientCase clientCase) {
+        ProblemCatalog expectedCatalog =
+                clientCase.main() ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
         WebClient webClient = WebClient.builder()
                 .baseUrl("https://client.example")
                 .exchangeFunction(request -> Mono.error(new IOException("connection refused")))
@@ -138,12 +150,55 @@ class HttpServiceExternalClientsTest {
                 .expectErrorSatisfies(error -> {
                     assertThat(error)
                             .isInstanceOf(DownstreamClientException.class)
-                            .hasMessage(clientCase.errorPrefix() + " client request failed")
+                            .hasMessage(expectedCatalog.defaultDetail())
                             .hasCauseInstanceOf(IOException.class);
                     DownstreamClientException clientException = (DownstreamClientException) error;
                     assertThat(clientException.clientName()).isEqualTo(clientCase.errorPrefix());
-                    assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
                     assertThat(clientException.downstreamStatusCode()).isNull();
+                })
+                .verify();
+    }
+
+    @Test
+    void fetch_mapsSocketTimeoutToTimeoutProblem() {
+        WebClient webClient = WebClient.builder()
+                .baseUrl("https://client.example")
+                .exchangeFunction(request -> Mono.error(new SocketTimeoutException("read timed out")))
+                .filter(DownstreamClientErrorFilter.forClient("Owners"))
+                .build();
+
+        StepVerifier.create(webClient.post().uri("/owners").retrieve().bodyToMono(String.class))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(DownstreamClientException.class);
+                    DownstreamClientException clientException = (DownstreamClientException) error;
+                    assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+                    assertThat(clientException.getBody().getType()).isEqualTo(ProblemCatalog.ENRICH_TIMEOUT.type());
+                    assertThat(clientException.getBody().getProperties())
+                            .containsEntry("errorCode", "ENRICH-TIMEOUT")
+                            .containsEntry("retryable", true);
+                })
+                .verify();
+    }
+
+    @Test
+    void fetch_mapsRequestTimeoutStatusToTimeoutProblem() {
+        WebClient webClient = webClient(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.TEXT_PLAIN_VALUE)
+                .body("timeout")
+                .build());
+
+        StepVerifier.create(httpClient(webClient, AccountGroups.class, "Account group")
+                        .fetchAccountGroup(REQUEST, CLIENT_REQUEST_CONTEXT))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(DownstreamClientException.class);
+                    DownstreamClientException clientException = (DownstreamClientException) error;
+                    assertThat(clientException.getStatusCode()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+                    assertThat(clientException.downstreamStatusCode()).isEqualTo(HttpStatus.REQUEST_TIMEOUT);
+                    assertThat(clientException.getBody().getType()).isEqualTo(ProblemCatalog.MAIN_TIMEOUT.type());
+                    assertThat(clientException.getBody().getProperties())
+                            .containsEntry("errorCode", "MAIN-TIMEOUT")
+                            .containsEntry("retryable", true);
                 })
                 .verify();
     }
@@ -189,7 +244,11 @@ class HttpServiceExternalClientsTest {
     }
 
     private record WebClientCase(
-            String path, String errorPrefix, Function<WebClient, WebClientInvocation> invocationFactory) {}
+            String path, String errorPrefix, Function<WebClient, WebClientInvocation> invocationFactory) {
+        boolean main() {
+            return "Account group".equals(errorPrefix);
+        }
+    }
 
     @FunctionalInterface
     private interface WebClientInvocation {

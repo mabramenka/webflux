@@ -16,8 +16,10 @@ import dev.abramenka.aggregation.error.AggregationErrorResponseAdvice;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.TraceContext;
 import dev.abramenka.aggregation.service.AggregateService;
 import java.util.List;
+import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +30,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.springframework.web.ErrorResponseException;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -42,6 +45,9 @@ import tools.jackson.databind.node.ObjectNode;
     WebFluxConfig.class
 })
 class AggregateControllerTest {
+
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
+    private static final String TRACEPARENT = "00-" + TRACE_ID + "-00f067aa0ba902b7-00";
 
     @Autowired
     private WebTestClient webTestClient;
@@ -69,6 +75,7 @@ class AggregateControllerTest {
                 .header(REQUEST_ID_HEADER, "req-123")
                 .header(CORRELATION_ID_HEADER, "corr-456")
                 .header(HttpHeaders.ACCEPT_LANGUAGE, "en-US")
+                .header(TraceContext.TRACEPARENT_HEADER, TRACEPARENT)
                 .bodyValue("""
                 {"ids":["AB123456789"],"include":["account","owners"]}
                 """)
@@ -77,6 +84,8 @@ class AggregateControllerTest {
                 .isOk()
                 .expectHeader()
                 .contentTypeCompatibleWith(MediaType.APPLICATION_JSON)
+                .expectHeader()
+                .valueEquals(TraceContext.TRACEPARENT_HEADER, TRACEPARENT)
                 .expectBody()
                 .jsonPath("$.status")
                 .isEqualTo("ok");
@@ -104,6 +113,7 @@ class AggregateControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .header(REQUEST_ID_HEADER, "req-789")
                 .header(CORRELATION_ID_HEADER, "corr-789")
+                .header(TraceContext.TRACEPARENT_HEADER, TRACEPARENT)
                 .bodyValue("""
                 {"ids":["AB123456789"]}
                 """)
@@ -112,25 +122,29 @@ class AggregateControllerTest {
                 .isBadRequest()
                 .expectHeader()
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectHeader()
+                .valueEquals(TraceContext.TRACEPARENT_HEADER, TRACEPARENT)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed")
-                .jsonPath("$.requestId")
-                .isEqualTo("req-789")
-                .jsonPath("$.correlationId")
-                .isEqualTo("corr-789")
+                .isEqualTo("/problems/validation")
+                .jsonPath("$.traceId")
+                .isEqualTo(TRACE_ID)
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-VALIDATION")
+                .jsonPath("$.category")
+                .isEqualTo("CLIENT_REQUEST")
+                .jsonPath("$.retryable")
+                .isEqualTo(false)
                 .jsonPath("$.detail")
-                .isEqualTo("Request validation failed.")
-                .jsonPath("$.errors[0].location")
-                .isEqualTo("query")
-                .jsonPath("$.errors[0].field")
-                .isEqualTo("detokenize")
-                .jsonPath("$.errors[0].message")
+                .isEqualTo("One or more request fields failed validation.")
+                .jsonPath("$.violations[0].pointer")
+                .isEqualTo("/query/detokenize")
+                .jsonPath("$.violations[0].message")
                 .isEqualTo("'detokenize' must be either true or false");
     }
 
     @Test
-    void aggregate_problemDetailIncludesGeneratedRequestIdWhenHeaderMissing() {
+    void aggregate_problemDetailIncludesGeneratedTraceIdWhenHeaderMissing() {
         webTestClient
                 .post()
                 .uri("/api/v1/aggregate")
@@ -141,13 +155,39 @@ class AggregateControllerTest {
                 .isBadRequest()
                 .expectHeader()
                 .exists(REQUEST_ID_HEADER)
+                .expectHeader()
+                .exists(TraceContext.TRACEPARENT_HEADER)
                 .expectBody()
-                .jsonPath("$.requestId")
-                .value(requestId -> assertThat((String) requestId).isNotBlank())
+                .jsonPath("$.traceId")
+                .value(traceId -> assertThat((String) traceId).matches("[0-9a-f]{32}"))
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed")
-                .jsonPath("$.correlationId")
+                .isEqualTo("/problems/validation")
+                .jsonPath("$.timestamp")
+                .exists()
+                .jsonPath("$.requestId")
                 .doesNotExist();
+    }
+
+    @Test
+    void aggregate_generatesTraceparentWhenInboundHeaderIsInvalid() {
+        String invalidTraceparent = "00-4BF92F3577B34DA6A3CE929D0E0E4736-00f067aa0ba902b7-01";
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header(TraceContext.TRACEPARENT_HEADER, invalidTraceparent)
+                .bodyValue("{}")
+                .exchange()
+                .expectStatus()
+                .isBadRequest()
+                .expectHeader()
+                .value(TraceContext.TRACEPARENT_HEADER, value -> assertThat(value)
+                        .matches("00-[0-9a-f]{32}-[0-9a-f]{16}-01")
+                        .isNotEqualTo(invalidTraceparent))
+                .expectBody()
+                .jsonPath("$.traceId")
+                .value(traceId -> assertThat((String) traceId).matches("[0-9a-f]{32}"));
     }
 
     @Test
@@ -178,9 +218,11 @@ class AggregateControllerTest {
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/invalid-request-content")
+                .isEqualTo("/problems/validation")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-VALIDATION")
                 .jsonPath("$.detail")
-                .isEqualTo("Request content is malformed or unreadable.");
+                .isEqualTo("One or more request fields failed validation.");
     }
 
     @Test
@@ -197,13 +239,11 @@ class AggregateControllerTest {
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed")
+                .isEqualTo("/problems/validation")
                 .jsonPath("$.detail")
-                .isEqualTo("Invalid request content.")
-                .jsonPath("$.errors[0].location")
-                .isEqualTo("body")
-                .jsonPath("$.errors[0].field")
-                .isEqualTo("ids");
+                .isEqualTo("One or more request fields failed validation.")
+                .jsonPath("$.violations[0].pointer")
+                .isEqualTo("/ids");
     }
 
     @Test
@@ -220,7 +260,7 @@ class AggregateControllerTest {
                 .isBadRequest()
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed");
+                .isEqualTo("/problems/validation");
     }
 
     @Test
@@ -237,9 +277,9 @@ class AggregateControllerTest {
                 .isBadRequest()
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed")
-                .jsonPath("$.errors[0].field")
-                .isEqualTo("ids[0]");
+                .isEqualTo("/problems/validation")
+                .jsonPath("$.violations[0].pointer")
+                .isEqualTo("/ids/0");
     }
 
     @Test
@@ -256,7 +296,7 @@ class AggregateControllerTest {
                 .isBadRequest()
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed");
+                .isEqualTo("/problems/validation");
     }
 
     @Test
@@ -273,20 +313,22 @@ class AggregateControllerTest {
                 """)
                 .exchange()
                 .expectStatus()
-                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT)
+                .isBadRequest()
                 .expectHeader()
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/unsupported-aggregation-part")
+                .isEqualTo("/problems/validation")
                 .jsonPath("$.status")
-                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT.value())
+                .isEqualTo(HttpStatus.BAD_REQUEST.value())
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-VALIDATION")
                 .jsonPath("$.detail")
-                .isEqualTo("Unsupported aggregation part(s): foo")
-                .jsonPath("$.parts[0]")
-                .isEqualTo("foo")
+                .isEqualTo("One or more request fields failed validation.")
+                .jsonPath("$.violations[0].pointer")
+                .isEqualTo("/request/include")
                 .jsonPath("$.instance")
-                .isEqualTo("/api/v1/aggregate");
+                .value(instance -> assertThat((String) instance).startsWith("/requests/"));
     }
 
     @Test
@@ -308,9 +350,39 @@ class AggregateControllerTest {
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/internal-aggregation-error")
+                .isEqualTo("/problems/platform/internal")
+                .jsonPath("$.errorCode")
+                .isEqualTo("PLATFORM-INTERNAL")
+                .jsonPath("$.category")
+                .isEqualTo("PLATFORM")
                 .jsonPath("$.detail")
-                .isEqualTo("The aggregation request could not be completed.");
+                .isEqualTo("The service encountered an unexpected internal error.");
+    }
+
+    @Test
+    void aggregate_returnsInternalProblemDetailWhenThrowableEscapes() {
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new LinkageError("linkage failure")));
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["AB123456789"]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+                .expectHeader()
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/platform/internal")
+                .jsonPath("$.errorCode")
+                .isEqualTo("PLATFORM-INTERNAL")
+                .jsonPath("$.detail")
+                .isEqualTo("The service encountered an unexpected internal error.");
     }
 
     @Test
@@ -332,13 +404,15 @@ class AggregateControllerTest {
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/downstream-client-error")
+                .isEqualTo("/problems/enrichment/bad-response")
                 .jsonPath("$.detail")
-                .isEqualTo("Account client returned an error response")
-                .jsonPath("$.client")
-                .isEqualTo("Account")
+                .isEqualTo("A required enrichment dependency returned an unexpected response status.")
+                .jsonPath("$.errorCode")
+                .isEqualTo("ENRICH-BAD-RESPONSE")
+                .jsonPath("$.dependency")
+                .isEqualTo("enricher:account")
                 .jsonPath("$.downstreamStatus")
-                .isEqualTo(HttpStatus.BAD_REQUEST.value());
+                .doesNotExist();
     }
 
     @Test
@@ -376,11 +450,11 @@ class AggregateControllerTest {
                 .isBadRequest()
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/request-validation-failed")
-                .jsonPath("$.errors[0].location")
-                .isEqualTo("path")
-                .jsonPath("$.errors[0].field")
-                .isEqualTo("id");
+                .isEqualTo("/problems/validation")
+                .jsonPath("$.violations[0].pointer")
+                .isEqualTo("/path/id")
+                .jsonPath("$.violations[0].message")
+                .exists();
     }
 
     @Test
@@ -404,7 +478,14 @@ class AggregateControllerTest {
                 .expectStatus()
                 .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED)
                 .expectHeader()
-                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/method-not-allowed")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-METHOD-NOT-ALLOWED")
+                .jsonPath("$.status")
+                .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED.value());
     }
 
     @Test
@@ -421,7 +502,14 @@ class AggregateControllerTest {
                 .expectStatus()
                 .isEqualTo(HttpStatus.NOT_ACCEPTABLE)
                 .expectHeader()
-                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/not-acceptable")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-NOT-ACCEPTABLE")
+                .jsonPath("$.status")
+                .isEqualTo(HttpStatus.NOT_ACCEPTABLE.value());
     }
 
     @Test
@@ -435,7 +523,14 @@ class AggregateControllerTest {
                 .expectStatus()
                 .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
                 .expectHeader()
-                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+                .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/unsupported-media")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-UNSUPPORTED-MEDIA")
+                .jsonPath("$.status")
+                .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value());
     }
 
     @Test
@@ -448,5 +543,121 @@ class AggregateControllerTest {
                 .isEqualTo(HttpStatus.NOT_FOUND)
                 .expectHeader()
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON);
+    }
+
+    @Test
+    void aggregate_mapsFrameworkUnauthorizedToCatalogEntry() {
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new ErrorResponseException(HttpStatus.UNAUTHORIZED)));
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["AB123456789"]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isUnauthorized()
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/unauthenticated")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-UNAUTHENTICATED");
+    }
+
+    @Test
+    void aggregate_mapsFrameworkForbiddenToCatalogEntry() {
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new ErrorResponseException(HttpStatus.FORBIDDEN)));
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["AB123456789"]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isForbidden()
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/forbidden")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-FORBIDDEN");
+    }
+
+    @Test
+    void aggregate_mapsFrameworkRateLimitToCatalogEntry() {
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new ErrorResponseException(HttpStatus.TOO_MANY_REQUESTS)));
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["AB123456789"]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isEqualTo(HttpStatus.TOO_MANY_REQUESTS)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/rate-limited")
+                .jsonPath("$.errorCode")
+                .isEqualTo("CLIENT-RATE-LIMITED")
+                .jsonPath("$.retryable")
+                .isEqualTo(true);
+    }
+
+    @Test
+    void aggregate_mapsRejectedExecutionToOverloadedProblem() {
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new RejectedExecutionException("pool exhausted")));
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["AB123456789"]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
+                .expectHeader()
+                .valueEquals(HttpHeaders.RETRY_AFTER, "1")
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/platform/overloaded")
+                .jsonPath("$.errorCode")
+                .isEqualTo("PLATFORM-OVERLOADED")
+                .jsonPath("$.retryable")
+                .isEqualTo(true);
+    }
+
+    @Test
+    void aggregate_mapsUnknownFrameworkStatusToPlatformInternal() {
+        when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new ErrorResponseException(HttpStatus.CONFLICT)));
+
+        webTestClient
+                .post()
+                .uri("/api/v1/aggregate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                {"ids":["AB123456789"]}
+                """)
+                .exchange()
+                .expectStatus()
+                .isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR)
+                .expectBody()
+                .jsonPath("$.type")
+                .isEqualTo("/problems/platform/internal")
+                .jsonPath("$.errorCode")
+                .isEqualTo("PLATFORM-INTERNAL");
     }
 }

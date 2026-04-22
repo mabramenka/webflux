@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.client;
 
+import dev.abramenka.aggregation.error.OrchestrationException;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass
@@ -14,7 +15,9 @@ public final class HttpServiceGroups {
             case ACCOUNT_GROUP -> "Account group";
             case ACCOUNT -> "Account";
             case OWNERS -> "Owners";
-            default -> throw new IllegalStateException("Unknown HTTP service group: " + groupName);
+            default ->
+                throw OrchestrationException.configInvalid(
+                        new IllegalStateException("Unknown HTTP service group: " + groupName));
         };
     }
 }
