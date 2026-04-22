@@ -2,7 +2,6 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -14,7 +13,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Slf4j
 class PostProcessorExecutor {
 
-    private final MeterRegistry meterRegistry;
+    private final AggregationPartMetrics metrics;
 
     Mono<Void> apply(AggregationPostProcessor postProcessor, ObjectNode root, AggregationContext context) {
         return postProcessor
@@ -31,8 +30,6 @@ class PostProcessorExecutor {
     }
 
     private void record(String partName, String outcome) {
-        meterRegistry
-                .counter("aggregation.part.requests", "part", partName, "outcome", outcome)
-                .increment();
+        metrics.record(partName, outcome);
     }
 }
