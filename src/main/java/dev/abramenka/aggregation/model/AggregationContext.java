@@ -30,10 +30,6 @@ public final class AggregationContext {
         return clientRequestContext;
     }
 
-    public AggregationPartSelection partSelection() {
-        return partSelection;
-    }
-
     public AggregationContext withAccountGroupResponse(JsonNode accountGroupResponse) {
         return new AggregationContext(accountGroupResponse, clientRequestContext, partSelection);
     }

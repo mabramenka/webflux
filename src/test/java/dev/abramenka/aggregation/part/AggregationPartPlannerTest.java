@@ -130,7 +130,7 @@ class AggregationPartPlannerTest {
                 .containsExactly(List.of("account"));
         assertThatThrownBy(() -> plan.selectedLevels().add(List.of(part)))
                 .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> plan.selectedLevels().get(0).add(part))
+        assertThatThrownBy(() -> plan.selectedLevels().getFirst().add(part))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
@@ -144,11 +144,6 @@ class AggregationPartPlannerTest {
             @Override
             public Set<String> dependencies() {
                 return Set.of(dependencies);
-            }
-
-            @Override
-            public boolean supports(AggregationContext context) {
-                return true;
             }
 
             @Override
