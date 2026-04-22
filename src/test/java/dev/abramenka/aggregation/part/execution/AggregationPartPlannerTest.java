@@ -21,9 +21,10 @@ class AggregationPartPlannerTest {
 
     @Test
     void plan_expandsDependenciesAcrossAggregationParts() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(enrichment("account"), enrichment("auditTrail", "account")),
-                List.of(postProcessor("beneficialOwners", "auditTrail")));
+        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(
+                enrichment("account"),
+                enrichment("auditTrail", "account"),
+                postProcessor("beneficialOwners", "auditTrail")));
 
         AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
 
@@ -37,8 +38,8 @@ class AggregationPartPlannerTest {
 
     @Test
     void plan_ordersSelectedEnrichmentsByDependencies() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(enrichment("auditTrail", "account"), enrichment("account")), List.of());
+        AggregationPartPlanner planner =
+                new AggregationPartPlanner(List.of(enrichment("auditTrail", "account"), enrichment("account")));
 
         AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
 
@@ -50,7 +51,7 @@ class AggregationPartPlannerTest {
     @Test
     void plan_ordersSelectedPostProcessorsByDependencies() {
         AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(), List.of(postProcessor("summary", "beneficialOwners"), postProcessor("beneficialOwners")));
+                List.of(postProcessor("summary", "beneficialOwners"), postProcessor("beneficialOwners")));
 
         AggregationPartPlan plan = planner.plan(List.of("summary"));
 
@@ -62,7 +63,7 @@ class AggregationPartPlannerTest {
     @Test
     void plan_keepsSelectedPartsForRuntimeSupportCheck() {
         AggregationPartPlanner planner =
-                new AggregationPartPlanner(List.of(), List.of(unsupportedPostProcessor("beneficialOwners")));
+                new AggregationPartPlanner(List.of(unsupportedPostProcessor("beneficialOwners")));
 
         AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
 
@@ -73,7 +74,7 @@ class AggregationPartPlannerTest {
 
     @Test
     void plan_rejectsUnknownRequestedPart() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(enrichment("account")), List.of());
+        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(enrichment("account")));
 
         assertThatThrownBy(() -> planner.plan(List.of("missing")))
                 .isInstanceOf(UnsupportedAggregationPartException.class)
@@ -82,15 +83,14 @@ class AggregationPartPlannerTest {
 
     @Test
     void constructor_rejectsDuplicatePartNames() {
-        assertThatThrownBy(() ->
-                        new AggregationPartPlanner(List.of(enrichment("account")), List.of(postProcessor("account"))))
+        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account"), postProcessor("account"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate aggregation component name: account");
     }
 
     @Test
     void constructor_rejectsUnknownDependencies() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account", "missing")), List.of()))
+        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account", "missing"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unknown aggregation component dependency for account: missing");
     }
@@ -98,7 +98,7 @@ class AggregationPartPlannerTest {
     @Test
     void constructor_rejectsCyclicDependencies() {
         assertThatThrownBy(() -> new AggregationPartPlanner(
-                        List.of(enrichment("account", "owners"), enrichment("owners", "account")), List.of()))
+                        List.of(enrichment("account", "owners"), enrichment("owners", "account"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Cyclic aggregation component dependency");
     }
@@ -106,7 +106,7 @@ class AggregationPartPlannerTest {
     @Test
     void constructor_allowsDependenciesAcrossPartTypes() {
         AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(enrichment("auditTrail", "beneficialOwners")), List.of(postProcessor("beneficialOwners")));
+                List.of(enrichment("auditTrail", "beneficialOwners"), postProcessor("beneficialOwners")));
 
         AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
 
