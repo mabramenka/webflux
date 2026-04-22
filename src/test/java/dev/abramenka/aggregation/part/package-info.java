@@ -1,4 +1,4 @@
-/** Tests for shared aggregation part adapters. */
+/** Tests for the aggregation part planning and execution engine. */
 @NullMarked
 package dev.abramenka.aggregation.part;
 
