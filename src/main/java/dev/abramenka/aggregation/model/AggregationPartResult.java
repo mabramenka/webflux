@@ -15,7 +15,49 @@ public sealed interface AggregationPartResult
         return new MergePatch(partName, base.deepCopy(), replacement.deepCopy());
     }
 
-    record ReplaceDocument(String partName, ObjectNode replacement) implements AggregationPartResult {}
+    final class ReplaceDocument implements AggregationPartResult {
 
-    record MergePatch(String partName, ObjectNode base, ObjectNode replacement) implements AggregationPartResult {}
+        private final String partName;
+        private final ObjectNode replacement;
+
+        private ReplaceDocument(String partName, ObjectNode replacement) {
+            this.partName = partName;
+            this.replacement = replacement;
+        }
+
+        @Override
+        public String partName() {
+            return partName;
+        }
+
+        public ObjectNode replacement() {
+            return replacement.deepCopy();
+        }
+    }
+
+    final class MergePatch implements AggregationPartResult {
+
+        private final String partName;
+        private final ObjectNode base;
+        private final ObjectNode replacement;
+
+        private MergePatch(String partName, ObjectNode base, ObjectNode replacement) {
+            this.partName = partName;
+            this.base = base;
+            this.replacement = replacement;
+        }
+
+        @Override
+        public String partName() {
+            return partName;
+        }
+
+        public ObjectNode base() {
+            return base.deepCopy();
+        }
+
+        public ObjectNode replacement() {
+            return replacement.deepCopy();
+        }
+    }
 }
