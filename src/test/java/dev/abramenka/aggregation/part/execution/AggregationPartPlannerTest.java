@@ -7,7 +7,9 @@ import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
+import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -111,6 +113,26 @@ class AggregationPartPlannerTest {
         assertThat(plan.executionPlan().levels())
                 .extracting(AggregationPartPlannerTest::partNames)
                 .containsExactly(List.of("beneficialOwners"), List.of("auditTrail"));
+    }
+
+    @Test
+    void plan_defensivelyCopiesSelectedLevels() {
+        AggregationPart part = enrichment("account");
+        List<AggregationPart> level = new ArrayList<>(List.of(part));
+        List<List<AggregationPart>> levels = new ArrayList<>(List.of(level));
+
+        AggregationPartPlan plan = new AggregationPartPlan(
+                AggregationPartSelection.from(null), AggregationPartSelection.from(null), levels);
+        level.clear();
+        levels.clear();
+
+        assertThat(plan.selectedLevels())
+                .extracting(AggregationPartPlannerTest::partNames)
+                .containsExactly(List.of("account"));
+        assertThatThrownBy(() -> plan.selectedLevels().add(List.of(part)))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> plan.selectedLevels().get(0).add(part))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 
     private static AggregationEnrichment enrichment(String name, String... dependencies) {
