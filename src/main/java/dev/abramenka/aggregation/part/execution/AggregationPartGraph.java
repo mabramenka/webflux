@@ -1,9 +1,7 @@
 package dev.abramenka.aggregation.part.execution;
 
-import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
-import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -25,11 +23,8 @@ final class AggregationPartGraph {
         this.orderedParts = orderByDependencies(this.parts, this.partsByName);
     }
 
-    static AggregationPartGraph from(
-            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
-        List<AggregationPart> parts = new ArrayList<>(enrichments.size() + postProcessors.size());
-        parts.addAll(List.copyOf(enrichments));
-        parts.addAll(List.copyOf(postProcessors));
+    static AggregationPartGraph from(List<AggregationPart> registeredParts) {
+        List<AggregationPart> parts = new ArrayList<>(registeredParts);
         return new AggregationPartGraph(parts);
     }
 

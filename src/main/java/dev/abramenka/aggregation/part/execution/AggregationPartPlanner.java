@@ -1,9 +1,8 @@
 package dev.abramenka.aggregation.part.execution;
 
-import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
+import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
-import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -13,9 +12,8 @@ public class AggregationPartPlanner {
 
     private final AggregationPartGraph partGraph;
 
-    public AggregationPartPlanner(
-            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
-        this.partGraph = AggregationPartGraph.from(enrichments, postProcessors);
+    public AggregationPartPlanner(List<AggregationPart> parts) {
+        this.partGraph = AggregationPartGraph.from(parts);
     }
 
     public AggregationPartPlan plan(@Nullable List<String> include) {

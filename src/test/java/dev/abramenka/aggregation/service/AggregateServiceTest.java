@@ -17,6 +17,7 @@ import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.RequestValidationException;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.part.execution.AggregationPartExecutor;
@@ -25,6 +26,7 @@ import dev.abramenka.aggregation.part.execution.AggregationPartPlanner;
 import dev.abramenka.aggregation.postprocessor.AggregationPostProcessor;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
@@ -720,7 +722,15 @@ class AggregateServiceTest {
 
     private AggregationPartPlanner partPlanner(
             List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
-        return new AggregationPartPlanner(enrichments, postProcessors);
+        return new AggregationPartPlanner(aggregationParts(enrichments, postProcessors));
+    }
+
+    private static List<AggregationPart> aggregationParts(
+            List<AggregationEnrichment> enrichments, List<AggregationPostProcessor> postProcessors) {
+        List<AggregationPart> parts = new ArrayList<>(enrichments.size() + postProcessors.size());
+        parts.addAll(enrichments);
+        parts.addAll(postProcessors);
+        return parts;
     }
 
     private AggregationPartExecutor partExecutor() {
