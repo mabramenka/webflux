@@ -20,14 +20,14 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 - Dynamic JSON aggregation without fixed downstream response DTOs
 - Spring Boot 4 HTTP service clients backed by reactive `WebClient`
-- Parallel optional enrichment parts with per-part failure isolation
+- Dependency-ordered optional aggregation parts with per-part failure isolation
 - Declarative path-based enrichment rules for keyed array joins
 - Fallback key paths for inconsistent downstream schemas
 - Recursive beneficial-owners post-processing with bounded depth
 - Header and query parameter forwarding to downstream calls
 - RFC 9457-style problem responses for validation and downstream failures
 - Actuator health, readiness, liveness, info, and metrics endpoints
-- Enrichment outcome metrics
+- Aggregation part outcome metrics
 - JSpecify nullability annotations checked by NullAway
 - Spotless, JaCoCo, OWASP Dependency Check, and SonarQube Cloud wiring
 - Renovate-ready dependency maintenance
@@ -267,14 +267,14 @@ Returned by the catch-all handler for any exception not mapped by a more specifi
 
 1. Validate the inbound request and `include` selection.
 2. Build and send the account group request to `/account-groups`.
-3. Select registered optional parts requested by `include`.
+3. Expand aggregation part dependencies for the requested `include` set.
 4. Skip optional parts that do not support the returned account group shape.
-5. Fetch enabled optional parts in parallel.
-6. Ignore failed optional parts and keep the account group response.
-7. Merge successful optional responses in registered order.
-8. Run enabled post-processors sequentially against the merged document. Post-processor failures are swallowed and do not affect the response.
+5. Execute the enrichment phase in dependency order, fetching supported enrichments in parallel.
+6. Ignore failed optional enrichments and keep the account group response.
+7. Merge successful enrichment responses in dependency order.
+8. Execute the post-processor phase sequentially against the merged document. Post-processor failures are swallowed and do not affect the response.
 
-Optional part order:
+Default optional part dependency order:
 
 1. `account` (enrichment)
 2. `owners` (enrichment)
@@ -342,7 +342,7 @@ owners1
 
 ## Post-Processors
 
-Post-processors run after all enrichments have been merged. They receive the mutable merged document and the aggregation context, and operate by mutating the document in place. Unlike enrichments, post-processors are invoked sequentially and may issue their own downstream calls.
+Post-processors run after all supported enrichments have been merged. They receive the mutable merged document and the aggregation context, and operate by mutating the document in place. Unlike enrichments, post-processors are invoked sequentially and may issue their own downstream calls.
 
 ### Beneficial Owners
 
