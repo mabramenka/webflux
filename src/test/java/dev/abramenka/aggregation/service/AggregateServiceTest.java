@@ -673,10 +673,9 @@ class AggregateServiceTest {
     }
 
     private AggregationPartExecutor partExecutor() {
+        AggregationPartMetrics partMetrics = new AggregationPartMetrics(meterRegistry);
         return new AggregationPartExecutor(
-                new EnrichmentExecutor(meterRegistry),
-                new PostProcessorExecutor(meterRegistry),
-                new AggregationMerger());
+                new EnrichmentExecutor(partMetrics), new PostProcessorExecutor(partMetrics), new AggregationMerger());
     }
 
     private AggregationEnrichment emptyEnrichment() {

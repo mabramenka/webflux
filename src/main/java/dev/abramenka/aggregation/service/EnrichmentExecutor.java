@@ -2,7 +2,6 @@ package dev.abramenka.aggregation.service;
 
 import dev.abramenka.aggregation.enrichment.AggregationEnrichment;
 import dev.abramenka.aggregation.model.AggregationContext;
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,7 +12,7 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class EnrichmentExecutor {
 
-    private final MeterRegistry meterRegistry;
+    private final AggregationPartMetrics metrics;
 
     Mono<EnrichmentFetchResult> fetch(AggregationEnrichment enrichment, AggregationContext context) {
         return enrichment
@@ -34,8 +33,6 @@ public class EnrichmentExecutor {
     }
 
     private void recordFetch(String partName, String outcome) {
-        meterRegistry
-                .counter("aggregation.part.requests", "part", partName, "outcome", outcome)
-                .increment();
+        metrics.record(partName, outcome);
     }
 }
