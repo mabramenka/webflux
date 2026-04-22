@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/mabramenka/webflux/compare/v0.7.1...v0.7.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **deps:** update dependency org.projectlombok:lombok to v1.18.46 ([a91297f](https://github.com/mabramenka/webflux/commit/a91297f13ac2da721b41974a8ecfd1f95d01c4bd))
+
 ## [0.7.1](https://github.com/mabramenka/webflux/compare/v0.7.0...v0.7.1) (2026-04-21)
 
 
