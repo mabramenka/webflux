@@ -26,7 +26,6 @@ import dev.abramenka.aggregation.part.execution.AggregationPartExecutorFactory;
 import dev.abramenka.aggregation.part.execution.AggregationPartPlanner;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.NonNull;
@@ -64,11 +63,9 @@ class AggregateServiceTest {
         meterRegistry = new SimpleMeterRegistry();
         aggregateService = new AggregateService(
                 accountGroupClient,
-                partPlanner(
-                        List.of(
-                                new AccountEnrichment(accountClient, objectMapper),
-                                new OwnersEnrichment(ownersClient, objectMapper)),
-                        List.of()),
+                partPlanner(List.of(
+                        new AccountEnrichment(accountClient, objectMapper),
+                        new OwnersEnrichment(ownersClient, objectMapper))),
                 partExecutor(),
                 ObservationRegistry.create(),
                 objectMapper);
@@ -263,11 +260,10 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_enablesDocumentPartDependencies() {
-        AggregateService service = aggregateServiceWith(
-                List.of(
-                        new AccountEnrichment(accountClient, objectMapper),
-                        new OwnersEnrichment(ownersClient, objectMapper)),
-                List.of(dependentDocumentPart("beneficialOwners", "owners")));
+        AggregateService service = aggregateServiceWith(List.of(
+                new AccountEnrichment(accountClient, objectMapper),
+                new OwnersEnrichment(ownersClient, objectMapper),
+                dependentDocumentPart("beneficialOwners", "owners")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("beneficialOwners"));
         JsonNode accountGroupResponse = json("""
             {
@@ -313,7 +309,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_skipsFailedDocumentParts() {
-        AggregateService service = aggregateServiceWith(List.of(), List.of(failingDocumentPart("optionalAudit")));
+        AggregateService service = aggregateServiceWith(List.of(failingDocumentPart("optionalAudit")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -334,7 +330,7 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_skipsUnsupportedDocumentParts() {
-        AggregateService service = aggregateServiceWith(List.of(), List.of(unsupportedDocumentPart("optionalAudit")));
+        AggregateService service = aggregateServiceWith(List.of(unsupportedDocumentPart("optionalAudit")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -355,11 +351,8 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_enablesEnrichmentDependencies() {
-        AggregateService service = aggregateServiceWith(
-                List.of(
-                        new AccountEnrichment(accountClient, objectMapper),
-                        dependentEnrichment("auditTrail", "account")),
-                List.of());
+        AggregateService service = aggregateServiceWith(List.of(
+                new AccountEnrichment(accountClient, objectMapper), dependentEnrichment("auditTrail", "account")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
@@ -402,11 +395,9 @@ class AggregateServiceTest {
 
     @Test
     void aggregate_evaluatesDependentSupportAfterDependencyResultApplied() {
-        AggregateService service = aggregateServiceWith(
-                List.of(
-                        rootFlagEnrichment("account", "accountReady"),
-                        dependentSupportEnrichment("auditTrail", "account", "accountReady", "auditTrailRan")),
-                List.of());
+        AggregateService service = aggregateServiceWith(List.of(
+                rootFlagEnrichment("account", "accountReady"),
+                dependentSupportEnrichment("auditTrail", "account", "accountReady", "auditTrailRan")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
             {
@@ -428,8 +419,7 @@ class AggregateServiceTest {
     @Test
     void aggregate_appliesSameLevelDocumentPartPatchWithoutWipingEnrichmentResult() {
         AggregateService service = aggregateServiceWith(
-                List.of(rootFlagEnrichment("account", "enriched")),
-                List.of(rootFlagDocumentPart("optionalAudit", "audited")));
+                List.of(rootFlagEnrichment("account", "enriched"), rootFlagDocumentPart("optionalAudit", "audited")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account", "optionalAudit"));
         JsonNode accountGroupResponse = json("""
             {
@@ -706,31 +696,17 @@ class AggregateServiceTest {
         return new ClientRequestContext(ForwardedHeaders.builder().build(), null);
     }
 
-    private AggregateService aggregateServiceWith(AggregationEnrichment enrichment) {
-        return aggregateServiceWith(List.of(enrichment), List.of());
+    private AggregateService aggregateServiceWith(AggregationPart part) {
+        return aggregateServiceWith(List.of(part));
     }
 
-    private AggregateService aggregateServiceWith(
-            List<AggregationEnrichment> enrichments, List<AggregationDocumentPart> documentParts) {
+    private AggregateService aggregateServiceWith(List<AggregationPart> parts) {
         return new AggregateService(
-                accountGroupClient,
-                partPlanner(enrichments, documentParts),
-                partExecutor(),
-                ObservationRegistry.create(),
-                objectMapper);
+                accountGroupClient, partPlanner(parts), partExecutor(), ObservationRegistry.create(), objectMapper);
     }
 
-    private AggregationPartPlanner partPlanner(
-            List<AggregationEnrichment> enrichments, List<AggregationDocumentPart> documentParts) {
-        return new AggregationPartPlanner(aggregationParts(enrichments, documentParts));
-    }
-
-    private static List<AggregationPart> aggregationParts(
-            List<AggregationEnrichment> enrichments, List<AggregationDocumentPart> documentParts) {
-        List<AggregationPart> parts = new ArrayList<>(enrichments.size() + documentParts.size());
-        parts.addAll(enrichments);
-        parts.addAll(documentParts);
-        return parts;
+    private AggregationPartPlanner partPlanner(List<AggregationPart> parts) {
+        return new AggregationPartPlanner(parts);
     }
 
     private AggregationPartExecutor partExecutor() {
