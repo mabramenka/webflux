@@ -13,9 +13,9 @@ import tools.jackson.databind.node.ObjectNode;
 
 @Component
 @Slf4j
-public class AggregationMerger {
+class AggregationMerger {
 
-    public ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
+    ObjectNode mutableRoot(String clientName, JsonNode accountGroupResponse) {
         if (!accountGroupResponse.isObject()) {
             throw DownstreamClientException.transport(clientName, null);
         }
