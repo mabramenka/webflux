@@ -3,10 +3,8 @@ package dev.abramenka.aggregation.part.execution;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartResult;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -31,18 +29,21 @@ public class AggregationPartExecutor {
             AggregationPartPlan partPlan) {
         AggregationPartExecutionPlan executionPlan = partPlan.executionPlan();
         ObjectNode root = aggregationMerger.mutableRoot(rootClientName, accountGroupResponse);
-        Set<String> appliedParts = new LinkedHashSet<>();
+        AggregationPartExecutionState executionState = new AggregationPartExecutionState();
         return Flux.fromIterable(executionPlan.levels())
-                .concatMap(level -> runLevel(level, root, context, appliedParts))
+                .concatMap(level -> runLevel(level, root, context, executionState))
                 .then(Mono.just(root));
     }
 
     private Mono<Void> runLevel(
-            List<AggregationPart> level, ObjectNode root, AggregationContext context, Set<String> appliedParts) {
+            List<AggregationPart> level,
+            ObjectNode root,
+            AggregationContext context,
+            AggregationPartExecutionState executionState) {
         ObjectNode rootSnapshot = root.deepCopy();
         AggregationContext levelContext = context.withAccountGroupResponse(rootSnapshot);
         List<AggregationPart> supportedLevel = level.stream()
-                .filter(part -> dependenciesApplied(part, appliedParts))
+                .filter(part -> dependenciesApplied(part, executionState))
                 .filter(part -> part.supports(levelContext))
                 .toList();
         if (supportedLevel.isEmpty()) {
@@ -52,7 +53,7 @@ public class AggregationPartExecutor {
         return Flux.fromIterable(supportedLevel)
                 .flatMap(part -> partRunner.execute(part, rootSnapshot, levelContext), concurrency)
                 .collectMap(AggregationPartResult::partName)
-                .doOnNext(resultsByName -> applyResults(supportedLevel, resultsByName, root, appliedParts))
+                .doOnNext(resultsByName -> applyResults(supportedLevel, resultsByName, root, executionState))
                 .then();
     }
 
@@ -60,13 +61,13 @@ public class AggregationPartExecutor {
             List<AggregationPart> level,
             Map<String, AggregationPartResult> resultsByName,
             ObjectNode root,
-            Set<String> appliedParts) {
+            AggregationPartExecutionState executionState) {
         for (AggregationPart part : level) {
             AggregationPartResult result = resultsByName.get(part.name());
             if (result != null) {
                 try {
                     resultApplicator.apply(result, root);
-                    appliedParts.add(part.name());
+                    executionState.markApplied(part);
                 } catch (Exception ex) {
                     log.warn(
                             "Optional aggregation part '{}' failed during result merge and will be skipped",
@@ -77,10 +78,8 @@ public class AggregationPartExecutor {
         }
     }
 
-    private boolean dependenciesApplied(AggregationPart part, Set<String> appliedParts) {
-        List<String> missingDependencies = part.dependencies().stream()
-                .filter(dependency -> !appliedParts.contains(dependency))
-                .toList();
+    private boolean dependenciesApplied(AggregationPart part, AggregationPartExecutionState executionState) {
+        List<String> missingDependencies = executionState.missingDependencies(part);
         if (missingDependencies.isEmpty()) {
             return true;
         }
