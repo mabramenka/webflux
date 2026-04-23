@@ -4,6 +4,14 @@ import java.net.URI;
 import org.springframework.http.HttpStatus;
 
 public enum ProblemCatalog {
+    CLIENT_INVALID_BODY(
+            "CLIENT-INVALID-BODY",
+            "/problems/invalid-request-body",
+            "Request body is invalid",
+            HttpStatus.BAD_REQUEST,
+            ProblemCategory.CLIENT_REQUEST,
+            false,
+            "The request body could not be parsed or does not match the expected format."),
     CLIENT_VALIDATION(
             "CLIENT-VALIDATION",
             "/problems/validation",

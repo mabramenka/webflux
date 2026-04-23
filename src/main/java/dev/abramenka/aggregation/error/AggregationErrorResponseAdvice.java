@@ -66,7 +66,7 @@ public final class AggregationErrorResponseAdvice extends ResponseEntityExceptio
     @Override
     protected Mono<ResponseEntity<Object>> handleServerWebInputException(
             ServerWebInputException ex, HttpHeaders headers, HttpStatusCode status, ServerWebExchange exchange) {
-        ProblemDetail body = FacadeException.problemDetail(ProblemCatalog.CLIENT_VALIDATION, null, List.of());
+        ProblemDetail body = FacadeException.problemDetail(ProblemCatalog.CLIENT_INVALID_BODY, null, List.of());
         return handleExceptionInternal(ex, body, headers, status, exchange);
     }
 

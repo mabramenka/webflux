@@ -218,11 +218,11 @@ class AggregateControllerTest {
                 .contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
                 .jsonPath("$.type")
-                .isEqualTo("/problems/validation")
+                .isEqualTo("/problems/invalid-request-body")
                 .jsonPath("$.errorCode")
-                .isEqualTo("CLIENT-VALIDATION")
+                .isEqualTo("CLIENT-INVALID-BODY")
                 .jsonPath("$.detail")
-                .isEqualTo("One or more request fields failed validation.");
+                .isEqualTo("The request body could not be parsed or does not match the expected format.");
     }
 
     @Test
