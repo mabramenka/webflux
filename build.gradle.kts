@@ -8,6 +8,7 @@ import org.springframework.boot.gradle.plugin.SpringBootPlugin
 plugins {
     java
     jacoco
+    alias(libs.plugins.lombok)
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.sonarqube)
     alias(libs.plugins.errorprone)
@@ -29,18 +30,17 @@ java {
 
 dependencies {
     implementation(platform(SpringBootPlugin.BOM_COORDINATES))
-    implementation(platform(libs.jackson.bom))
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.webflux)
     implementation(libs.spring.boot.webclient)
     implementation(libs.micrometer.context.propagation)
 
-    compileOnly(libs.lombok)
+    lombok(platform(SpringBootPlugin.BOM_COORDINATES))
+    lombok(libs.lombok)
 
     annotationProcessor(platform(SpringBootPlugin.BOM_COORDINATES))
     annotationProcessor(libs.spring.boot.configuration.processor)
-    annotationProcessor(libs.lombok)
 
     errorprone(libs.errorprone.core)
     errorprone(libs.nullaway)
@@ -48,10 +48,6 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webflux.test)
     testImplementation(libs.reactor.test)
-
-    testCompileOnly(libs.lombok)
-
-    testAnnotationProcessor(libs.lombok)
 
     testRuntimeOnly(libs.junit.platform.launcher)
 }
@@ -161,8 +157,6 @@ tasks.register("printStackVersions") {
     val stack = mapOf(
         "Java" to libs.versions.java.get(),
         "Spring Boot" to libs.versions.spring.boot.get(),
-        "Jackson" to libs.versions.jackson.get(),
-        "Lombok" to libs.versions.lombok.get(),
         "JaCoCo" to libs.versions.jacoco.get(),
         "Error Prone" to libs.versions.errorprone.asProvider().get(),
         "NullAway" to libs.versions.nullaway.get(),
