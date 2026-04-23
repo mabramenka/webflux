@@ -4,8 +4,6 @@ import java.util.List;
 
 public final class RequestValidationException extends FacadeException {
 
-    public static final ProblemCatalog CATALOG = ProblemCatalog.CLIENT_VALIDATION;
-
     public static RequestValidationException invalidQueryParameter(String parameter, String message) {
         return new RequestValidationException(new ValidationError(pointer("query", parameter), message));
     }
@@ -15,7 +13,7 @@ public final class RequestValidationException extends FacadeException {
     }
 
     private RequestValidationException(ValidationError error) {
-        super(CATALOG, null, List.of(error), null);
+        super(ProblemCatalog.CLIENT_VALIDATION, null, List.of(error), null);
     }
 
     private static String pointer(String location, String field) {
