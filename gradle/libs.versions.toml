@@ -1,15 +1,14 @@
 [versions]
 java = "21"
 spring-boot = "4.0.6"
-lombok = "1.18.46"
 sonarqube = "7.2.3.7755"
 jacoco = "0.8.14"
 errorprone-plugin = "5.1.0"
 errorprone = "2.49.0"
 nullaway = "0.13.4"
-jackson = "3.1.2"
 spotless = "8.4.0"
 dependency-check = "12.2.1"
+freefair-lombok = "9.4.0"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
@@ -17,9 +16,9 @@ sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
 errorprone = { id = "net.ltgt.errorprone", version.ref = "errorprone-plugin" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 dependency-check = { id = "org.owasp.dependencycheck", version.ref = "dependency-check" }
+lombok = { id = "io.freefair.lombok", version.ref = "freefair-lombok" }
 
 [libraries]
-jackson-bom = { module = "tools.jackson:jackson-bom", version.ref = "jackson" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
@@ -28,7 +27,7 @@ spring-boot-configuration-processor = { module = "org.springframework.boot:sprin
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-boot-starter-webflux-test = { module = "org.springframework.boot:spring-boot-starter-webflux-test" }
 micrometer-context-propagation = { module = "io.micrometer:context-propagation" }
-lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+lombok = { module = "org.projectlombok:lombok" }
 reactor-test = { module = "io.projectreactor:reactor-test" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
