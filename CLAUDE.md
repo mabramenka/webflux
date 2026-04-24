@@ -28,10 +28,16 @@ Entry: `POST /api/v1/aggregate` → `AggregateController` (`@Valid` on `Aggregat
 Aggregation pipeline in `AggregateService.aggregate`:
 
 1. Build `AggregationPartSelection` from `request.include()` and validate unknown names up front.
-2. POST ids to the `account-group` downstream. Unreadable/error responses are mapped to `DownstreamClientException` (→ 502 problem+json via Spring's ProblemDetails).
+2. POST ids to the `account-group` downstream. The main call is strict: unreadable/error/empty responses are mapped to `DownstreamClientException` and abort the whole request (→ 502/504 problem+json).
 3. Expand dependencies and build dependency levels for the selected aggregation parts.
-4. `AggregationPartExecutor` evaluates `supports(context)` against the current root snapshot for each level, then runs supported parts in that level in parallel with per-part failure isolation (failures are swallowed, metric tagged `outcome=failure`).
-5. Successful part results are applied to the mutable root in stable graph order before the next dependency level starts; parts whose dependencies did not apply are skipped.
+4. `AggregationPartExecutor` evaluates `supports(context)` against the current root snapshot for each level, then runs supported parts in that level in parallel. Errors propagate — any failure from a part aborts the whole request. Soft signals are carried as `AggregationPartResult.NoOp` (status `EMPTY` / `SKIPPED`): missing main keys, unsupported context, empty downstream bodies, and `404` from an enricher all become `NoOp`, not errors.
+5. Applied part results are written to the mutable root in stable graph order before the next dependency level starts. `NoOp` results do not mutate root; dependent parts whose dependencies did not apply are marked `SKIPPED / DEPENDENCY_EMPTY` and their outcomes recorded.
+6. The success response carries a `meta.parts.<name>` object for every selected or transitively-required part with `{ status, reason? }` — `APPLIED` (no reason), `EMPTY` (`DOWNSTREAM_EMPTY` / `DOWNSTREAM_NOT_FOUND`), or `SKIPPED` (`NO_KEYS_IN_MAIN` / `UNSUPPORTED_CONTEXT` / `DEPENDENCY_EMPTY`).
+
+Failure boundaries:
+
+- **Fatal (aborts the request):** main-call failures, auth (`401`/`403`) from any downstream, `5xx` / timeouts / transport errors from enrichers, decoding failures (`ENRICH_INVALID_PAYLOAD`), merge exceptions (`ORCH_MERGE_FAILED`), internal invariant violations (empty `Mono`, wrong part name, missing result).
+- **Soft (part-level NoOp, request succeeds):** main payload missing the keys a selected part needs (`NO_KEYS_IN_MAIN`), part `supports(context)` returns `false` (`UNSUPPORTED_CONTEXT`), downstream body empty (`DOWNSTREAM_EMPTY`), downstream `404` on enricher (`DOWNSTREAM_NOT_FOUND`), dependency applied nothing (`DEPENDENCY_EMPTY`).
 
 Key collaborators:
 
@@ -45,13 +51,15 @@ Key collaborators:
 Aggregation parts:
 
 - `AggregationPart` is the common SPI for optional pipeline behavior: `name()`, `dependencies()`, `supports(context)`, `execute(rootSnapshot, context)`.
-- `AggregationPartResult` is data, not an apply callback: parts return either a root replacement or a merge patch derived from a snapshot.
-- `model.AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`; its default execution merges into a snapshot and returns a patch result.
+- `AggregationPartResult` is a sealed `ReplaceDocument | MergePatch | NoOp`. Parts return a replacement, a merge patch derived from the snapshot, or a `NoOp` carrying a `PartOutcomeStatus` (`EMPTY` / `SKIPPED`) plus a `PartSkipReason`. `AggregationPartResult.empty(...)` / `.skipped(...)` / `.patch(...)` / `.replacement(...)` are the factories.
+- `model.AggregationEnrichment` adds `fetch(context)` and `merge(root, response)`; its default `execute` merges successful responses into a snapshot, translates empty `Mono` into `empty(DOWNSTREAM_EMPTY)`, and translates `DownstreamClientException` with status `404` into `empty(DOWNSTREAM_NOT_FOUND)`.
 - New business enrichments live under `enrichment.<name>`; shared helper mechanics live under `enrichment.support`.
-- `KeyedArrayEnrichment` (base class for `account.AccountEnrichment`, `owners.OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`).
+- `KeyedArrayEnrichment` (base class for `account.AccountEnrichment`, `owners.OwnersEnrichment`) is configured declaratively via `EnrichmentRule` (main-item path, main key paths with fallbacks, response-item path, response key paths with fallbacks, `requestKeysField`, `targetField`). It short-circuits to `skipped(NO_KEYS_IN_MAIN)` when the main payload yields no keys, and its `merge` tolerates downstream responses that omit some requested keys (only matching entries are attached — no error).
+- `enrichment.account.AccountEnrichment` and `enrichment.owners.OwnersEnrichment` are optional fetches: they use `DownstreamClientResponses.optionalBody` so an empty body flows into the enrichment's `switchIfEmpty` rather than being mapped to `MAIN_CONTRACT_VIOLATION`. The main `account-group` call still uses `requireBody` and is strict.
+- `beneficialowners.BeneficialOwnersEnrichment` overrides `execute` to short-circuit to `skipped(NO_KEYS_IN_MAIN)` when no root `owners1` entities are present; its nested batch calls inside `OwnershipResolver` remain strict (`requireBody`) because a partial tree is a contract violation, not a soft skip.
 - `PathExpression` is an intentionally tiny JSONPath-like engine under `enrichment.support.keyed`: only `$`, `$.field`, `$.field[*]`, `$.field[*].nested`. No filters/slices/indexes/brackets/recursive descent — do not extend it casually; keep paths within this grammar.
 
-Metrics (Micrometer): `aggregation.request` tagged by `part_selection` (`all`/`subset`) and `requested_parts` (count); `aggregation.part.requests` tagged by `part` and `outcome`.
+Metrics (Micrometer): `aggregation.request` tagged by `part_selection` (`all`/`subset`) and `requested_parts` (count); `aggregation.part.requests` tagged by `part` and `outcome` (`success` for `APPLIED`, `empty` for `EMPTY`, `skipped` for `SKIPPED`, `failure` for exceptions).
 
 Config profiles: `application.yaml` is the default; `application-structured.yaml` switches logging to ECS JSON (activate with `--spring.profiles.active=structured`). Actuator exposure is locked down to `health`, `info`, `metrics` (plus liveness/readiness probes).
 

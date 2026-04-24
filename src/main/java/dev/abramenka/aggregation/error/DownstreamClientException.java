@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.error;
 
+import dev.abramenka.aggregation.client.HttpServiceGroups;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.handler.timeout.ReadTimeoutException;
 import java.net.SocketTimeoutException;
@@ -10,7 +11,10 @@ import org.springframework.http.HttpStatusCode;
 
 public final class DownstreamClientException extends FacadeException {
 
-    private static final String MAIN_CLIENT_NAME = "Account group";
+    private static final String MAIN_CLIENT_NAME =
+            HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT_GROUP);
+    private static final String ACCOUNT_CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT);
+    private static final String OWNERS_CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.OWNERS);
 
     private final String clientName;
 
@@ -56,8 +60,6 @@ public final class DownstreamClientException extends FacadeException {
             case 401, 403 -> isMain(clientName) ? ProblemCatalog.MAIN_AUTH_FAILED : ProblemCatalog.ENRICH_AUTH_FAILED;
             case 408, 504 -> isMain(clientName) ? ProblemCatalog.MAIN_TIMEOUT : ProblemCatalog.ENRICH_TIMEOUT;
             case 503 -> isMain(clientName) ? ProblemCatalog.MAIN_UNAVAILABLE : ProblemCatalog.ENRICH_UNAVAILABLE;
-            case 404 ->
-                isMain(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_CONTRACT_VIOLATION;
             default -> isMain(clientName) ? ProblemCatalog.MAIN_BAD_RESPONSE : ProblemCatalog.ENRICH_BAD_RESPONSE;
         };
     }
@@ -108,10 +110,12 @@ public final class DownstreamClientException extends FacadeException {
         if (isMain(clientName)) {
             return "main";
         }
-        return switch (clientName) {
-            case "Account" -> "enricher:account";
-            case "Owners" -> "enricher:owners";
-            default -> null;
-        };
+        if (ACCOUNT_CLIENT_NAME.equals(clientName)) {
+            return "enricher:account";
+        }
+        if (OWNERS_CLIENT_NAME.equals(clientName)) {
+            return "enricher:owners";
+        }
+        return null;
     }
 }

@@ -2,17 +2,21 @@ package dev.abramenka.aggregation.part;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
+import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.PartOutcome;
+import dev.abramenka.aggregation.model.PartOutcomeStatus;
+import dev.abramenka.aggregation.model.PartSkipReason;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
@@ -42,7 +46,7 @@ class AggregationPartExecutorTest {
     }
 
     @Test
-    void execute_failsWhenSelectedDependencyReturnsEmpty() {
+    void execute_failsWhenPartEmitsEmptyMono() {
         AggregationPart dependency = part("source", (root, context) -> Mono.empty());
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
@@ -52,8 +56,8 @@ class AggregationPartExecutorTest {
                         .hasMessage("The service detected an internal aggregation invariant violation."))
                 .verify();
 
-        assertPartMetric("source", "empty", 1);
-        assertPartMetricMissing("source", "failure");
+        assertPartMetric("source", "failure", 1);
+        assertPartMetricMissing("dependent", "success");
     }
 
     @Test
@@ -88,17 +92,49 @@ class AggregationPartExecutorTest {
     }
 
     @Test
-    void execute_failsWhenSelectedDependencyIsUnsupported() {
+    void execute_softSkipsUnsupportedPartAndCascadesToDependent() {
         AggregationPart dependency =
                 part("source", context -> false, (root, context) -> Mono.just(flagResult("source", root, "sourceRan")));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
-                .expectErrorSatisfies(error -> assertThat(error).isInstanceOf(DownstreamClientException.class))
-                .verify();
+                .assertNext(result -> {
+                    PartOutcome source = outcome(result, "source");
+                    assertThat(source.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
+                    assertThat(source.reason()).isEqualTo(PartSkipReason.UNSUPPORTED_CONTEXT);
+                    PartOutcome dependentOutcome = outcome(result, "dependent");
+                    assertThat(dependentOutcome.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
+                    assertThat(dependentOutcome.reason()).isEqualTo(PartSkipReason.DEPENDENCY_EMPTY);
+                    assertThat(result.data().has("sourceRan")).isFalse();
+                    assertThat(result.data().has("dependentRan")).isFalse();
+                })
+                .verifyComplete();
 
-        assertPartMetric("source", "failure", 1);
-        assertPartMetricMissing("dependent", "success");
+        assertPartMetric("source", "skipped", 1);
+        assertPartMetric("dependent", "skipped", 1);
+        assertPartMetricMissing("source", "failure");
+    }
+
+    @Test
+    void execute_softSkipsDependentWhenDependencyReturnsNoOp() {
+        AggregationPart dependency = part(
+                "source",
+                (root, context) -> Mono.just(AggregationPartResult.empty("source", PartSkipReason.DOWNSTREAM_EMPTY)));
+        AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
+
+        StepVerifier.create(execute(dependency, dependent))
+                .assertNext(result -> {
+                    PartOutcome source = outcome(result, "source");
+                    assertThat(source.status()).isEqualTo(PartOutcomeStatus.EMPTY);
+                    assertThat(source.reason()).isEqualTo(PartSkipReason.DOWNSTREAM_EMPTY);
+                    PartOutcome dependentOutcome = outcome(result, "dependent");
+                    assertThat(dependentOutcome.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
+                    assertThat(dependentOutcome.reason()).isEqualTo(PartSkipReason.DEPENDENCY_EMPTY);
+                })
+                .verifyComplete();
+
+        assertPartMetric("source", "empty", 1);
+        assertPartMetric("dependent", "skipped", 1);
     }
 
     @Test
@@ -112,8 +148,10 @@ class AggregationPartExecutorTest {
 
         StepVerifier.create(execute(dependency, dependent))
                 .assertNext(result -> {
-                    assertThat(result.path("sourceRan").asBoolean()).isTrue();
-                    assertThat(result.path("dependentRan").asBoolean()).isTrue();
+                    assertThat(result.data().path("sourceRan").asBoolean()).isTrue();
+                    assertThat(result.data().path("dependentRan").asBoolean()).isTrue();
+                    assertThat(outcome(result, "source").status()).isEqualTo(PartOutcomeStatus.APPLIED);
+                    assertThat(outcome(result, "dependent").status()).isEqualTo(PartOutcomeStatus.APPLIED);
                 })
                 .verifyComplete();
 
@@ -121,13 +159,18 @@ class AggregationPartExecutorTest {
         assertPartMetric("dependent", "success", 1);
     }
 
-    private Mono<ObjectNode> execute(AggregationPart dependency, AggregationPart dependent) {
+    private static PartOutcome outcome(AggregationResult result, String partName) {
+        return Objects.requireNonNull(
+                result.partOutcomes().get(partName), () -> "missing outcome for part " + partName);
+    }
+
+    private Mono<AggregationResult> execute(AggregationPart dependency, AggregationPart dependent) {
         ObjectNode root = objectMapper.createObjectNode();
         AggregationPartPlan plan = new AggregationPartPlan(
                 AggregationPartSelection.from(null),
                 AggregationPartSelection.from(null),
                 List.of(List.of(dependency), List.of(dependent)));
-        return executor.execute("Account group", root, context(root), plan).cast(ObjectNode.class);
+        return executor.execute("Account group", root, context(root), plan);
     }
 
     private AggregationContext context(ObjectNode root) {

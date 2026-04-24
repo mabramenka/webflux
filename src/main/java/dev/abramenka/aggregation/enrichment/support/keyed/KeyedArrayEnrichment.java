@@ -1,13 +1,13 @@
 package dev.abramenka.aggregation.enrichment.support.keyed;
 
-import dev.abramenka.aggregation.error.EnrichmentDependencyException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationEnrichment;
-import java.util.LinkedHashSet;
+import dev.abramenka.aggregation.model.AggregationPartResult;
+import dev.abramenka.aggregation.model.PartSkipReason;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -24,15 +24,17 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
     }
 
     @Override
-    public boolean supports(AggregationContext context) {
-        return !targetsFrom(context).isEmpty();
+    public Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
+        if (targetsFrom(context).isEmpty()) {
+            return Mono.just(AggregationPartResult.skipped(name(), PartSkipReason.NO_KEYS_IN_MAIN));
+        }
+        return AggregationEnrichment.super.execute(rootSnapshot, context);
     }
 
     @Override
     public void merge(ObjectNode root, JsonNode enrichmentResponse) {
         Map<String, JsonNode> entriesByKey = rule.responseRule().entriesByKey(enrichmentResponse);
         List<EnrichmentTarget> targets = rule.targetRule().targetsFrom(root);
-        requireAllTargetKeys(targets, entriesByKey);
         targets.forEach(target -> attachMatchingEntry(target, entriesByKey));
     }
 
@@ -57,17 +59,6 @@ public abstract class KeyedArrayEnrichment implements AggregationEnrichment {
         JsonNode entry = entriesByKey.get(target.key());
         if (entry != null) {
             target.node().withArrayProperty(rule.responseRule().targetField()).add(entry.deepCopy());
-        }
-    }
-
-    private void requireAllTargetKeys(List<EnrichmentTarget> targets, Map<String, JsonNode> entriesByKey) {
-        Set<String> missingKeys = new LinkedHashSet<>();
-        targets.stream()
-                .map(EnrichmentTarget::key)
-                .filter(key -> !entriesByKey.containsKey(key))
-                .forEach(missingKeys::add);
-        if (!missingKeys.isEmpty()) {
-            throw EnrichmentDependencyException.contractViolation(name(), null);
         }
     }
 }

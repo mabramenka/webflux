@@ -6,6 +6,7 @@ import dev.abramenka.aggregation.service.AggregateService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -36,7 +37,7 @@ public class AggregateController {
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<JsonNode> aggregateOne(
             @PathVariable @Pattern(regexp = AccountGroupIds.PATTERN) String id,
-            @RequestParam(required = false) @Nullable List<@NotBlank String> include,
+            @RequestParam(required = false) @Nullable @Size(max = 32) List<@NotBlank String> include,
             ClientRequestContext clientRequestContext) {
         return aggregateService.aggregate(new AggregateRequest(List.of(id), include), clientRequestContext);
     }

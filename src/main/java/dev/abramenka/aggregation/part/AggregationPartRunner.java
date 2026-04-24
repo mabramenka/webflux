@@ -20,15 +20,12 @@ class AggregationPartRunner {
 
     Mono<AggregationPartResult> execute(AggregationPart part, ObjectNode rootSnapshot, AggregationContext context) {
         return part.execute(rootSnapshot, context)
+                .switchIfEmpty(Mono.error(() -> OrchestrationException.invariantViolated(new IllegalStateException(
+                        "Aggregation part '" + part.name() + "' returned an empty Mono; parts must emit a result"))))
                 .doOnError(Exception.class, ex -> {
                     metrics.record(part.name(), "failure");
-                    log.warn("Required aggregation part '{}' failed", part.name(), ex);
+                    log.warn("Aggregation part '{}' failed", part.name(), ex);
                 })
-                .switchIfEmpty(Mono.defer(() -> {
-                    metrics.record(part.name(), "empty");
-                    return Mono.error(OrchestrationException.invariantViolated(
-                            new IllegalStateException("Required aggregation part returned an empty result")));
-                }))
                 .onErrorMap(ex -> !(ex instanceof FacadeException), OrchestrationException::invariantViolated);
     }
 }

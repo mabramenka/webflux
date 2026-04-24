@@ -15,6 +15,9 @@ class AggregationPartResultApplicator {
         switch (result) {
             case AggregationPartResult.ReplaceDocument replacement -> replaceRoot(root, replacement.replacement());
             case AggregationPartResult.MergePatch patch -> applyPatch(patch.base(), patch.replacement(), root);
+            case AggregationPartResult.NoOp ignored -> {
+                // Nothing to apply: the part intentionally produced no data.
+            }
         }
     }
 

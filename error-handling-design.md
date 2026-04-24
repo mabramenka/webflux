@@ -8,11 +8,14 @@
 
 ## 1. Formal Problem Statement
 
-This service is a Domain Facade that exposes an aggregated view over several backend systems. For every incoming request it performs one call to a main upstream endpoint, extracts identifiers from the main response, invokes one or more mandatory enrichment endpoints using those identifiers, and returns a single merged representation to the client. The facade owns its external contract and does not act as a transparent proxy.
+This service is a Domain Facade that exposes an aggregated view over several backend systems. For every incoming request it performs one call to a main upstream endpoint, extracts identifiers from the main response, invokes one or more optional enrichment endpoints using those identifiers, and returns a single merged representation to the client. The facade owns its external contract and does not act as a transparent proxy.
 
-Error handling must follow strict aggregation semantics. Every enrichment call is mandatory; any enrichment failure, any missing required key in the main payload, any empty main response, and any orchestration or merge failure invalidates the whole request. Partial success, silent skipping of enrichers, omission of fields, and soft degradation are not permitted.
+Error handling follows a **soft / fatal split**. Data absence is soft — per-part skip, not an error. Infrastructure failure is fatal — the whole request aborts with an RFC 9457 problem document. Specifically:
 
-All error responses conform to RFC 9457 using Spring Framework 7 `ProblemDetail` / `ErrorResponse` constructs. Error payloads use a stable, facade-owned vocabulary of problem types, error codes, and categories. No downstream internals — hostnames, raw bodies, stack traces, bean names — are ever exposed to the client.
+- **Fatal (aborts the request):** failures on the *main* call (empty/unreadable body, non-success status, transport error, timeout); auth failures (`401`/`403`) on *any* downstream; enricher transport failures, timeouts, `5xx`, or decoding errors; merge exceptions; internal invariant violations.
+- **Soft (part is recorded as `EMPTY` or `SKIPPED`, request succeeds):** main payload missing the keys a part needs (`NO_KEYS_IN_MAIN`); `supports(context)` returned `false` (`UNSUPPORTED_CONTEXT`); enricher body empty (`DOWNSTREAM_EMPTY`); enricher returned `404` (`DOWNSTREAM_NOT_FOUND`); a required dependency applied nothing (`DEPENDENCY_EMPTY`).
+
+Success responses carry a `meta.parts` object that names each requested or transitively-required part with its `status` (`APPLIED` / `EMPTY` / `SKIPPED`) and, for non-`APPLIED` parts, a machine-readable `reason`. Error responses conform to RFC 9457 using Spring Framework 7 `ProblemDetail` / `ErrorResponse` constructs and a stable, facade-owned vocabulary of problem types, error codes, and categories. No downstream internals — hostnames, raw bodies, stack traces, bean names — are ever exposed to the client.
 
 ---
 
@@ -44,13 +47,14 @@ All error responses conform to RFC 9457 using Spring Framework 7 `ProblemDetail`
 
 ## 3. Design Principles
 
-1. **All-or-nothing aggregation.** A single response is either fully assembled or entirely replaced by an error. No field is ever silently omitted.
-2. **Stable external contract.** Clients integrate against facade-owned `type` URIs and `errorCode` values. Downstream changes must not change the outward contract.
-3. **Information hiding by default.** Everything is internal unless explicitly promoted to the external contract.
-4. **Named failure modes.** Every failure has a stable identity: a `type` URI, a title, a category, and an `errorCode`. No anonymous 500s.
-5. **Traceability before narrative.** The response always carries a `traceId` and an `instance`. Detailed forensics live in logs, not in the body.
-6. **Retryability is explicit.** Clients do not infer retry policy from status codes; the `retryable` extension states it.
-7. **Downstream opacity.** Clients cannot tell which specific backend failed by reading a hostname, URL, or body fragment. At most they see a logical dependency name from a fixed enum.
+1. **Soft / fatal split.** Data absence is a per-part signal, not an error. Infrastructure failure is a request-level failure. A response is either fully successful (with `meta.parts` reporting any EMPTY/SKIPPED parts) or entirely replaced by a `ProblemDetail`. A success response never contains a `ProblemDetail`, and an error response never contains partial data.
+2. **Main is strict; enrichers are optional.** A failed or empty main call aborts the whole request. A failed enrichment infrastructure call (auth, `5xx`, timeout, transport, decoding) also aborts the whole request. Enricher *data absence* (empty body, `404`, main payload missing keys, unsupported context) is soft and reported in `meta.parts`.
+3. **Stable external contract.** Clients integrate against facade-owned `type` URIs and `errorCode` values for errors, and against `meta.parts.<name>.{status, reason}` for soft per-part outcomes. Downstream changes must not change either contract.
+4. **Information hiding by default.** Everything is internal unless explicitly promoted to the external contract.
+5. **Named failure modes.** Every failure has a stable identity: a `type` URI, a title, a category, and an `errorCode`. Every soft skip has a stable `PartOutcomeStatus` and `PartSkipReason`. No anonymous 500s; no silently-omitted parts.
+6. **Traceability before narrative.** Error responses always carry a `traceId` and an `instance`. Detailed forensics live in logs, not in the body.
+7. **Retryability is explicit.** Clients do not infer retry policy from status codes; the `retryable` extension states it.
+8. **Downstream opacity.** Clients cannot tell which specific backend failed by reading a hostname, URL, or body fragment. At most they see a logical dependency name from a fixed enum.
 
 ---
 
@@ -88,12 +92,12 @@ Each category has a closed set of sub-types. This set is the authoritative catal
 - `MAIN-CONTRACT-VIOLATION` — response is valid JSON but is empty or missing keys required for enrichment.
 - `MAIN-AUTH-FAILED` — facade cannot authenticate to main (credential / token problem).
 
-**ENRICHMENT_DEPENDENCY**
+**ENRICHMENT_DEPENDENCY** (only for fatal enricher failures — data absence is soft, see §4.3)
 - `ENRICH-TIMEOUT`
 - `ENRICH-UNAVAILABLE`
-- `ENRICH-BAD-RESPONSE`
+- `ENRICH-BAD-RESPONSE` — non-success, non-`404` status outside the auth band.
 - `ENRICH-INVALID-PAYLOAD`
-- `ENRICH-CONTRACT-VIOLATION` — enricher returned no data for a key that the facade considers mandatory (e.g. `404` for a valid id issued by main).
+- `ENRICH-CONTRACT-VIOLATION` — reserved for nested batch calls that must succeed in full (e.g. the beneficial-owners tree resolver); a top-level enricher `404` is *not* a contract violation, it is a soft `DOWNSTREAM_NOT_FOUND`.
 - `ENRICH-AUTH-FAILED`
 
 **ORCHESTRATION**
@@ -106,7 +110,20 @@ Each category has a closed set of sub-types. This set is the authoritative catal
 - `PLATFORM-INTERNAL` — unclassified unchecked exception, last-resort bucket.
 - `PLATFORM-OVERLOADED` — thread pool exhausted, backpressure, shedding.
 
-### 4.2 Exception hierarchy (conceptual)
+### 4.3 Soft outcomes (per-part, reported in `meta.parts`, not errors)
+
+Soft outcomes never produce an HTTP error response. They are recorded on `AggregationPartResult.NoOp` and surfaced in the success body under `meta.parts.<partName>`.
+
+| `PartOutcomeStatus` | `PartSkipReason`          | Trigger                                                                                       |
+| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------- |
+| `APPLIED`           | *(none)*                  | Part produced a replacement or merge patch that was applied to the root.                      |
+| `EMPTY`             | `DOWNSTREAM_EMPTY`        | Enricher returned an empty body (no JSON).                                                     |
+| `EMPTY`             | `DOWNSTREAM_NOT_FOUND`    | Enricher returned `404`. The facade treats this as "no data for these keys," not an error.   |
+| `SKIPPED`           | `NO_KEYS_IN_MAIN`         | Main payload did not yield any keys for the part to fetch (e.g. missing `accounts[*].id`).   |
+| `SKIPPED`           | `UNSUPPORTED_CONTEXT`     | Part's `supports(context)` returned `false`.                                                  |
+| `SKIPPED`           | `DEPENDENCY_EMPTY`        | A dependency the part declared did not apply (returned `NoOp` or was itself skipped).         |
+
+### 4.4 Exception hierarchy (conceptual)
 
 The implementation should define a single sealed hierarchy rooted at a facade-specific base that extends `ErrorResponseException`. Suggested shape:
 
@@ -127,7 +144,11 @@ For every failure the following questions are answered in order.
 
 ### 5.1 Does it break the whole request?
 
-Yes — always. The service has no partial-success mode. Any category-1–5 failure produces a single `ProblemDetail` response and no partial data.
+**Fatal → yes.** Any `FacadeException` (the five categories in §4) aborts the request with a `ProblemDetail`. No partial data is emitted alongside the error.
+
+**Soft → no.** A part that returns `AggregationPartResult.NoOp` (EMPTY or SKIPPED) is recorded in `meta.parts` and the request proceeds. Dependents of a skipped/empty part are themselves marked `SKIPPED / DEPENDENCY_EMPTY`. The response body is a normal success body — no `ProblemDetail`.
+
+The soft/fatal decision is made inside the part's `execute(rootSnapshot, context)` via the sealed `AggregationPartResult` hierarchy: `ReplaceDocument` or `MergePatch` → applied; `NoOp` → recorded; thrown `FacadeException` → fatal. Any other exception thrown by a part is considered an internal invariant violation and mapped to `ORCH-INVARIANT-VIOLATED`.
 
 ### 5.2 What HTTP status does it produce?
 
@@ -150,13 +171,15 @@ This is the ambiguous boundary and must be decided by the following rule set:
 | Situation                                                                                               | Classification      |
 | ------------------------------------------------------------------------------------------------------- | ------------------- |
 | The HTTP call to main did not complete successfully (timeout, connection refused, 5xx, DNS).            | `MAIN_DEPENDENCY`   |
-| Main returned a well-formed payload but keys required for enrichment are missing or empty.              | `MAIN_DEPENDENCY` (contract violation) |
-| Main returned a payload shape that our client code fails to deserialise.                                | `MAIN_DEPENDENCY` (invalid payload)     |
+| Main returned an empty body or a non-object payload.                                                     | `MAIN_DEPENDENCY` (contract violation) |
+| Main returned a payload that our client code fails to deserialise.                                       | `MAIN_DEPENDENCY` (invalid payload)     |
 | Main returned a payload that deserialises, but our mapping code threw while transforming it.            | `ORCHESTRATION` (mapping failed)        |
 | Main failure is explicitly classified as a domain not-found outcome — the requested resource genuinely does not exist. | `CLIENT_REQUEST` (not found) |
 | Main returned a raw downstream `404` without domain-not-found classification.                           | `MAIN_DEPENDENCY` (bad response)        |
 | Facade failed to pick a required runtime configuration value after startup.                              | `ORCHESTRATION` (config invalid)        |
 | Merge of main + enrichments threw or produced an invalid DTO.                                           | `ORCHESTRATION` (merge failed)          |
+
+Main payload containing no keys for a given enrichment is *not* a fault; that part is soft-skipped with `NO_KEYS_IN_MAIN` (see §4.3).
 
 **Heuristic:** if the failure can be reproduced by pointing the facade at a known-good fake main that returns a known-good payload, it is `ORCHESTRATION`. Otherwise it is `MAIN_DEPENDENCY`.
 
@@ -210,6 +233,17 @@ All other codes are `retryable = false`. Contract violations, auth failures, val
 4. `instance` is always unique per request. It is safe to share.
 5. No response ever carries both partial data and a `ProblemDetail`. Error response bodies contain exclusively the problem details.
 
+### 6.5 Success-side `meta.parts` contract
+
+Success responses (`2xx`) carry a `meta.parts` object alongside the aggregated data. One entry per effectively-selected part — explicit selections from `request.include()` plus parts pulled in as dependencies.
+
+| Field      | Type    | Values                                                                                   |
+| ---------- | ------- | ---------------------------------------------------------------------------------------- |
+| `status`   | string  | `APPLIED`, `EMPTY`, `SKIPPED` (from the `PartOutcomeStatus` enum).                       |
+| `reason`   | string  | Present only when `status != APPLIED`. One of the `PartSkipReason` values from §4.3.     |
+
+`meta.parts` entry order is stable: insertion order of the effective selection (explicit selections first, dependencies expanded in graph order). Clients may rely on the enum values but must not parse ordering.
+
 ---
 
 ## 7. Mapping Strategy
@@ -228,8 +262,9 @@ Applies uniformly to the main endpoint and to every enricher. The table differen
 | Enricher returns non-success, non-domain status               | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/bad-response`            | `ENRICH-BAD-RESPONSE`        | false     |
 | Main returns invalid JSON / schema failure                    | 502  | `MAIN_DEPENDENCY`         | `/problems/main/invalid-payload`               | `MAIN-INVALID-PAYLOAD`       | false     |
 | Enricher returns invalid JSON / schema failure                | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/invalid-payload`         | `ENRICH-INVALID-PAYLOAD`     | false     |
-| Main returns empty body or missing keys required for enrichment | 502 | `MAIN_DEPENDENCY`        | `/problems/main/contract-violation`            | `MAIN-CONTRACT-VIOLATION`    | false     |
-| Enricher returns `404` for a key issued by main               | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/contract-violation`      | `ENRICH-CONTRACT-VIOLATION`  | false     |
+| Main returns empty body or a non-object payload               | 502  | `MAIN_DEPENDENCY`         | `/problems/main/contract-violation`            | `MAIN-CONTRACT-VIOLATION`    | false     |
+| Enricher returns `404`                                         | *(soft)* | *n/a — `meta.parts.<name> = { status: EMPTY, reason: DOWNSTREAM_NOT_FOUND }`* | *n/a* | *n/a* | *n/a* |
+| Nested batch call inside an enricher (e.g. beneficial-owners tree) returns `404` or partial data | 502 | `ENRICHMENT_DEPENDENCY` | `/problems/enrichment/contract-violation` | `ENRICH-CONTRACT-VIOLATION` | false |
 | Main returns `401` / `403` to facade                          | 502  | `MAIN_DEPENDENCY`         | `/problems/main/auth-failed`                   | `MAIN-AUTH-FAILED`           | false     |
 | Enricher returns `401` / `403` to facade                      | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/auth-failed`             | `ENRICH-AUTH-FAILED`         | false     |
 | Main returns a raw `404` without domain-not-found classification | 502 | `MAIN_DEPENDENCY`        | `/problems/main/bad-response`                  | `MAIN-BAD-RESPONSE`          | false     |
@@ -262,13 +297,20 @@ Applies uniformly to the main endpoint and to every enricher. The table differen
 ### 7.4 Mapping flow
 
 1. Controller receives request.
-2. Bean validation runs. Failures → `CLIENT-VALIDATION`.
-3. Service calls main via a Spring HTTP service client backed by `WebClient`. The shared downstream response normalizer classifies HTTP-layer, transport, empty-body, and decoding outcomes into the `MAIN-*` sub-codes.
-4. Facade validates main payload against the contract (non-empty, object-shaped, required keys present for every selected part). Failures → `MAIN-CONTRACT-VIOLATION`.
-5. Facade fans out to required enrichers. Downstream failures use the `ENRICH-*` dependency sub-codes; semantic enrichment contract failures use `ENRICH-CONTRACT-VIOLATION`. The first failure cancels remaining calls.
-6. Merge step runs. Any exception → `ORCH-MERGE-FAILED` or `ORCH-MAPPING-FAILED`.
-7. Any uncaught exception at controller boundary → `PLATFORM-INTERNAL`.
-8. The global `@RestControllerAdvice` translates the `FacadeException` hierarchy into `ProblemDetail` plus the extensions from §6.2.
+2. Bean validation runs. Failures → `CLIENT-VALIDATION`. Unknown names in `request.include()` are validated up front and rejected with `CLIENT-VALIDATION`.
+3. Service calls main via a Spring HTTP service client backed by `WebClient`. The shared downstream response normalizer classifies HTTP-layer, transport, empty-body, and decoding outcomes into the `MAIN-*` sub-codes. Empty body here is always fatal (`MAIN-CONTRACT-VIOLATION`).
+4. Facade validates main payload against the contract (object-shaped, non-array). Failures → `MAIN-CONTRACT-VIOLATION`.
+5. Facade expands dependencies and fans out to each selected part per dependency level. For each part:
+   - If `supports(context)` returns `false` → `NoOp(SKIPPED, UNSUPPORTED_CONTEXT)`.
+   - If the part cannot derive keys from the main payload → `NoOp(SKIPPED, NO_KEYS_IN_MAIN)`.
+   - Enricher calls use `DownstreamClientResponses.optionalBody` so an empty body flows into `NoOp(EMPTY, DOWNSTREAM_EMPTY)`, and a `404` is caught by `AggregationEnrichment.execute` and turned into `NoOp(EMPTY, DOWNSTREAM_NOT_FOUND)`.
+   - Any other enricher failure (`401`/`403`, `5xx`, timeout, transport, decoding) remains fatal and uses the `ENRICH-*` sub-codes.
+   - A dependent part whose dependency did not apply → `NoOp(SKIPPED, DEPENDENCY_EMPTY)` without calling the downstream.
+6. Applied part results are written to the root in stable graph order before the next dependency level starts.
+7. Merge step inside a part throws → wrapped as `ORCH-MERGE-FAILED`. A part returning a result for the wrong name, or an empty `Mono` → `ORCH-INVARIANT-VIOLATED`.
+8. On success, `AggregateService` attaches `meta.parts.<name> = { status, reason? }` for every effectively-selected part.
+9. Any uncaught exception at controller boundary → `PLATFORM-INTERNAL`.
+10. The global `@RestControllerAdvice` (`AggregationErrorResponseAdvice`) translates the `FacadeException` hierarchy into `ProblemDetail` plus the extensions from §6.2.
 
 ---
 
@@ -450,8 +492,9 @@ This section is prescriptive for code generation. It states *what* must exist, n
 ### 11.2 Tests required
 
 - One contract test per row in §8 (asserts `type`, `title`, `status`, `category`, `errorCode`, `retryable`).
-- Negative tests per downstream failure scenario (timeout, unreachable, 5xx, invalid JSON, missing keys, 401, raw 404, and any explicit domain-not-found classifier).
-- Orchestration test: first enrichment failure cancels remaining calls.
+- Negative tests per downstream failure scenario (timeout, unreachable, 5xx, invalid JSON, empty main body, 401, raw main 404, and any explicit domain-not-found classifier).
+- Affirmative soft-outcome tests for each row of §4.3: `NO_KEYS_IN_MAIN`, `UNSUPPORTED_CONTEXT`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `DEPENDENCY_EMPTY`. Each asserts the request succeeds and that `meta.parts.<name>` carries the correct `status` / `reason`.
+- Orchestration test: a fatal enrichment failure aborts the whole request; invariant-violation tests for empty `Mono` and wrong-name results.
 - Leak test: no response body contains strings from a configured blocklist (hostnames, `"Exception"`, `"at ..."` stack trace markers, raw downstream body fragments).
 
 ### 11.3 Non-goals for this document

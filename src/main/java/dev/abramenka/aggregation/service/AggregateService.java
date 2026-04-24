@@ -7,7 +7,9 @@ import dev.abramenka.aggregation.client.HttpServiceGroups;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
+import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.PartOutcome;
 import dev.abramenka.aggregation.part.AggregationPartExecutor;
 import dev.abramenka.aggregation.part.AggregationPartPlanner;
 import io.micrometer.observation.Observation;
@@ -15,6 +17,7 @@ import io.micrometer.observation.ObservationRegistry;
 import io.micrometer.observation.contextpropagation.ObservationThreadLocalAccessor;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
@@ -28,6 +31,10 @@ public class AggregateService {
     private static final String ACCOUNT_GROUP_CLIENT_NAME =
             HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT_GROUP);
     private static final String IDS_FIELD = "ids";
+    private static final String META_FIELD = "meta";
+    private static final String PARTS_FIELD = "parts";
+    private static final String STATUS_FIELD = "status";
+    private static final String REASON_FIELD = "reason";
 
     private final AccountGroups accountGroupClient;
     private final AggregationPartPlanner partPlanner;
@@ -73,10 +80,43 @@ public class AggregateService {
                                 accountGroupResponse, clientRequestContext, partPlan.effectiveSelection());
                         return partExecutor.execute(ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse, context, partPlan);
                     })
+                    .map(this::attachMeta)
                     .contextWrite(context -> context.put(ObservationThreadLocalAccessor.KEY, observation))
                     .doOnError(observation::error)
                     .doFinally(signalType -> observation.stop());
         });
+    }
+
+    private JsonNode attachMeta(AggregationResult result) {
+        ObjectNode data = result.data();
+        if (!result.partOutcomes().isEmpty()) {
+            ObjectNode meta = metaFrom(data);
+            meta.set(PARTS_FIELD, partsMeta(result.partOutcomes()));
+        }
+        return data;
+    }
+
+    private ObjectNode metaFrom(ObjectNode data) {
+        JsonNode existing = data.get(META_FIELD);
+        if (existing instanceof ObjectNode existingMeta) {
+            return existingMeta;
+        }
+        ObjectNode meta = objectMapper.createObjectNode();
+        data.set(META_FIELD, meta);
+        return meta;
+    }
+
+    private ObjectNode partsMeta(Map<String, PartOutcome> outcomes) {
+        ObjectNode parts = objectMapper.createObjectNode();
+        outcomes.forEach((name, outcome) -> {
+            ObjectNode partNode = objectMapper.createObjectNode();
+            partNode.put(STATUS_FIELD, outcome.status().name());
+            if (outcome.reason() != null) {
+                partNode.put(REASON_FIELD, outcome.reason().name());
+            }
+            parts.set(name, partNode);
+        });
+        return parts;
     }
 
     private ObjectNode toAccountGroupRequest(List<String> ids) {
