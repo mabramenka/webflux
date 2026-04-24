@@ -72,9 +72,11 @@ public class AggregateService {
                 throw OrchestrationException.mappingFailed(ex);
             }
 
+            String fields = clientRequestContext.projections().orDefault(AccountGroups.DEFAULT_FIELDS);
+
             return DownstreamClientResponses.requireBody(
                             ACCOUNT_GROUP_CLIENT_NAME,
-                            accountGroupClient.fetchAccountGroup(accountGroupRequest, clientRequestContext))
+                            accountGroupClient.fetchAccountGroup(accountGroupRequest, fields, clientRequestContext))
                     .flatMap(accountGroupResponse -> {
                         AggregationContext context = new AggregationContext(
                                 accountGroupResponse, clientRequestContext, partPlan.effectiveSelection());

@@ -12,6 +12,7 @@ import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.Projections;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.Objects;
@@ -49,7 +50,8 @@ class HttpServiceExternalClientsTest {
                     .correlationId("corr-1")
                     .acceptLanguage("en-US")
                     .build(),
-            true);
+            true,
+            Projections.empty());
 
     @ParameterizedTest
     @MethodSource("clients")
@@ -70,7 +72,7 @@ class HttpServiceExternalClientsTest {
         ClientRequest request = Objects.requireNonNull(capturedRequest.get());
         assertThat(request.method().name()).isEqualTo("POST");
         assertThat(request.url().getPath()).isEqualTo(clientCase.path());
-        assertThat(request.url().getQuery()).isEqualTo("detokenize=true");
+        assertThat(request.url().getQuery()).contains("detokenize=true").contains("fields=");
         assertThat(request.headers().getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
         assertThat(request.headers().getAccept()).containsExactly(MediaType.APPLICATION_JSON);
         assertThat(request.headers().getFirst(HttpHeaders.AUTHORIZATION)).isEqualTo("Bearer token");
@@ -187,7 +189,7 @@ class HttpServiceExternalClientsTest {
                 .build());
 
         StepVerifier.create(httpClient(webClient, AccountGroups.class, "Account group")
-                        .fetchAccountGroup(REQUEST, CLIENT_REQUEST_CONTEXT))
+                        .fetchAccountGroup(REQUEST, AccountGroups.DEFAULT_FIELDS, CLIENT_REQUEST_CONTEXT))
                 .expectErrorSatisfies(error -> {
                     assertThat(error).isInstanceOf(DownstreamClientException.class);
                     DownstreamClientException clientException = (DownstreamClientException) error;
@@ -206,13 +208,18 @@ class HttpServiceExternalClientsTest {
                 new WebClientCase(
                         "/account-groups",
                         "Account group",
-                        webClient -> httpClient(webClient, AccountGroups.class, "Account group")::fetchAccountGroup),
+                        webClient -> (request, ctx) -> httpClient(webClient, AccountGroups.class, "Account group")
+                                .fetchAccountGroup(request, AccountGroups.DEFAULT_FIELDS, ctx)),
                 new WebClientCase(
-                        "/owners", "Owners", webClient -> httpClient(webClient, Owners.class, "Owners")::fetchOwners),
+                        "/owners",
+                        "Owners",
+                        webClient -> (request, ctx) -> httpClient(webClient, Owners.class, "Owners")
+                                .fetchOwners(request, Owners.DEFAULT_FIELDS, ctx)),
                 new WebClientCase(
                         "/accounts",
                         "Account",
-                        webClient -> httpClient(webClient, Accounts.class, "Account")::fetchAccounts));
+                        webClient -> (request, ctx) -> httpClient(webClient, Accounts.class, "Account")
+                                .fetchAccounts(request, Accounts.DEFAULT_FIELDS, ctx)));
     }
 
     private static WebClient webClient(

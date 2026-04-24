@@ -84,7 +84,8 @@ class OwnershipResolver {
         ArrayNode ids = request.putArray(IDS_FIELD);
         numbers.forEach(ids::add);
         return DownstreamClientResponses.requireBody(
-                        CLIENT_NAME, ownersClient.fetchOwners(request, context.clientRequestContext()))
+                        CLIENT_NAME,
+                        ownersClient.fetchOwners(request, Owners.DEFAULT_FIELDS, context.clientRequestContext()))
                 .map(this::indexByNumber)
                 .map(responseByNumber -> requireAllRequestedNumbers(numbers, responseByNumber))
                 .onErrorMap(

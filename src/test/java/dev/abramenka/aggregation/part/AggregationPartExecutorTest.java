@@ -14,6 +14,7 @@ import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.PartOutcome;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
+import dev.abramenka.aggregation.model.Projections;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Objects;
@@ -176,7 +177,7 @@ class AggregationPartExecutorTest {
     private AggregationContext context(ObjectNode root) {
         return new AggregationContext(
                 root,
-                new ClientRequestContext(ForwardedHeaders.builder().build(), null),
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty()),
                 AggregationPartSelection.from(null));
     }
 
