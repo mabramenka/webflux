@@ -43,6 +43,6 @@ class OwnersEnrichment extends KeyedArrayEnrichment {
     public Mono<JsonNode> fetch(AggregationContext context) {
         ObjectNode request = requestWithKeys(context);
         return DownstreamClientResponses.optionalBody(
-                CLIENT_NAME, ownersClient.fetchOwners(request, context.clientRequestContext()));
+                CLIENT_NAME, ownersClient.fetchOwners(request, Owners.DEFAULT_FIELDS, context.clientRequestContext()));
     }
 }

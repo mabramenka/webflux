@@ -3,6 +3,7 @@ package dev.abramenka.aggregation.config;
 import dev.abramenka.aggregation.error.RequestValidationException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.Projections;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpHeaders;
@@ -14,7 +15,9 @@ public class ClientRequestContextFactory {
 
     public ClientRequestContext from(HttpHeaders headers, MultiValueMap<String, String> queryParams) {
         return new ClientRequestContext(
-                forwardedHeaders(headers), booleanQueryParam(queryParams, ClientRequestContext.DETOKENIZE_QUERY_PARAM));
+                forwardedHeaders(headers),
+                booleanQueryParam(queryParams, ClientRequestContext.DETOKENIZE_QUERY_PARAM),
+                Projections.parse(queryParams.getFirst(ClientRequestContext.FIELDS_QUERY_PARAM)));
     }
 
     private static ForwardedHeaders forwardedHeaders(HttpHeaders inbound) {

@@ -2,7 +2,6 @@ package dev.abramenka.aggregation.client;
 
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
-import dev.abramenka.aggregation.model.ForwardedHeaders;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
@@ -19,13 +18,14 @@ public final class ClientRequestContextHttpServiceArgumentResolver implements Ht
             return false;
         }
 
-        if (!(argument instanceof ClientRequestContext(ForwardedHeaders headers, Boolean detokenize))) {
+        if (!(argument instanceof ClientRequestContext ctx)) {
             throw OrchestrationException.invariantViolated(
                     new IllegalArgumentException("ClientRequestContext must not be null"));
         }
 
-        headers.asMap().forEach(requestValues::addHeader);
+        ctx.headers().asMap().forEach(requestValues::addHeader);
 
+        Boolean detokenize = ctx.detokenize();
         if (detokenize != null) {
             requestValues.addRequestParameter(
                     ClientRequestContext.DETOKENIZE_QUERY_PARAM, Boolean.toString(detokenize));

@@ -2,6 +2,7 @@ package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.Projections;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,7 +67,8 @@ class OwnershipResolverTest {
                 .verifyComplete();
 
         ArgumentCaptor<ObjectNode> requestCaptor = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(ownersClient, times(2)).fetchOwners(requestCaptor.capture(), any(ClientRequestContext.class));
+        verify(ownersClient, times(2))
+                .fetchOwners(requestCaptor.capture(), anyString(), any(ClientRequestContext.class));
         List<List<String>> idsPerCall = requestCaptor.getAllValues().stream()
                 .map(req -> req.path("ids").values().stream()
                         .map(JsonNode::asString)
@@ -87,7 +90,7 @@ class OwnershipResolverTest {
                 .assertNext(arr -> assertThat(arr.size()).isZero())
                 .verifyComplete();
 
-        verify(ownersClient, times(2)).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, times(2)).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
     }
 
     @Test
@@ -129,7 +132,7 @@ class OwnershipResolverTest {
     void resolveTree_failsTreeWhenDownstreamErrors() {
         OwnershipResolver resolver = new OwnershipResolver(ownersClient, objectMapper);
         JsonNode root = entity("R", List.of("A"), List.of());
-        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
                 .thenReturn(Mono.error(new RuntimeException("owners 5xx")));
 
         StepVerifier.create(resolver.resolveTree(root, aggregationContext()))
@@ -145,7 +148,7 @@ class OwnershipResolverTest {
     void resolveTree_failsWhenResponseOmitsRequestedNumber() {
         OwnershipResolver resolver = new OwnershipResolver(ownersClient, objectMapper);
         JsonNode root = entity("R", List.of("A"), List.of());
-        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
                 .thenReturn(Mono.just(respond()));
 
         StepVerifier.create(resolver.resolveTree(root, aggregationContext()))
@@ -185,11 +188,11 @@ class OwnershipResolverTest {
                 .assertNext(arr -> assertThat(arr.size()).isZero())
                 .verifyComplete();
 
-        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
     }
 
     private void stubLevels(Map<Set<String>, JsonNode> levelsByIds) {
-        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode request = invocation.getArgument(0);
                     Set<String> ids = new HashSet<>();
@@ -250,7 +253,7 @@ class OwnershipResolverTest {
 
     private AggregationContext aggregationContext() {
         ClientRequestContext clientRequestContext =
-                new ClientRequestContext(ForwardedHeaders.builder().build(), null);
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
         ObjectNode accountGroupResponse = objectMapper.createObjectNode();
         return new AggregationContext(accountGroupResponse, clientRequestContext, AggregationPartSelection.from(null));
     }

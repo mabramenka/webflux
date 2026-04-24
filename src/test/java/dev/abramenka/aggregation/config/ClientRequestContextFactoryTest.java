@@ -45,6 +45,30 @@ class ClientRequestContextFactoryTest {
     }
 
     @Test
+    void from_parsesFieldsQueryParamIntoProjections() {
+        MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
+        queryParams.add("fields", "aaa, bbb ,ccc");
+
+        ClientRequestContext request = factory.from(new HttpHeaders(), queryParams);
+
+        assertThat(request.projections().raw()).containsExactly("aaa", "bbb", "ccc");
+        assertThat(request.projections().isEmpty()).isFalse();
+    }
+
+    @Test
+    void from_treatsMissingOrBlankFieldsAsEmptyProjections() {
+        assertThat(factory.from(new HttpHeaders(), new LinkedMultiValueMap<>())
+                        .projections()
+                        .isEmpty())
+                .isTrue();
+
+        MultiValueMap<String, String> blank = new LinkedMultiValueMap<>();
+        blank.add("fields", " ");
+        assertThat(factory.from(new HttpHeaders(), blank).projections().isEmpty())
+                .isTrue();
+    }
+
+    @Test
     void from_preservesForwardedHeadersAsMap() {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth("abc");

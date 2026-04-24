@@ -2,6 +2,7 @@ package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +17,7 @@ import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
+import dev.abramenka.aggregation.model.Projections;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.HashSet;
 import java.util.Set;
@@ -78,7 +80,7 @@ class BeneficialOwnersEnrichmentTest {
             }
             """);
 
-        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode response = objectMapper.createObjectNode();
                     response.putArray("data").add(individual("P-1")).add(individual("P-2"));
@@ -129,7 +131,7 @@ class BeneficialOwnersEnrichmentTest {
             }
             """);
 
-        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode request = invocation.getArgument(0);
                     Set<String> ids = new HashSet<>();
@@ -177,7 +179,7 @@ class BeneficialOwnersEnrichmentTest {
 
         assertThat(root.path("data").path(0).path("owners1").path(0).has("beneficialOwnersDetails"))
                 .isFalse();
-        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
     }
 
     @Test
@@ -213,7 +215,7 @@ class BeneficialOwnersEnrichmentTest {
             }
             """);
 
-        when(ownersClient.fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class)))
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
                 .thenAnswer(invocation -> {
                     ObjectNode request = invocation.getArgument(0);
                     String onlyId = request.path("ids").path(0).asString();
@@ -267,7 +269,7 @@ class BeneficialOwnersEnrichmentTest {
                 })
                 .verifyComplete();
 
-        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
     }
 
     @Test
@@ -299,7 +301,7 @@ class BeneficialOwnersEnrichmentTest {
     private AggregationContext context(ObjectNode root) {
         return new AggregationContext(
                 root,
-                new ClientRequestContext(ForwardedHeaders.builder().build(), null),
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty()),
                 AggregationPartSelection.from(null));
     }
 

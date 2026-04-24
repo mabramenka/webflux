@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.abramenka.aggregation.AggregationApplication;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.Projections;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterAll;
@@ -67,15 +68,16 @@ class HttpServiceClientConfigIntegrationTest {
 
     @Test
     void bootConfiguresHttpServiceClientsFromServiceClientProperties() {
-        StepVerifier.create(accountGroups.fetchAccountGroup(REQUEST, clientRequestContext()))
+        StepVerifier.create(
+                        accountGroups.fetchAccountGroup(REQUEST, AccountGroups.DEFAULT_FIELDS, clientRequestContext()))
                 .assertNext(response -> assertClientResponse(response, "account-group"))
                 .verifyComplete();
 
-        StepVerifier.create(accounts.fetchAccounts(REQUEST, clientRequestContext()))
+        StepVerifier.create(accounts.fetchAccounts(REQUEST, Accounts.DEFAULT_FIELDS, clientRequestContext()))
                 .assertNext(response -> assertClientResponse(response, "account"))
                 .verifyComplete();
 
-        StepVerifier.create(owners.fetchOwners(REQUEST, clientRequestContext()))
+        StepVerifier.create(owners.fetchOwners(REQUEST, Owners.DEFAULT_FIELDS, clientRequestContext()))
                 .assertNext(response -> assertClientResponse(response, "owners"))
                 .verifyComplete();
     }
@@ -111,12 +113,12 @@ class HttpServiceClientConfigIntegrationTest {
 
     private static ClientRequestContext clientRequestContext() {
         return new ClientRequestContext(
-                ForwardedHeaders.builder().requestId("req-1").build(), true);
+                ForwardedHeaders.builder().requestId("req-1").build(), true, Projections.empty());
     }
 
     private static void assertClientResponse(JsonNode response, String client) {
         assertThat(response.path("client").asString()).isEqualTo(client);
         assertThat(response.path("requestId").asString()).isEqualTo("req-1");
-        assertThat(response.path("uri").asString()).endsWith("?detokenize=true");
+        assertThat(response.path("uri").asString()).contains("detokenize=true").contains("fields=");
     }
 }
