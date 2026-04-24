@@ -52,11 +52,11 @@ class BeneficialOwnersEnrichment implements AggregationEnrichment {
     }
 
     @Override
-    public Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
+    public Mono<AggregationPartResult> execute(AggregationContext context) {
         if (collectRootEntities(context.accountGroupResponse()).isEmpty()) {
             return Mono.just(AggregationPartResult.skipped(NAME, PartSkipReason.NO_KEYS_IN_MAIN));
         }
-        return AggregationEnrichment.super.execute(rootSnapshot, context);
+        return AggregationEnrichment.super.execute(context);
     }
 
     @Override
