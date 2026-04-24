@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/mabramenka/webflux/compare/v0.7.4...v0.8.0) (2026-04-24)
+
+
+### Features
+
+* soft-skip semantics for optional enrichments with meta.parts outcomes ([ed36721](https://github.com/mabramenka/webflux/commit/ed36721e97bdbced3ad533c6e67f6ee9092da6ae))
+
 ## [0.7.4](https://github.com/mabramenka/webflux/compare/v0.7.3...v0.7.4) (2026-04-23)
 
 
