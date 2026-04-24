@@ -8,7 +8,6 @@ import dev.abramenka.aggregation.model.AggregationPartResult;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
-import tools.jackson.databind.node.ObjectNode;
 
 class AggregationPartExecutionStateTest {
 
@@ -44,7 +43,7 @@ class AggregationPartExecutionStateTest {
             }
 
             @Override
-            public Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
                 return Mono.empty();
             }
         };

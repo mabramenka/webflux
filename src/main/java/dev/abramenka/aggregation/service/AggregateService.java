@@ -5,7 +5,6 @@ import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.client.DownstreamClientResponses;
 import dev.abramenka.aggregation.client.HttpServiceGroups;
 import dev.abramenka.aggregation.error.OrchestrationException;
-import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
@@ -77,11 +76,8 @@ public class AggregateService {
             return DownstreamClientResponses.requireBody(
                             ACCOUNT_GROUP_CLIENT_NAME,
                             accountGroupClient.fetchAccountGroup(accountGroupRequest, fields, clientRequestContext))
-                    .flatMap(accountGroupResponse -> {
-                        AggregationContext context = new AggregationContext(
-                                accountGroupResponse, clientRequestContext, partPlan.effectiveSelection());
-                        return partExecutor.execute(ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse, context, partPlan);
-                    })
+                    .flatMap(accountGroupResponse -> partExecutor.execute(
+                            ACCOUNT_GROUP_CLIENT_NAME, accountGroupResponse, clientRequestContext, partPlan))
                     .map(this::attachMeta)
                     .contextWrite(context -> context.put(ObservationThreadLocalAccessor.KEY, observation))
                     .doOnError(observation::error)

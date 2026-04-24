@@ -16,9 +16,9 @@ public interface AggregationEnrichment extends AggregationPart {
     void merge(ObjectNode root, JsonNode enrichmentResponse);
 
     @Override
-    default Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
+    default Mono<AggregationPartResult> execute(AggregationContext context) {
         return fetch(context)
-                .map(response -> mergeIntoSnapshot(rootSnapshot, response))
+                .map(response -> mergeIntoSnapshot(context.accountGroupResponse(), response))
                 .switchIfEmpty(
                         Mono.fromSupplier(() -> AggregationPartResult.empty(name(), PartSkipReason.DOWNSTREAM_EMPTY)))
                 .onErrorResume(

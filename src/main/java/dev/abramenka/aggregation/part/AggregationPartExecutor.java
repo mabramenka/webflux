@@ -7,6 +7,7 @@ import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationResult;
+import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.PartOutcome;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
@@ -36,24 +37,24 @@ public class AggregationPartExecutor {
     public Mono<AggregationResult> execute(
             String rootClientName,
             JsonNode accountGroupResponse,
-            AggregationContext context,
+            ClientRequestContext clientRequestContext,
             AggregationPartPlan partPlan) {
         ObjectNode root = rootFactory.mutableRoot(rootClientName, accountGroupResponse);
         AggregationPartExecutionState executionState = new AggregationPartExecutionState();
         Map<String, PartOutcome> outcomes = new LinkedHashMap<>();
         return Flux.fromIterable(partPlan.selectedLevels())
-                .concatMap(level -> runLevel(level, root, context, executionState, outcomes))
+                .concatMap(level -> runLevel(level, root, clientRequestContext, executionState, outcomes))
                 .then(Mono.fromSupplier(() -> new AggregationResult(root, outcomes)));
     }
 
     private Mono<Void> runLevel(
             List<AggregationPart> level,
             ObjectNode root,
-            AggregationContext context,
+            ClientRequestContext clientRequestContext,
             AggregationPartExecutionState executionState,
             Map<String, PartOutcome> outcomes) {
         ObjectNode rootSnapshot = root.deepCopy();
-        AggregationContext levelContext = context.withAccountGroupResponse(rootSnapshot);
+        AggregationContext levelContext = new AggregationContext(rootSnapshot, clientRequestContext);
 
         List<AggregationPart> toRun = new ArrayList<>(level.size());
         for (AggregationPart part : level) {
@@ -67,7 +68,7 @@ public class AggregationPartExecutor {
 
         int concurrency = Math.max(1, toRun.size());
         return Flux.fromIterable(toRun)
-                .flatMap(part -> partRunner.execute(part, rootSnapshot, levelContext), concurrency)
+                .flatMap(part -> partRunner.execute(part, levelContext), concurrency)
                 .collectMap(AggregationPartResult::partName)
                 .doOnNext(resultsByName -> applyResults(toRun, resultsByName, root, executionState, outcomes))
                 .then();

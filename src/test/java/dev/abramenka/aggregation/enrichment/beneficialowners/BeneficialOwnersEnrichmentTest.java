@@ -12,7 +12,6 @@ import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartResult;
-import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
@@ -259,7 +258,7 @@ class BeneficialOwnersEnrichmentTest {
             }
             """);
 
-        StepVerifier.create(beneficialOwners.execute(root, context(root)))
+        StepVerifier.create(beneficialOwners.execute(context(root)))
                 .assertNext(result -> {
                     assertThat(result).isInstanceOf(AggregationPartResult.NoOp.class);
                     AggregationPartResult.NoOp noop = (AggregationPartResult.NoOp) result;
@@ -300,9 +299,7 @@ class BeneficialOwnersEnrichmentTest {
 
     private AggregationContext context(ObjectNode root) {
         return new AggregationContext(
-                root,
-                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty()),
-                AggregationPartSelection.from(null));
+                root, new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty()));
     }
 
     private void assertTreeMetric(String outcome, double count) {

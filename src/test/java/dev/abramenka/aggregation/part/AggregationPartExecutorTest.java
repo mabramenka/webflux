@@ -16,10 +16,11 @@ import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.model.Projections;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,7 +41,7 @@ class AggregationPartExecutorTest {
         meterRegistry = new SimpleMeterRegistry();
         AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         executor = new AggregationPartExecutor(
-                new AggregationPartRunner(metrics),
+                new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),
                 metrics);
@@ -48,7 +49,7 @@ class AggregationPartExecutorTest {
 
     @Test
     void execute_failsWhenPartEmitsEmptyMono() {
-        AggregationPart dependency = part("source", (root, context) -> Mono.empty());
+        AggregationPart dependency = part("source", context -> Mono.empty());
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
@@ -63,7 +64,7 @@ class AggregationPartExecutorTest {
 
     @Test
     void execute_failsWhenSelectedDependencyFails() {
-        AggregationPart dependency = part("source", (root, context) -> Mono.error(new IllegalStateException("down")));
+        AggregationPart dependency = part("source", context -> Mono.error(new IllegalStateException("down")));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
@@ -78,7 +79,8 @@ class AggregationPartExecutorTest {
 
     @Test
     void execute_failsWhenSelectedPartReturnsResultForAnotherPart() {
-        AggregationPart source = part("source", (root, context) -> Mono.just(flagResult("other", root, "sourceRan")));
+        AggregationPart source =
+                part("source", context -> Mono.just(flagResult("other", context.accountGroupResponse(), "sourceRan")));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(source, dependent))
@@ -94,8 +96,10 @@ class AggregationPartExecutorTest {
 
     @Test
     void execute_softSkipsUnsupportedPartAndCascadesToDependent() {
-        AggregationPart dependency =
-                part("source", context -> false, (root, context) -> Mono.just(flagResult("source", root, "sourceRan")));
+        AggregationPart dependency = part(
+                "source",
+                context -> false,
+                context -> Mono.just(flagResult("source", context.accountGroupResponse(), "sourceRan")));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
@@ -119,8 +123,7 @@ class AggregationPartExecutorTest {
     @Test
     void execute_softSkipsDependentWhenDependencyReturnsNoOp() {
         AggregationPart dependency = part(
-                "source",
-                (root, context) -> Mono.just(AggregationPartResult.empty("source", PartSkipReason.DOWNSTREAM_EMPTY)));
+                "source", context -> Mono.just(AggregationPartResult.empty("source", PartSkipReason.DOWNSTREAM_EMPTY)));
         AggregationPart dependent = flagPart("dependent", "dependentRan", "source");
 
         StepVerifier.create(execute(dependency, dependent))
@@ -145,7 +148,7 @@ class AggregationPartExecutorTest {
                 "dependent",
                 Set.of("source"),
                 context -> context.accountGroupResponse().path("sourceRan").asBoolean(false),
-                (root, context) -> Mono.just(flagResult("dependent", root, "dependentRan")));
+                context -> Mono.just(flagResult("dependent", context.accountGroupResponse(), "dependentRan")));
 
         StepVerifier.create(execute(dependency, dependent))
                 .assertNext(result -> {
@@ -171,14 +174,9 @@ class AggregationPartExecutorTest {
                 AggregationPartSelection.from(null),
                 AggregationPartSelection.from(null),
                 List.of(List.of(dependency), List.of(dependent)));
-        return executor.execute("Account group", root, context(root), plan);
-    }
-
-    private AggregationContext context(ObjectNode root) {
-        return new AggregationContext(
-                root,
-                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty()),
-                AggregationPartSelection.from(null));
+        ClientRequestContext clientRequestContext =
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
+        return executor.execute("Account group", root, clientRequestContext, plan);
     }
 
     private static AggregationPart flagPart(String name, String flag, String... dependencies) {
@@ -186,7 +184,7 @@ class AggregationPartExecutorTest {
                 name,
                 Set.of(dependencies),
                 context -> true,
-                (root, context) -> Mono.just(flagResult(name, root, flag)));
+                context -> Mono.just(flagResult(name, context.accountGroupResponse(), flag)));
     }
 
     private static AggregationPartResult flagResult(String name, ObjectNode rootSnapshot, String flag) {
@@ -196,14 +194,14 @@ class AggregationPartExecutorTest {
     }
 
     private static AggregationPart part(
-            String name, BiFunction<ObjectNode, AggregationContext, Mono<AggregationPartResult>> execute) {
+            String name, Function<AggregationContext, Mono<AggregationPartResult>> execute) {
         return part(name, Set.of(), context -> true, execute);
     }
 
     private static AggregationPart part(
             String name,
             Predicate<AggregationContext> supports,
-            BiFunction<ObjectNode, AggregationContext, Mono<AggregationPartResult>> execute) {
+            Function<AggregationContext, Mono<AggregationPartResult>> execute) {
         return part(name, Set.of(), supports, execute);
     }
 
@@ -211,7 +209,7 @@ class AggregationPartExecutorTest {
             String name,
             Set<String> dependencies,
             Predicate<AggregationContext> supports,
-            BiFunction<ObjectNode, AggregationContext, Mono<AggregationPartResult>> execute) {
+            Function<AggregationContext, Mono<AggregationPartResult>> execute) {
         return new AggregationPart() {
             @Override
             public String name() {
@@ -229,8 +227,8 @@ class AggregationPartExecutorTest {
             }
 
             @Override
-            public Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
-                return execute.apply(rootSnapshot, context);
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return execute.apply(context);
             }
         };
     }

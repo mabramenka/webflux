@@ -2,7 +2,6 @@ package dev.abramenka.aggregation.model;
 
 import java.util.Set;
 import reactor.core.publisher.Mono;
-import tools.jackson.databind.node.ObjectNode;
 
 public interface AggregationPart {
 
@@ -20,5 +19,5 @@ public interface AggregationPart {
         return true;
     }
 
-    Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context);
+    Mono<AggregationPartResult> execute(AggregationContext context);
 }
