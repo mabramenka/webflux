@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/mabramenka/webflux/compare/v0.9.0...v0.10.0) (2026-04-24)
+
+
+### Features
+
+* **observability:** emit a per-part Observation in AggregationPartRunner ([d423493](https://github.com/mabramenka/webflux/commit/d423493f949d89ec77e286141abd345cc53369f6))
+
 ## [0.9.0](https://github.com/mabramenka/webflux/compare/v0.8.0...v0.9.0) (2026-04-24)
 
 
