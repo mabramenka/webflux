@@ -1,18 +1,22 @@
 package dev.abramenka.aggregation.part;
 
-import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.FacadeException;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationPartResult;
-import java.util.LinkedHashSet;
+import dev.abramenka.aggregation.model.AggregationResult;
+import dev.abramenka.aggregation.model.PartOutcome;
+import dev.abramenka.aggregation.model.PartOutcomeStatus;
+import dev.abramenka.aggregation.model.PartSkipReason;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -29,46 +33,62 @@ public class AggregationPartExecutor {
     private final AggregationPartResultApplicator resultApplicator;
     private final AggregationPartMetrics metrics;
 
-    public Mono<JsonNode> execute(
+    public Mono<AggregationResult> execute(
             String rootClientName,
             JsonNode accountGroupResponse,
             AggregationContext context,
             AggregationPartPlan partPlan) {
         ObjectNode root = rootFactory.mutableRoot(rootClientName, accountGroupResponse);
         AggregationPartExecutionState executionState = new AggregationPartExecutionState();
+        Map<String, PartOutcome> outcomes = new LinkedHashMap<>();
         return Flux.fromIterable(partPlan.selectedLevels())
-                .concatMap(level -> runLevel(rootClientName, level, root, context, executionState))
-                .then(Mono.just(root));
+                .concatMap(level -> runLevel(level, root, context, executionState, outcomes))
+                .then(Mono.fromSupplier(() -> new AggregationResult(root, outcomes)));
     }
 
     private Mono<Void> runLevel(
-            String rootClientName,
             List<AggregationPart> level,
             ObjectNode root,
             AggregationContext context,
-            AggregationPartExecutionState executionState) {
+            AggregationPartExecutionState executionState,
+            Map<String, PartOutcome> outcomes) {
         ObjectNode rootSnapshot = root.deepCopy();
         AggregationContext levelContext = context.withAccountGroupResponse(rootSnapshot);
-        List<AggregationPart> supportedLevel = level.stream()
-                .filter(part -> requiredPartCanRun(rootClientName, part, levelContext, executionState))
-                .toList();
-        int concurrency = Math.max(1, supportedLevel.size());
-        return Flux.fromIterable(supportedLevel)
+
+        List<AggregationPart> toRun = new ArrayList<>(level.size());
+        for (AggregationPart part : level) {
+            PartSkipReason skipReason = skipReasonFor(part, levelContext, executionState);
+            if (skipReason != null) {
+                recordSkip(part, skipReason, outcomes);
+            } else {
+                toRun.add(part);
+            }
+        }
+
+        int concurrency = Math.max(1, toRun.size());
+        return Flux.fromIterable(toRun)
                 .flatMap(part -> partRunner.execute(part, rootSnapshot, levelContext), concurrency)
                 .collectMap(AggregationPartResult::partName)
-                .doOnNext(resultsByName -> applyResults(supportedLevel, resultsByName, root, executionState))
+                .doOnNext(resultsByName -> applyResults(toRun, resultsByName, root, executionState, outcomes))
                 .then();
     }
 
-    private boolean requiredPartCanRun(
-            String rootClientName,
-            AggregationPart part,
-            AggregationContext context,
-            AggregationPartExecutionState executionState) {
-        requireDependenciesApplied(part, executionState);
-        boolean supported;
+    private @Nullable PartSkipReason skipReasonFor(
+            AggregationPart part, AggregationContext context, AggregationPartExecutionState executionState) {
+        List<String> missingDependencies = executionState.missingDependencies(part);
+        if (!missingDependencies.isEmpty()) {
+            log.debug(
+                    "Skipping aggregation part '{}' because dependency result(s) did not apply: {}",
+                    part.name(),
+                    String.join(", ", missingDependencies));
+            return PartSkipReason.DEPENDENCY_EMPTY;
+        }
+        return supportsSafely(part, context) ? null : PartSkipReason.UNSUPPORTED_CONTEXT;
+    }
+
+    private boolean supportsSafely(AggregationPart part, AggregationContext context) {
         try {
-            supported = part.supports(context);
+            return part.supports(context);
         } catch (FacadeException ex) {
             metrics.record(part.name(), "failure");
             throw ex;
@@ -76,64 +96,60 @@ public class AggregationPartExecutor {
             metrics.record(part.name(), "failure");
             throw OrchestrationException.invariantViolated(ex);
         }
-        if (!supported) {
-            metrics.record(part.name(), "failure");
-            throw DownstreamClientException.contractViolation(rootClientName);
-        }
-        return true;
     }
 
     private void applyResults(
             List<AggregationPart> level,
             Map<String, AggregationPartResult> resultsByName,
             ObjectNode root,
-            AggregationPartExecutionState executionState) {
+            AggregationPartExecutionState executionState,
+            Map<String, PartOutcome> outcomes) {
         requireOneResultPerPart(level, resultsByName);
         for (AggregationPart part : level) {
             AggregationPartResult result = resultsByName.get(part.name());
-            if (result != null) {
-                try {
-                    resultApplicator.apply(result, root);
-                    metrics.record(part.name(), "success");
-                    executionState.markApplied(part);
-                } catch (FacadeException ex) {
-                    metrics.record(part.name(), "failure");
-                    throw ex;
-                } catch (Exception ex) {
-                    metrics.record(part.name(), "failure");
-                    throw OrchestrationException.mergeFailed(ex);
-                }
+            if (result == null) {
+                continue;
             }
+            if (result instanceof AggregationPartResult.NoOp noOp) {
+                recordNoOp(part, noOp, outcomes);
+                continue;
+            }
+            try {
+                resultApplicator.apply(result, root);
+            } catch (FacadeException ex) {
+                metrics.record(part.name(), "failure");
+                throw ex;
+            } catch (Exception ex) {
+                metrics.record(part.name(), "failure");
+                throw OrchestrationException.mergeFailed(ex);
+            }
+            metrics.record(part.name(), "success");
+            executionState.markApplied(part);
+            outcomes.put(part.name(), PartOutcome.applied());
         }
+    }
+
+    private void recordSkip(AggregationPart part, PartSkipReason reason, Map<String, PartOutcome> outcomes) {
+        metrics.record(part.name(), "skipped");
+        outcomes.put(part.name(), PartOutcome.skipped(reason));
+    }
+
+    private void recordNoOp(AggregationPart part, AggregationPartResult.NoOp noOp, Map<String, PartOutcome> outcomes) {
+        PartOutcome outcome = noOp.status() == PartOutcomeStatus.EMPTY
+                ? PartOutcome.empty(noOp.reason())
+                : PartOutcome.skipped(noOp.reason());
+        metrics.record(part.name(), noOp.status() == PartOutcomeStatus.EMPTY ? "empty" : "skipped");
+        outcomes.put(part.name(), outcome);
     }
 
     private void requireOneResultPerPart(
             List<AggregationPart> level, Map<String, AggregationPartResult> resultsByName) {
-        Set<String> expectedNames = new LinkedHashSet<>();
-        level.stream().map(AggregationPart::name).forEach(expectedNames::add);
-        Set<String> actualNames = new LinkedHashSet<>(resultsByName.keySet());
-        if (actualNames.equals(expectedNames)) {
-            return;
+        for (AggregationPart part : level) {
+            if (!resultsByName.containsKey(part.name())) {
+                metrics.record(part.name(), "failure");
+                throw OrchestrationException.invariantViolated(
+                        new IllegalStateException("Aggregation part '" + part.name() + "' did not emit a result"));
+            }
         }
-
-        expectedNames.stream()
-                .filter(name -> !actualNames.contains(name))
-                .forEach(name -> metrics.record(name, "failure"));
-        throw OrchestrationException.invariantViolated(
-                new IllegalStateException("Aggregation part result names do not match selected parts"));
-    }
-
-    private void requireDependenciesApplied(AggregationPart part, AggregationPartExecutionState executionState) {
-        List<String> missingDependencies = executionState.missingDependencies(part);
-        if (missingDependencies.isEmpty()) {
-            return;
-        }
-        log.warn(
-                "Required aggregation part '{}' cannot run because dependency result(s) are missing: {}",
-                part.name(),
-                String.join(", ", missingDependencies));
-        metrics.record(part.name(), "failure");
-        throw OrchestrationException.invariantViolated(
-                new IllegalStateException("Required aggregation part dependencies were not applied"));
     }
 }

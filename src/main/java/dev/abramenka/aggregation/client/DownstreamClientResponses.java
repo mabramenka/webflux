@@ -15,4 +15,9 @@ public final class DownstreamClientResponses {
                         ex -> !(ex instanceof FacadeException),
                         ex -> DownstreamClientException.transport(clientName, ex));
     }
+
+    public static Mono<JsonNode> optionalBody(String clientName, Mono<JsonNode> response) {
+        return response.onErrorMap(
+                ex -> !(ex instanceof FacadeException), ex -> DownstreamClientException.transport(clientName, ex));
+    }
 }

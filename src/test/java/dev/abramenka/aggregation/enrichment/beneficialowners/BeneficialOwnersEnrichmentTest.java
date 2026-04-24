@@ -10,9 +10,12 @@ import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.PartOutcomeStatus;
+import dev.abramenka.aggregation.model.PartSkipReason;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.HashSet;
 import java.util.Set;
@@ -238,6 +241,33 @@ class BeneficialOwnersEnrichmentTest {
                         .asString())
                 .isEqualTo("Y");
         assertTreeMetric("success", 2);
+    }
+
+    @Test
+    void execute_softSkipsWhenAccountGroupPayloadHasNoRootEntities() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {"individual": {"number": "I-1"}}
+                  ]
+                }
+              ]
+            }
+            """);
+
+        StepVerifier.create(beneficialOwners.execute(root, context(root)))
+                .assertNext(result -> {
+                    assertThat(result).isInstanceOf(AggregationPartResult.NoOp.class);
+                    AggregationPartResult.NoOp noop = (AggregationPartResult.NoOp) result;
+                    assertThat(noop.partName()).isEqualTo("beneficialOwners");
+                    assertThat(noop.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
+                    assertThat(noop.reason()).isEqualTo(PartSkipReason.NO_KEYS_IN_MAIN);
+                })
+                .verifyComplete();
+
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), any(ClientRequestContext.class));
     }
 
     @Test

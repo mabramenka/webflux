@@ -4,6 +4,8 @@ import dev.abramenka.aggregation.error.EnrichmentDependencyException;
 import dev.abramenka.aggregation.error.FacadeException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationEnrichment;
+import dev.abramenka.aggregation.model.AggregationPartResult;
+import dev.abramenka.aggregation.model.PartSkipReason;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,6 +49,14 @@ class BeneficialOwnersEnrichment implements AggregationEnrichment {
     @Override
     public Set<String> dependencies() {
         return Set.of("owners");
+    }
+
+    @Override
+    public Mono<AggregationPartResult> execute(ObjectNode rootSnapshot, AggregationContext context) {
+        if (collectRootEntities(context.accountGroupResponse()).isEmpty()) {
+            return Mono.just(AggregationPartResult.skipped(NAME, PartSkipReason.NO_KEYS_IN_MAIN));
+        }
+        return AggregationEnrichment.super.execute(rootSnapshot, context);
     }
 
     @Override

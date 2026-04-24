@@ -3,7 +3,7 @@ package dev.abramenka.aggregation.model;
 import tools.jackson.databind.node.ObjectNode;
 
 public sealed interface AggregationPartResult
-        permits AggregationPartResult.MergePatch, AggregationPartResult.ReplaceDocument {
+        permits AggregationPartResult.MergePatch, AggregationPartResult.NoOp, AggregationPartResult.ReplaceDocument {
 
     String partName();
 
@@ -13,6 +13,14 @@ public sealed interface AggregationPartResult
 
     static AggregationPartResult patch(String partName, ObjectNode base, ObjectNode replacement) {
         return new MergePatch(partName, base.deepCopy(), replacement.deepCopy());
+    }
+
+    static AggregationPartResult empty(String partName, PartSkipReason reason) {
+        return new NoOp(partName, PartOutcomeStatus.EMPTY, reason);
+    }
+
+    static AggregationPartResult skipped(String partName, PartSkipReason reason) {
+        return new NoOp(partName, PartOutcomeStatus.SKIPPED, reason);
     }
 
     final class ReplaceDocument implements AggregationPartResult {
@@ -60,4 +68,6 @@ public sealed interface AggregationPartResult
             return replacement.deepCopy();
         }
     }
+
+    record NoOp(String partName, PartOutcomeStatus status, PartSkipReason reason) implements AggregationPartResult {}
 }

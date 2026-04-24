@@ -86,11 +86,11 @@ class DownstreamClientExceptionTest {
     }
 
     @Test
-    void upstreamStatus_mapsEnrichmentNotFoundToContractViolation() {
+    void upstreamStatus_mapsEscapedEnrichmentNotFoundToBadResponse() {
         DownstreamClientException exception = DownstreamClientException.upstreamStatus("Owners", HttpStatus.NOT_FOUND);
 
         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
-        assertThat(exception.getBody().getType()).isEqualTo(ProblemCatalog.ENRICH_CONTRACT_VIOLATION.type());
+        assertThat(exception.getBody().getType()).isEqualTo(ProblemCatalog.ENRICH_BAD_RESPONSE.type());
         assertThat(exception.getBody().getProperties()).containsEntry("dependency", "enricher:owners");
     }
 }
