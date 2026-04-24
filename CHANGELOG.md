@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/mabramenka/webflux/compare/v0.8.0...v0.9.0) (2026-04-24)
+
+
+### Features
+
+* forward `fields` projection to main account-group call only ([7b9128c](https://github.com/mabramenka/webflux/commit/7b9128cc62442434802babcafcbd5a3ccf789e1b))
+
 ## [0.8.0](https://github.com/mabramenka/webflux/compare/v0.7.4...v0.8.0) (2026-04-24)
 
 
