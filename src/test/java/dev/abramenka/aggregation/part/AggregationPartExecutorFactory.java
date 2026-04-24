@@ -1,6 +1,7 @@
 package dev.abramenka.aggregation.part;
 
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.ObservationRegistry;
 
 public final class AggregationPartExecutorFactory {
 
@@ -9,7 +10,7 @@ public final class AggregationPartExecutorFactory {
     public static AggregationPartExecutor create(MeterRegistry meterRegistry) {
         AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         return new AggregationPartExecutor(
-                new AggregationPartRunner(metrics),
+                new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),
                 metrics);
