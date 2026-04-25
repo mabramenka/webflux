@@ -8,9 +8,9 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import tools.jackson.databind.node.ObjectNode;
 
-record KeyPathGroups(List<KeyPathGroup> groups) {
+public record KeyPathGroups(List<KeyPathGroup> groups) {
 
-    static KeyPathGroups parse(String... keyPaths) {
+    public static KeyPathGroups parse(String... keyPaths) {
         if (keyPaths.length == 0) {
             throw new IllegalArgumentException("At least one key path is required");
         }
@@ -29,11 +29,11 @@ record KeyPathGroups(List<KeyPathGroup> groups) {
         return new KeyPathGroups(groups);
     }
 
-    Stream<String> keysFrom(ObjectNode root) {
+    public Stream<String> keysFrom(ObjectNode root) {
         return groups.stream().flatMap(group -> group.keysFrom(root));
     }
 
-    Optional<String> firstKey(ObjectNode root) {
+    public Optional<String> firstKey(ObjectNode root) {
         return groups.stream().flatMap(group -> group.keysFrom(root)).findFirst();
     }
 

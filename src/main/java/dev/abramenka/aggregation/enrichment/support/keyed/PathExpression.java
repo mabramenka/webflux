@@ -5,9 +5,9 @@ import java.util.List;
 import java.util.Objects;
 import tools.jackson.databind.JsonNode;
 
-record PathExpression(List<PathSegment> segments) {
+public record PathExpression(List<PathSegment> segments) {
 
-    static PathExpression parse(String rawPath) {
+    public static PathExpression parse(String rawPath) {
         Objects.requireNonNull(rawPath, "rawPath");
         String normalized = rawPath.strip();
         if (normalized.equals("$")) {
@@ -30,7 +30,7 @@ record PathExpression(List<PathSegment> segments) {
         return new PathExpression(List.copyOf(segments));
     }
 
-    List<JsonNode> select(JsonNode root) {
+    public List<JsonNode> select(JsonNode root) {
         List<JsonNode> current = List.of(root);
         for (PathSegment segment : segments) {
             current = selectSegment(current, segment);
