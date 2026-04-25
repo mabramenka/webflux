@@ -46,7 +46,7 @@ public final class JsonPointer {
         if (segments.isEmpty()) {
             throw new JsonPatchException("Root pointer has no last segment");
         }
-        return segments.get(segments.size() - 1);
+        return segments.getLast();
     }
 
     public List<String> parentSegments() {
