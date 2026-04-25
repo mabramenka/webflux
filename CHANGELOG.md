@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/mabramenka/webflux/compare/v0.10.0...v0.10.1) (2026-04-25)
+
+
+### Bug Fixes
+
+* dependencyCheck ([4619c7f](https://github.com/mabramenka/webflux/commit/4619c7faf04574195969afdeece4bd75ecfb69b0))
+
 ## [Unreleased]
 
 ### Refactoring
