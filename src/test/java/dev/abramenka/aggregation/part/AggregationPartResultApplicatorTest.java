@@ -3,6 +3,7 @@ package dev.abramenka.aggregation.part;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.abramenka.aggregation.model.AggregationPartResult;
+import dev.abramenka.aggregation.model.CompositionSpec;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -153,6 +154,33 @@ class AggregationPartResultApplicatorTest {
 
         assertThat(target.path("items").size()).isEqualTo(2);
         assertThat(target.path("items").path(0).has("owners1")).isFalse();
+    }
+
+    @Test
+    void apply_writesMergePatchToNestedTargetPath() {
+        ObjectNode target = object("""
+            {
+              "meta": {}
+            }
+            """);
+        ObjectNode replacement = object("""
+            {
+              "status": "ok"
+            }
+            """);
+
+        applicator.apply(
+                AggregationPartResult.patch(
+                        "part",
+                        objectMapper.createObjectNode(),
+                        replacement,
+                        new CompositionSpec(
+                                "/meta/enrichment",
+                                CompositionSpec.MergeMode.MERGE_PATCH,
+                                CompositionSpec.ConflictPolicy.OVERWRITE)),
+                target);
+
+        assertThat(target.path("meta").path("enrichment").path("status").asString()).isEqualTo("ok");
     }
 
     private ObjectNode object(String raw) {

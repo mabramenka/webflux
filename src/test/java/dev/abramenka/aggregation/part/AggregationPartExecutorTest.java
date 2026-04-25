@@ -10,6 +10,7 @@ import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
 import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.CompositionSpec;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.PartOutcome;
 import dev.abramenka.aggregation.model.PartOutcomeReason;
@@ -165,6 +166,49 @@ class AggregationPartExecutorTest {
         assertPartMetric("dependent", "success", 1);
     }
 
+    @Test
+    void execute_failsWhenSameLevelResultsConflictByTargetPath() {
+        AggregationPart first = part("first", context -> Mono.just(targetedPatchResult(
+                "first",
+                "/data/item",
+                CompositionSpec.ConflictPolicy.FAIL_ON_CONFLICT,
+                objectMapper.createObjectNode().put("value", "1"))));
+        AggregationPart second = part("second", context -> Mono.just(targetedPatchResult(
+                "second",
+                "/data/item/id",
+                CompositionSpec.ConflictPolicy.FAIL_ON_CONFLICT,
+                objectMapper.createObjectNode().put("value", "2"))));
+
+        StepVerifier.create(executeSingleLevel(first, second))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(OrchestrationException.class)
+                        .hasMessage("The service detected an internal aggregation invariant violation."))
+                .verify();
+    }
+
+    @Test
+    void execute_appliesSameTargetPathInDeclaredOrderWhenConflictPolicyAllowsOverwrite() {
+        AggregationPart first = part("first", context -> Mono.just(targetedPatchResult(
+                "first",
+                "/meta/marker",
+                CompositionSpec.ConflictPolicy.OVERWRITE,
+                objectMapper.createObjectNode().put("value", "first"))));
+        AggregationPart second = part("second", context -> Mono.just(targetedPatchResult(
+                "second",
+                "/meta/marker",
+                CompositionSpec.ConflictPolicy.OVERWRITE,
+                objectMapper.createObjectNode().put("value", "second"))));
+
+        StepVerifier.create(executeSingleLevel(first, second))
+                .assertNext(result -> assertThat(result.data()
+                                .path("meta")
+                                .path("marker")
+                                .path("value")
+                                .asString())
+                        .isEqualTo("second"))
+                .verifyComplete();
+    }
+
     private static PartOutcome outcome(AggregationResult result, String partName) {
         return Objects.requireNonNull(
                 result.partOutcomes().get(partName), () -> "missing outcome for part " + partName);
@@ -176,6 +220,15 @@ class AggregationPartExecutorTest {
                 AggregationPartSelection.from(null),
                 AggregationPartSelection.from(null),
                 List.of(List.of(dependency), List.of(dependent)));
+        ClientRequestContext clientRequestContext =
+                new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
+        return executor.execute("Account group", root, clientRequestContext, plan);
+    }
+
+    private Mono<AggregationResult> executeSingleLevel(AggregationPart first, AggregationPart second) {
+        ObjectNode root = objectMapper.createObjectNode();
+        AggregationPartPlan plan = new AggregationPartPlan(
+                AggregationPartSelection.from(null), AggregationPartSelection.from(null), List.of(List.of(first, second)));
         ClientRequestContext clientRequestContext =
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
         return executor.execute("Account group", root, clientRequestContext, plan);
@@ -193,6 +246,15 @@ class AggregationPartExecutorTest {
         ObjectNode replacement = rootSnapshot.deepCopy();
         replacement.put(flag, true);
         return AggregationPartResult.patch(name, rootSnapshot, replacement);
+    }
+
+    private static AggregationPartResult targetedPatchResult(
+            String name, String path, CompositionSpec.ConflictPolicy conflictPolicy, ObjectNode replacement) {
+        return AggregationPartResult.patch(
+                name,
+                replacement.objectNode(),
+                replacement,
+                new CompositionSpec(path, CompositionSpec.MergeMode.MERGE_PATCH, conflictPolicy));
     }
 
     private static AggregationPart part(

@@ -8,6 +8,7 @@ import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.CompositionSpec;
 import dev.abramenka.aggregation.model.PartOutcome;
 import dev.abramenka.aggregation.model.PartOutcomeReason;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
@@ -126,6 +127,7 @@ public class AggregationPartExecutor {
             AggregationPartExecutionState executionState,
             Map<String, PartOutcome> outcomes) {
         requireOneResultPerPart(level, resultsByName);
+        Map<String, String> writePathOwners = new LinkedHashMap<>();
         for (AggregationPart part : level) {
             PartExecutionResult executionResult = resultsByName.get(part.name());
             if (executionResult == null) {
@@ -142,6 +144,7 @@ public class AggregationPartExecutor {
                 recordNoOp(part, noOp, outcomes);
                 continue;
             }
+            assertNoPathConflict(result, writePathOwners);
             try {
                 resultApplicator.apply(result, root);
             } catch (FacadeException ex) {
@@ -155,6 +158,32 @@ public class AggregationPartExecutor {
             executionState.markApplied(part);
             outcomes.put(part.name(), PartOutcome.applied(part.criticality()));
         }
+    }
+
+    private void assertNoPathConflict(AggregationPartResult result, Map<String, String> writePathOwners) {
+        CompositionSpec compositionSpec = result.compositionSpec();
+        if (compositionSpec.conflictPolicy() != CompositionSpec.ConflictPolicy.FAIL_ON_CONFLICT) {
+            writePathOwners.put(compositionSpec.targetPath(), result.partName());
+            return;
+        }
+        for (Map.Entry<String, String> pathOwner : writePathOwners.entrySet()) {
+            if (pathsConflict(pathOwner.getKey(), compositionSpec.targetPath())) {
+                throw OrchestrationException.invariantViolated(new IllegalStateException(
+                        "Conflicting composition target paths: '" + pathOwner.getKey() + "' (" + pathOwner.getValue()
+                                + ") vs '" + compositionSpec.targetPath() + "' (" + result.partName() + ")"));
+            }
+        }
+        writePathOwners.put(compositionSpec.targetPath(), result.partName());
+    }
+
+    private static boolean pathsConflict(String left, String right) {
+        if (left.equals(right)) {
+            return true;
+        }
+        if ("/".equals(left) || "/".equals(right)) {
+            return true;
+        }
+        return left.startsWith(right + "/") || right.startsWith(left + "/");
     }
 
     private void recordSkip(AggregationPart part, PartSkipReason reason, Map<String, PartOutcome> outcomes) {

@@ -1,6 +1,7 @@
 package dev.abramenka.aggregation.part;
 
 import dev.abramenka.aggregation.model.AggregationPartResult;
+import dev.abramenka.aggregation.model.CompositionSpec;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -13,17 +14,71 @@ class AggregationPartResultApplicator {
 
     void apply(AggregationPartResult result, ObjectNode root) {
         switch (result) {
-            case AggregationPartResult.ReplaceDocument replacement -> replaceRoot(root, replacement.replacement());
-            case AggregationPartResult.MergePatch patch -> applyPatch(patch.base(), patch.replacement(), root);
+            case AggregationPartResult.ReplaceDocument replacement -> applyReplace(replacement, root);
+            case AggregationPartResult.MergePatch patch -> applyMergePatch(patch, root);
             case AggregationPartResult.NoOp ignored -> {
                 // Nothing to apply: the part intentionally produced no data.
             }
         }
     }
 
+    private static void applyReplace(AggregationPartResult.ReplaceDocument replacement, ObjectNode root) {
+        CompositionSpec compositionSpec = replacement.compositionSpec();
+        if (isRootPath(compositionSpec.targetPath())) {
+            replaceRoot(root, replacement.replacement());
+            return;
+        }
+        PathTarget pathTarget = resolvePathTarget(root, compositionSpec.targetPath());
+        pathTarget.parent().set(pathTarget.leafName(), replacement.replacement());
+    }
+
+    private static void applyMergePatch(AggregationPartResult.MergePatch patch, ObjectNode root) {
+        CompositionSpec compositionSpec = patch.compositionSpec();
+        if (isRootPath(compositionSpec.targetPath())) {
+            applyPatch(patch.base(), patch.replacement(), root);
+            return;
+        }
+        PathTarget pathTarget = resolvePathTarget(root, compositionSpec.targetPath());
+        JsonNode currentNode = pathTarget.parent().optional(pathTarget.leafName()).orElse(null);
+        if (!(currentNode instanceof ObjectNode currentObject)) {
+            ObjectNode replacementTarget = patch.replacement().deepCopy();
+            pathTarget.parent().set(pathTarget.leafName(), replacementTarget);
+            return;
+        }
+        applyPatch(patch.base(), patch.replacement(), currentObject);
+    }
+
     private static void replaceRoot(ObjectNode root, ObjectNode replacement) {
         root.removeAll();
         root.setAll(replacement);
+    }
+
+    private static boolean isRootPath(String targetPath) {
+        return "/".equals(targetPath);
+    }
+
+    private static PathTarget resolvePathTarget(ObjectNode root, String targetPath) {
+        if (!targetPath.startsWith("/")) {
+            throw new IllegalArgumentException("Composition targetPath must be absolute: " + targetPath);
+        }
+        if ("/".equals(targetPath)) {
+            throw new IllegalArgumentException("Root path must be handled separately");
+        }
+        String[] rawSegments = targetPath.substring(1).split("/");
+        ObjectNode cursor = root;
+        for (int i = 0; i < rawSegments.length - 1; i++) {
+            String segment = rawSegments[i];
+            JsonNode next = cursor.optional(segment).orElse(null);
+            ObjectNode objectNode;
+            if (!(next instanceof ObjectNode existingObjectNode)) {
+                objectNode = cursor.objectNode();
+                cursor.set(segment, objectNode);
+            } else {
+                objectNode = existingObjectNode;
+            }
+            cursor = objectNode;
+        }
+        return new PathTarget(cursor, rawSegments[rawSegments.length - 1]);
     }
 
     private static void applyPatch(ObjectNode base, ObjectNode replacement, ObjectNode target) {
@@ -81,4 +136,6 @@ class AggregationPartResultApplicator {
         propertyNames.removeIf(propertyName -> base.optional(propertyName).equals(replacement.optional(propertyName)));
         return propertyNames;
     }
+
+    private record PathTarget(ObjectNode parent, String leafName) {}
 }
