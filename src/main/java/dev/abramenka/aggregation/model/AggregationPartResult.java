@@ -1,9 +1,13 @@
 package dev.abramenka.aggregation.model;
 
+import dev.abramenka.aggregation.patch.JsonPatchDocument;
 import tools.jackson.databind.node.ObjectNode;
 
 public sealed interface AggregationPartResult
-        permits AggregationPartResult.MergePatch, AggregationPartResult.NoOp, AggregationPartResult.ReplaceDocument {
+        permits AggregationPartResult.JsonPatch,
+                AggregationPartResult.MergePatch,
+                AggregationPartResult.NoOp,
+                AggregationPartResult.ReplaceDocument {
 
     String partName();
 
@@ -13,6 +17,10 @@ public sealed interface AggregationPartResult
 
     static AggregationPartResult patch(String partName, ObjectNode base, ObjectNode replacement) {
         return new MergePatch(partName, base.deepCopy(), replacement.deepCopy());
+    }
+
+    static AggregationPartResult jsonPatch(String partName, JsonPatchDocument patch) {
+        return new JsonPatch(partName, patch);
     }
 
     static AggregationPartResult empty(String partName, PartSkipReason reason) {
@@ -70,4 +78,6 @@ public sealed interface AggregationPartResult
     }
 
     record NoOp(String partName, PartOutcomeStatus status, PartSkipReason reason) implements AggregationPartResult {}
+
+    record JsonPatch(String partName, JsonPatchDocument patch) implements AggregationPartResult {}
 }

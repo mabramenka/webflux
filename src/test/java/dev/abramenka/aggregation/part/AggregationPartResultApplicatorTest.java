@@ -3,6 +3,8 @@ package dev.abramenka.aggregation.part;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.abramenka.aggregation.model.AggregationPartResult;
+import dev.abramenka.aggregation.patch.JsonPatchDocument;
+import dev.abramenka.aggregation.patch.JsonPatchOperation;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -153,6 +155,23 @@ class AggregationPartResultApplicatorTest {
 
         assertThat(target.path("items").size()).isEqualTo(2);
         assertThat(target.path("items").path(0).has("owners1")).isFalse();
+    }
+
+    @Test
+    void apply_dispatchesJsonPatchOperationsToRoot() {
+        ObjectNode root = object("""
+            {"data": {"score": 1}}
+            """);
+        JsonPatchDocument patch = JsonPatchDocument.of(
+                new JsonPatchOperation.Replace(
+                        "/data/score", objectMapper.getNodeFactory().numberNode(99)),
+                new JsonPatchOperation.Add(
+                        "/data/added", objectMapper.getNodeFactory().booleanNode(true)));
+
+        applicator.apply(AggregationPartResult.jsonPatch("part", patch), root);
+
+        assertThat(root.path("data").path("score").asInt()).isEqualTo(99);
+        assertThat(root.path("data").path("added").asBoolean()).isTrue();
     }
 
     private ObjectNode object(String raw) {

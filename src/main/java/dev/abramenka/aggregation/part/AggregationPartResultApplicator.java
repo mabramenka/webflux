@@ -1,6 +1,7 @@
 package dev.abramenka.aggregation.part;
 
 import dev.abramenka.aggregation.model.AggregationPartResult;
+import dev.abramenka.aggregation.patch.JsonPatchApplicator;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -11,10 +12,13 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 class AggregationPartResultApplicator {
 
+    private final JsonPatchApplicator jsonPatchApplicator = new JsonPatchApplicator();
+
     void apply(AggregationPartResult result, ObjectNode root) {
         switch (result) {
             case AggregationPartResult.ReplaceDocument replacement -> replaceRoot(root, replacement.replacement());
             case AggregationPartResult.MergePatch patch -> applyPatch(patch.base(), patch.replacement(), root);
+            case AggregationPartResult.JsonPatch jsonPatch -> jsonPatchApplicator.apply(jsonPatch.patch(), root);
             case AggregationPartResult.NoOp ignored -> {
                 // Nothing to apply: the part intentionally produced no data.
             }
