@@ -11,6 +11,9 @@ import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
 import dev.abramenka.aggregation.enrichment.owners.OwnersEnrichmentTestFactory;
 import dev.abramenka.aggregation.error.OrchestrationException;
+import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.AggregationEnrichment;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -203,6 +206,47 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
                     assertThat(aggregated.path("audited").asBoolean()).isTrue();
                 })
                 .verifyComplete();
+    }
+
+    @Test
+    void aggregate_appliesSameLevelResultsInGraphOrderRegardlessOfFetchCompletionOrder() {
+        AggregationEnrichment slowFirst = sharedFieldEnrichment("alpha", "winner", "alpha", Duration.ofMillis(100));
+        AggregationEnrichment fastSecond = sharedFieldEnrichment("bravo", "winner", "bravo", Duration.ZERO);
+        AggregateService service = aggregateServiceWith(List.of(slowFirst, fastSecond));
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("alpha", "bravo"));
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1"
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), anyString(), any()))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(service.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated ->
+                        assertThat(aggregated.path("winner").asString()).isEqualTo("bravo"))
+                .verifyComplete();
+    }
+
+    private AggregationEnrichment sharedFieldEnrichment(String name, String field, String value, Duration fetchDelay) {
+        return new AggregationEnrichment() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public Mono<JsonNode> fetch(AggregationContext context) {
+                Mono<JsonNode> response = Mono.just(objectMapper.createObjectNode());
+                return fetchDelay.isZero() ? response : response.delayElement(fetchDelay);
+            }
+
+            @Override
+            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
+                root.put(field, value);
+            }
+        };
     }
 
     @Test
