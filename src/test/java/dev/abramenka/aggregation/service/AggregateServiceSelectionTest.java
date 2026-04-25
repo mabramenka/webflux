@@ -171,6 +171,41 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
     }
 
     @Test
+    void aggregate_returnsRootOnlyWhenIncludeIsEmpty() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of());
+        JsonNode accountGroupResponse = json("""
+            {
+              "customerId": "cust-1",
+              "data": [
+                {
+                  "id": "customer-data-1",
+                  "accounts": [
+                    {"id": "A"}
+                  ]
+                }
+              ]
+            }
+            """);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(accountGroupResponse));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .assertNext(aggregated -> {
+                    assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
+                    assertThat(aggregated.path("data").path(0).path("accounts").path(0).path("id").asString())
+                            .isEqualTo("A");
+                    assertThat(aggregated.path("data").path(0).has("account1")).isFalse();
+                    assertThat(aggregated.has("meta")).isFalse();
+                })
+                .verifyComplete();
+
+        verify(accountClient, never())
+                .fetchAccounts(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
+        verify(ownersClient, never()).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
+    }
+
+    @Test
     void aggregate_rejectsNonObjectAccountGroupResponse() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         JsonNode accountGroupResponse = json("""
