@@ -193,7 +193,13 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
                 .assertNext(aggregated -> {
                     assertThat(aggregated.path("customerId").asString()).isEqualTo("cust-1");
-                    assertThat(aggregated.path("data").path(0).path("accounts").path(0).path("id").asString())
+                    assertThat(aggregated
+                                    .path("data")
+                                    .path(0)
+                                    .path("accounts")
+                                    .path(0)
+                                    .path("id")
+                                    .asString())
                             .isEqualTo("A");
                     assertThat(aggregated.path("data").path(0).has("account1")).isFalse();
                     assertThat(aggregated.has("meta")).isFalse();
