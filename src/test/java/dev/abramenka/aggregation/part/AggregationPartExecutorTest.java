@@ -42,7 +42,7 @@ class AggregationPartExecutorTest {
         meterRegistry = new SimpleMeterRegistry();
         AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         executor = new AggregationPartExecutor(
-                new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
+                new AggregationPartRunner(ObservationRegistry.NOOP),
                 new AggregationPartFailurePolicy(),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),

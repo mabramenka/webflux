@@ -10,7 +10,7 @@ public final class AggregationPartExecutorFactory {
     public static AggregationPartExecutor create(MeterRegistry meterRegistry) {
         AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         return new AggregationPartExecutor(
-                new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
+                new AggregationPartRunner(ObservationRegistry.NOOP),
                 new AggregationPartFailurePolicy(),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),

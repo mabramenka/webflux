@@ -8,8 +8,8 @@ import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
-import dev.abramenka.aggregation.model.PartFailureReason;
 import dev.abramenka.aggregation.model.PartOutcome;
+import dev.abramenka.aggregation.model.PartOutcomeReason;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
 import java.util.ArrayList;
@@ -84,6 +84,7 @@ public class AggregationPartExecutor {
                 .onErrorResume(error -> {
                     AggregationPartFailurePolicy.FailureDecision decision = failurePolicy.decide(part, error);
                     if (decision.failRequest()) {
+                        metrics.record(part.name(), "failure");
                         return Mono.error(Objects.requireNonNull(decision.error()));
                     }
                     return Mono.just(PartExecutionResult.failure(
@@ -131,7 +132,7 @@ public class AggregationPartExecutor {
                 continue;
             }
             if (executionResult.failed()) {
-                PartFailureReason reason = Objects.requireNonNull(executionResult.failureReason());
+                PartOutcomeReason reason = Objects.requireNonNull(executionResult.failureReason());
                 String errorCode = Objects.requireNonNull(executionResult.errorCode());
                 recordFailure(part, reason, errorCode, outcomes);
                 continue;
@@ -170,8 +171,8 @@ public class AggregationPartExecutor {
     }
 
     private void recordFailure(
-            AggregationPart part, PartFailureReason reason, String errorCode, Map<String, PartOutcome> outcomes) {
-        metrics.record(part.name(), "failed_optional");
+            AggregationPart part, PartOutcomeReason reason, String errorCode, Map<String, PartOutcome> outcomes) {
+        metrics.record(part.name(), "failed");
         outcomes.put(part.name(), PartOutcome.failed(part.criticality(), reason, errorCode));
     }
 
@@ -188,14 +189,14 @@ public class AggregationPartExecutor {
     private record PartExecutionResult(
             String partName,
             @Nullable AggregationPartResult result,
-            @Nullable PartFailureReason failureReason,
+            @Nullable PartOutcomeReason failureReason,
             @Nullable String errorCode) {
 
         static PartExecutionResult success(AggregationPartResult result) {
             return new PartExecutionResult(result.partName(), result, null, null);
         }
 
-        static PartExecutionResult failure(String partName, PartFailureReason reason, String errorCode) {
+        static PartExecutionResult failure(String partName, PartOutcomeReason reason, String errorCode) {
             return new PartExecutionResult(partName, null, reason, errorCode);
         }
 

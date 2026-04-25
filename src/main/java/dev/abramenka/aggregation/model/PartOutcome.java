@@ -36,8 +36,7 @@ public record PartOutcome(
         return new PartOutcome(PartOutcomeStatus.SKIPPED, criticality, PartOutcomeReason.fromSkipReason(reason), null);
     }
 
-    public static PartOutcome failed(PartCriticality criticality, PartFailureReason reason, String errorCode) {
-        return new PartOutcome(
-                PartOutcomeStatus.FAILED, criticality, PartOutcomeReason.fromFailureReason(reason), errorCode);
+    public static PartOutcome failed(PartCriticality criticality, PartOutcomeReason reason, String errorCode) {
+        return new PartOutcome(PartOutcomeStatus.FAILED, criticality, reason, errorCode);
     }
 }
