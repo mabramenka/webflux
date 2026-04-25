@@ -319,7 +319,7 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
                     assertThat(partMeta.path("reason").asString()).isEqualTo("INVALID_PAYLOAD");
                     assertThat(partMeta.path("errorCode").asString()).isEqualTo("ENRICH-INVALID-PAYLOAD");
                 })
-                .verify();
+                .verifyComplete();
     }
 
     @Test
