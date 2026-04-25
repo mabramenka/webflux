@@ -159,7 +159,14 @@ Raw downstream `404` responses from the main dependency are treated as opaque de
 
 ## API
 
-The URL path carries an explicit API version segment; the controller binds `/api/{apiVersion:v\d+}/aggregate` to version `1`.
+The URL path carries an explicit API version segment; the controller binds `/api/{apiVersion}/aggregate` to version `1` (the framework validates the segment against the supported versions list, so `v1` is accepted while `v2` is rejected with `404`).
+
+OpenAPI 3 spec and Swagger UI are served under the same versioned prefix:
+
+- spec: `GET /api/v1/v3/api-docs`
+- UI: `GET /api/v1/swagger-ui.html`
+
+The UI's "Authorize" dialog accepts an `Authorization` header value that is forwarded verbatim to downstream services (no `Bearer ` prefix is added).
 
 ```http
 POST /api/v1/aggregate

@@ -35,6 +35,7 @@ dependencies {
     implementation(libs.spring.boot.starter.webflux)
     implementation(libs.spring.boot.webclient)
     implementation(libs.micrometer.context.propagation)
+    implementation(libs.springdoc.openapi.starter.webflux.ui)
 
     lombok(platform(SpringBootPlugin.BOM_COORDINATES))
     lombok(libs.lombok)
@@ -230,6 +231,15 @@ fun isSpringBoot3(id: ModuleVersionIdentifier): Boolean =
 fun isSpringFramework6(id: ModuleVersionIdentifier): Boolean =
     id.group == "org.springframework" && id.name.startsWith("spring-") && id.version.startsWith("6.")
 
-fun isJackson2(id: ModuleVersionIdentifier): Boolean =
-    id.group.startsWith("com.fasterxml.jackson") &&
-            !(id.group == "com.fasterxml.jackson.core" && id.name == "jackson-annotations")
+fun isJackson2(id: ModuleVersionIdentifier): Boolean {
+    if (!id.group.startsWith("com.fasterxml.jackson")) return false
+    if (id.group == "com.fasterxml.jackson.core" && id.name == "jackson-annotations") return false
+    val springdocJacksonAllowList = setOf(
+        "com.fasterxml.jackson:jackson-bom",
+        "com.fasterxml.jackson.core:jackson-core",
+        "com.fasterxml.jackson.core:jackson-databind",
+        "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml",
+        "com.fasterxml.jackson.datatype:jackson-datatype-jsr310"
+    )
+    return "${id.group}:${id.name}" !in springdocJacksonAllowList
+}

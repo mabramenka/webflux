@@ -9,6 +9,7 @@ nullaway = "0.13.4"
 spotless = "8.4.0"
 dependency-check = "12.2.1"
 freefair-lombok = "9.4.0"
+springdoc = "3.0.3"
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
@@ -32,3 +33,4 @@ reactor-test = { module = "io.projectreactor:reactor-test" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
 nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
+springdoc-openapi-starter-webflux-ui = { module = "org.springdoc:springdoc-openapi-starter-webflux-ui", version.ref = "springdoc" }
