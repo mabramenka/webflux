@@ -4,7 +4,9 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 and Phase 2 are already completed.
+> **Current status:** Phase 1 through Phase 6 are completed. Phase 7 is the next implementation phase.
+>
+> **Working branch:** all remaining migration work is performed on the long-lived branch `workflow-engine`.
 
 ---
 
@@ -45,12 +47,201 @@ For this migration, the rules mean:
 - Keep RFC 9457 problem responses stable.
 - Keep success-side meta.parts stable.
 - Prefer explicit tests over assumptions.
-- Every phase must be independently mergeable.
+- Every phase must be independently understandable and revertible as a commit or small commit group.
 ```
 
 ---
 
-## 2. Current Project Context
+## 2. Repository, Branch, Commit, and Test Protocol
+
+This section replaces the original “one phase per PR” protocol.
+
+The migration is now done on one long-lived branch.
+
+### Branch rule
+
+```text
+All remaining migration work must happen on branch:
+
+workflow-engine
+```
+
+Rules:
+
+```text
+- Do not create a separate branch per phase.
+- Do not open a separate PR per phase.
+- Do not push migration commits directly to main.
+- Commit completed phase work directly into workflow-engine.
+- After finishing one phase, continue with the next phase on the same branch.
+- Keep phase boundaries visible through commit messages and plan tracker updates.
+```
+
+Before editing, the agent should verify:
+
+```bash
+git branch --show-current
+git status --short
+```
+
+Expected branch:
+
+```text
+workflow-engine
+```
+
+If the branch does not exist locally, create it from the current integration base only once:
+
+```bash
+git switch -c workflow-engine
+```
+
+If it exists:
+
+```bash
+git switch workflow-engine
+```
+
+Do not rebase or rewrite history unless explicitly instructed by the repository owner.
+
+### Commit rule
+
+Each completed phase should be committed as one clear commit or a very small commit group.
+
+Preferred commit message examples:
+
+```text
+feat(workflow): add keyed binding step
+feat(workflow): migrate account enrichment to workflow
+feat(workflow): add binding metrics
+fix(workflow): harden patch conflict detection
+docs(workflow): update migration plan tracker
+```
+
+Each phase commit or commit group must include a short handoff note in either:
+
+```text
+- the commit message body, or
+- the migration plan tracker section, or
+- a dedicated local handoff note if the repository already uses one.
+```
+
+The handoff note should answer:
+
+```text
+- What phase was completed?
+- What files/classes were added or changed?
+- What was intentionally not done?
+- What local checks were run?
+- What should the next phase start from?
+```
+
+### PR rule
+
+```text
+Do not create one PR per phase.
+```
+
+The phase plan still matters, but phases are now checkpoints inside the `workflow-engine` branch.
+
+A future PR from `workflow-engine` to `main` may be opened only after a meaningful milestone and only when the repository owner decides to do so.
+
+### Local test rule
+
+Do not run the full global test suite after every tiny phase unless explicitly needed.
+
+Per phase, run focused local checks that are relevant to the changed code.
+
+Examples:
+
+```bash
+./gradlew test --tests '*KeyedBindingStepTest'
+./gradlew test --tests '*WorkflowExecutorTest'
+./gradlew test --tests '*Account*'
+./gradlew spotlessJavaCheck
+```
+
+When touching build logic, dependency versions, classpath verification, or shared infrastructure, run the specific relevant checks too.
+
+### CI rule
+
+Every pushed commit to `workflow-engine` should be left for CI to validate.
+
+CI is allowed to run broader checks than the local focused checks.
+
+Do not block each small phase locally on the entire global suite unless the changed area is risky enough to justify it.
+
+### Global verification checkpoints
+
+Run the full local/global verification only after a larger logical group of commits, or before the branch is prepared for integration.
+
+Recommended batch checkpoints:
+
+```text
+- after Phase 7 and Phase 8
+- after Phase 9 and Phase 10
+- after Phase 11 through Phase 13
+- after Phase 14 through Phase 16
+- after Phase 17 through Phase 19
+- before opening any eventual PR from workflow-engine to main
+```
+
+Recommended full verification command set:
+
+```bash
+./gradlew test
+./gradlew spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification
+./gradlew build
+```
+
+If a full verification step is skipped locally because CI is expected to cover it, say so explicitly in the handoff note.
+
+---
+
+## 3. Preferred Code Search and Navigation Protocol
+
+`fff` is the preferred tool for local code search, repository navigation, and fast agent context gathering.
+
+Agents should use `fff` before making structural assumptions about the codebase.
+
+Typical examples:
+
+```bash
+fff "WorkflowExecutor"
+fff "AggregationPartResult"
+fff "NO_KEYS_IN_MAIN"
+fff "DownstreamBinding"
+fff "PartSkipReason"
+fff "AggregationPartExecutor"
+fff "PathExpression"
+fff "KeyPathGroups"
+```
+
+Preferred workflow:
+
+```text
+1. Use fff to locate the relevant classes, tests, and usages.
+2. Read the surrounding code before editing.
+3. Prefer modifying the smallest set of files.
+4. Add or update focused tests near the changed behavior.
+5. Re-run fff after edits if class names, package names, or responsibilities moved.
+```
+
+Fallbacks are allowed only if `fff` is not installed or unavailable:
+
+```bash
+rg "WorkflowExecutor"
+git grep "WorkflowExecutor"
+find src -name '*Workflow*'
+```
+
+If a fallback is used, mention that in the handoff note.
+
+Do not use broad blind refactors based only on search output. Always inspect the target code before editing.
+
+---
+
+## 4. Current Project Context
 
 The current service is a reactive Spring Boot / WebFlux aggregation facade.
 
@@ -98,7 +289,7 @@ Current limitations this migration addresses:
 
 ---
 
-## 3. Target Architecture
+## 5. Target Architecture
 
 The target architecture keeps `AggregationPart` as the public business-level plugin, while adding a workflow implementation style inside it.
 
@@ -214,7 +405,155 @@ Out of scope for this migration:
 
 ---
 
-## 4. Desired Developer Experience
+## 6. Important Post-Phase-6 Clarifications
+
+Phase 6 introduced the workflow skeleton, but it intentionally did not implement the full runtime semantics needed by later workflow phases.
+
+The following clarifications are authoritative for all next phases.
+
+### 6.1 Phase 6 is skeleton-complete, not feature-complete
+
+Phase 6 completed the workflow-as-`AggregationPart` adapter and the basic workflow execution skeleton.
+
+Completed in Phase 6:
+
+```text
+- AggregationWorkflow
+- WorkflowAggregationPart
+- WorkflowExecutor
+- WorkflowContext
+- WorkflowResult
+- WorkflowVariableStore
+- WorkflowStep
+- StepResult
+- WorkflowDefinitionValidator
+```
+
+Phase 6 intentionally does not yet provide:
+
+```text
+- KeyedBindingStep
+- binding execution
+- CURRENT_ROOT semantics
+- concrete binding-level path validation
+- concrete step-result reference validation
+- compute steps
+- recursive traversal
+- binding metrics
+```
+
+Therefore, do not treat Phase 6 as permission to migrate an enrichment yet.
+
+The first production-usable workflow step is Phase 7.
+
+### 6.2 ROOT_SNAPSHOT must be treated as immutable
+
+`ROOT_SNAPSHOT` means the input document visible to one business part at the moment that part starts.
+
+Workflow steps must not mutate it directly.
+
+Rules:
+
+```text
+- A workflow step may read ROOT_SNAPSHOT.
+- A workflow step must not call ObjectNode.set/remove/removeAll/etc. on ROOT_SNAPSHOT.
+- A workflow step must express writes through JsonPatchDocument only.
+- The global root document must still be mutated only once by AggregationPartExecutor when the final AggregationPartResult is applied.
+```
+
+Implementation guidance:
+
+```text
+Prefer constructing WorkflowContext with a defensive deep copy of the AggregationContext root.
+
+Good:
+  new WorkflowContext(context, context.accountGroupResponse().deepCopy())
+
+Risky:
+  new WorkflowContext(context, context.accountGroupResponse())
+```
+
+If returning `rootSnapshot()` exposes a mutable `ObjectNode`, all concrete steps must still treat it as read-only by convention and tests must protect this behavior.
+
+### 6.3 CURRENT_ROOT is not implemented yet
+
+The target architecture defines:
+
+```text
+CURRENT_ROOT =
+  workflow-local working document for one business part,
+  derived from ROOT_SNAPSHOT by applying patch operations accumulated by previous steps
+  of the same workflow.
+```
+
+As of Phase 6, `WorkflowExecutor` only accumulates patch operations and returns one final `JsonPatchDocument`.
+
+It does not yet apply accumulated patches to a workflow-local working document between steps.
+
+This is acceptable for Phase 7 if Phase 7 implements only a single keyed binding step reading from `ROOT_SNAPSHOT`.
+
+It is not sufficient for Phase 11.
+
+Phase 11 must implement or complete the real `CURRENT_ROOT` behavior before allowing later bindings to read from `CURRENT_ROOT`.
+
+### 6.4 Empty patch must not silently mean business success for real bindings
+
+An empty `JsonPatchDocument` is acceptable for tests and skeleton wiring.
+
+For real enrichment logic, especially `KeyedBindingStep`, an empty patch must be treated deliberately.
+
+Phase 7 must define and test the outcome for these cases:
+
+```text
+No extracted keys from ROOT_SNAPSHOT:
+  SKIPPED / NO_KEYS_IN_MAIN
+
+Downstream empty body:
+  EMPTY / DOWNSTREAM_EMPTY
+
+Downstream 404:
+  EMPTY / DOWNSTREAM_NOT_FOUND
+
+Downstream response contains items but produces no matched target writes:
+  Do not silently return APPLIED with an empty patch.
+  Choose an explicit existing outcome or fail with a contract violation,
+  depending on the existing behavior of the enrichment being modeled.
+```
+
+Until a stronger rule is introduced, a workflow binding should return `StepResult.applied(patch)` only when it has at least one real write operation or a deliberately stored step result.
+
+### 6.5 Workflow validation is staged
+
+`WorkflowDefinitionValidator` currently validates only workflow-level structure such as blank and duplicate step names.
+
+Concrete validation must be added as concrete step types appear.
+
+Phase 7 must add validation for `KeyedBindingStep`, including at least:
+
+```text
+- valid binding name
+- valid KeyExtractionRule
+- supported KeySource for this phase
+- valid response indexing rule
+- valid write rule
+- invalid path syntax fails before runtime use where possible
+```
+
+Later phases must add validation for:
+
+```text
+- STEP_RESULT references
+- CURRENT_ROOT source usage
+- compute inputs
+- traversal configuration
+- write ownership declarations
+```
+
+Do not add fake validation that only looks complete but does not actually validate concrete step behavior.
+
+---
+
+## 7. Desired Developer Experience
 
 After the migration, adding a simple enrichment should look approximately like this:
 
@@ -311,7 +650,7 @@ The developer of a new enrichment should not manually implement:
 
 ---
 
-## 5. Error and Patch Strategy
+## 8. Error and Patch Strategy
 
 ### RFC 9457
 
@@ -336,8 +675,7 @@ Public error responses must remain facade-owned problem details:
 
 Do not forward downstream problem documents to clients.
 
-Workflow phases in this plan should map to the existing problem catalog codes rather than
-introducing new public error categories by wording alone.
+Workflow phases in this plan should map to the existing problem catalog codes rather than introducing new public error categories by wording alone.
 
 Initial mapping rules:
 
@@ -361,11 +699,9 @@ Initial mapping rules:
 
 ### Soft outcome reason rule
 
-For the first workflow phases, reuse the existing public reason `NO_KEYS_IN_MAIN`
-when keys are missing from `ROOT_SNAPSHOT`, because this preserves the current contract.
+For the first workflow phases, reuse the existing public reason `NO_KEYS_IN_MAIN` when keys are missing from `ROOT_SNAPSHOT`, because this preserves the current contract.
 
-For later sources such as `STEP_RESULT` or `TRAVERSAL_STATE`, do not invent public enum
-values casually. Either:
+For later sources such as `STEP_RESULT` or `TRAVERSAL_STATE`, do not invent public enum values casually. Either:
 
 ```text
 - map the missing-key condition to an existing stable reason if semantically acceptable; or
@@ -407,9 +743,9 @@ Those can be added later only when real use cases require them.
 
 ---
 
-## 6. Non-goals
+## 9. Non-goals
 
-Do not implement these during this migration unless a later document explicitly asks for them:
+Do not implement these during this migration unless a later section explicitly asks for them:
 
 ```text
 - External YAML/JSON workflow DSL
@@ -425,25 +761,24 @@ Do not implement these during this migration unless a later document explicitly 
 
 ---
 
-# 7. Sequential Migration Phases
+# 10. Sequential Migration Phases
 
-Each phase below is intended to be done by one agent or one small PR.
+Each phase below is intended to be completed as a focused commit or small commit group on the `workflow-engine` branch.
 
 ### Execution protocol
 
 Use this plan as a strict sequential runbook:
 
 ```text
-- exactly one phase per PR
-- do not start the next phase until the previous PR is merged
-- after merge, re-read the codebase and this plan before starting the next phase
-- if a phase reveals missing prerequisite work, stop and update the plan instead of silently
-  folding extra architecture into the same PR
+- work only on workflow-engine
+- complete one phase before starting the next phase
+- commit phase work directly to workflow-engine
+- do not create one PR per phase
+- after finishing a phase, update the tracker and add a handoff note
+- after finishing a phase, continue with the next phase on the same branch
+- after a larger logical batch, run global verification locally or rely on CI and state that explicitly
+- if a phase reveals missing prerequisite work, stop and update the plan instead of silently folding extra architecture into the same commit
 ```
-
-This file may also be used as a local progress tracker even if it is not committed.
-An agent may update the status checklist below in the working tree to mark progress for the
-current operator.
 
 ### Local phase tracker
 
@@ -453,7 +788,7 @@ current operator.
 [x] Phase 3  — Patch builder helpers
 [x] Phase 4  — Downstream binding model
 [x] Phase 5  — Adapt existing keyed support
-[ ] Phase 6  — Workflow model skeleton
+[x] Phase 6  — Workflow model skeleton
 [ ] Phase 7  — Keyed binding step
 [ ] Phase 8  — Migrate account
 [ ] Phase 9  — Binding metrics and diagnostics
@@ -472,10 +807,11 @@ current operator.
 Every phase must include:
 
 ```text
-- Tests
+- Tests or explicit focused verification
 - Small focused diff
 - No unrelated cleanup
 - Clear handoff note
+- Tracker update when the phase is complete
 ```
 
 ---
@@ -520,9 +856,9 @@ Avoid production code changes unless strictly necessary for testability.
 ### Acceptance criteria
 
 ```text
-./gradlew test passes
-No public behavior changed
-Tests clearly document current contract
+Focused and/or full tests pass.
+No public behavior changed.
+Tests clearly document current contract.
 ```
 
 ### Forbidden
@@ -611,10 +947,10 @@ case AggregationPartResult.JsonPatch patch -> jsonPatchApplicator.apply(patch.pa
 ### Acceptance criteria
 
 ```text
-Existing MergePatch and ReplaceDocument behavior unchanged
-Existing tests pass
-New tests for add/replace/test pass
-Patch failure maps to existing orchestration merge failure for now
+Existing MergePatch and ReplaceDocument behavior unchanged.
+Existing tests pass.
+New tests for add/replace/test pass.
+Patch failure maps to existing orchestration merge failure for now.
 ```
 
 ### Forbidden
@@ -628,6 +964,8 @@ Patch failure maps to existing orchestration merge failure for now
 ---
 
 ## Phase 3 — Patch Builder Helpers
+
+**Status:** Completed.
 
 ### Goal
 
@@ -663,10 +1001,10 @@ JsonPatchDocument patch = JsonPatchBuilder.create()
 ### Acceptance criteria
 
 ```text
-Builder escapes "~" and "/" correctly
-Builder can append to arrays
-Builder does not silently create missing intermediate objects unless explicitly configured
-Patch builder tests pass
+Builder escapes "~" and "/" correctly.
+Builder can append to arrays.
+Builder does not silently create missing intermediate objects unless explicitly configured.
+Patch builder tests pass.
 ```
 
 ### Forbidden
@@ -679,6 +1017,8 @@ Patch builder tests pass
 ---
 
 ## Phase 4 — Downstream Binding Model
+
+**Status:** Completed.
 
 ### Goal
 
@@ -710,13 +1050,10 @@ BindingOutcome
 
 ```java
 public record DownstreamBinding(
-    String name,
-    KeySource keySource,
-    String sourceItemPath,
-    List<String> keyPaths,
+    BindingName name,
+    KeyExtractionRule keyExtraction,
     DownstreamCall downstreamCall,
-    String responseItemPath,
-    List<String> responseKeyPaths,
+    ResponseIndexingRule responseIndexing,
     @Nullable String storeAs,
     @Nullable WriteRule writeRule
 ) {}
@@ -760,10 +1097,10 @@ Binding definition is invalid if it produces neither:
 ### Acceptance criteria
 
 ```text
-Binding model exists
-Invalid binding definitions fail fast
-Unit tests validate binding construction
-No public behavior changed
+Binding model exists.
+Invalid binding definitions fail fast.
+Unit tests validate binding construction.
+No public behavior changed.
 ```
 
 ### Forbidden
@@ -776,6 +1113,8 @@ No public behavior changed
 ---
 
 ## Phase 5 — Adapt Existing Keyed Support
+
+**Status:** Completed.
 
 ### Goal
 
@@ -802,6 +1141,12 @@ Current useful concepts should be preserved:
 4. Make source explicit, starting with ROOT_SNAPSHOT.
 ```
 
+### Adapter clarification
+
+An automatic `EnrichmentRule` -> `DownstreamBinding` adapter is useful only if it does not require reconstructing data that `EnrichmentRule` no longer exposes.
+
+If the existing `EnrichmentRule` stores parsed functions and discards raw path strings, do not add a fake adapter that requires callers to pass the same path strings again. In that case, write new bindings directly in Phase 8 and keep the shared parser/services as the real reuse point.
+
 ### Path dialect constraint
 
 ```text
@@ -812,10 +1157,10 @@ Do not expand this phase into a JSONPath implementation project.
 ### Acceptance criteria
 
 ```text
-Existing keyed enrichments still work
-New binding tests reuse existing path/key extraction logic
-No duplicate key extraction implementation
-No full JSONPath dependency added
+Existing keyed enrichments still work.
+New binding tests reuse existing path/key extraction logic.
+No duplicate key extraction implementation.
+No full JSONPath dependency added.
 ```
 
 ### Forbidden
@@ -830,17 +1175,23 @@ No full JSONPath dependency added
 
 ## Phase 6 — Workflow Model Skeleton
 
+**Status:** Completed with explicit scope limits.
+
 ### Goal
 
 Introduce workflow as an implementation style for `AggregationPart`.
 
-### New package
+A workflow-based part must be just another `AggregationPart` bean. The existing planner and part executor must not be rewritten for this phase.
+
+### Completed scope
+
+New package:
 
 ```text
 dev.abramenka.aggregation.workflow
 ```
 
-### New classes
+New classes:
 
 ```text
 AggregationWorkflow
@@ -854,78 +1205,61 @@ StepResult
 WorkflowDefinitionValidator
 ```
 
-### Suggested model
+### Implemented behavior
 
-```java
-public record AggregationWorkflow(
-    String name,
-    Set<String> dependencies,
-    PartCriticality criticality,
-    List<WorkflowStep> steps
-) {}
+```text
+- WorkflowAggregationPart adapts AggregationWorkflow to the existing AggregationPart contract.
+- name(), dependencies(), and criticality() are exposed from AggregationWorkflow.
+- execute(...) delegates to WorkflowExecutor.
+- WorkflowExecutor runs steps sequentially.
+- Applied step patches are accumulated into one JsonPatchDocument.
+- Stored step values are written into WorkflowVariableStore.
+- First SKIPPED or EMPTY step short-circuits the workflow.
+- WorkflowResult maps back to AggregationPartResult.
+- Duplicate step names and blank step names fail during workflow validation.
 ```
 
-### Adapter
+### Important limits after Phase 6
 
-```java
-public abstract class WorkflowAggregationPart implements AggregationPart {
-
-    private final AggregationWorkflow workflow;
-    private final WorkflowExecutor workflowExecutor;
-
-    @Override
-    public String name() {
-        return workflow.name();
-    }
-
-    @Override
-    public Set<String> dependencies() {
-        return workflow.dependencies();
-    }
-
-    @Override
-    public PartCriticality criticality() {
-        return workflow.criticality();
-    }
-
-    @Override
-    public Mono<AggregationPartResult> execute(AggregationContext context) {
-        return workflowExecutor.execute(workflow, context);
-    }
-}
+```text
+- No existing enrichment is migrated yet.
+- No concrete binding execution exists yet.
+- No CURRENT_ROOT working document exists yet.
+- No recursive traversal exists yet.
+- No compute framework exists yet.
+- No binding metrics exist yet.
+- Validation is skeleton-level only.
 ```
-
-### Important
-
-Do not modify `AggregationPartPlanner`.
-
-A workflow-based part must be just another `AggregationPart` bean.
-
-Invalid workflow definitions should fail fast during startup rather than surfacing first
-through a late runtime request or a narrow test.
 
 ### Acceptance criteria
 
 ```text
-A dummy WorkflowAggregationPart can be registered as a Spring bean
-Planner discovers it automatically
-Executor executes it as a normal AggregationPart
-Existing parts are unaffected
-Duplicate step names, broken step-result references, invalid path syntax, and invalid
-binding/output definitions fail during startup validation
+A dummy WorkflowAggregationPart can be constructed.
+Planner can discover a workflow part because it is still an AggregationPart bean.
+WorkflowExecutor can execute dummy steps.
+Existing parts are unaffected.
+Duplicate step names fail fast.
+Blank step names fail fast.
+Existing test suite passes.
 ```
 
-### Forbidden
+### Handoff note for Phase 7
+
+Phase 7 must not reinterpret the skeleton as a complete workflow engine.
+
+The next phase should add exactly one production-useful workflow step:
 
 ```text
-- No existing part migration yet
-- No recursive traversal yet
-- No compute framework yet
+KeyedBindingStep
 ```
+
+Do not migrate `account` in the same phase as Phase 7.
 
 ---
 
 ## Phase 7 — Keyed Binding Step
+
+**Status:** Not started.
 
 ### Goal
 
@@ -934,28 +1268,83 @@ Implement the simple keyed enrichment pattern using the binding model.
 Pattern:
 
 ```text
-A -> endpoint-specific keys -> REST B -> insert/replace result in A
+ROOT_SNAPSHOT
+  -> endpoint-specific keys
+  -> REST downstream call
+  -> response indexing
+  -> target matching
+  -> JsonPatchDocument
 ```
 
-### First implementation option
+This phase must make the workflow skeleton production-usable for a single simple keyed binding, but it must not migrate any existing business enrichment yet.
 
-A combined step is acceptable for the first version:
+### New class
+
+Suggested package:
+
+```text
+dev.abramenka.aggregation.workflow.step
+```
+
+Suggested class:
 
 ```text
 KeyedBindingStep
 ```
 
-Internally it may perform:
+### Required dependencies
+
+`KeyedBindingStep` should reuse the existing Phase 4/5 abstractions:
 
 ```text
-1. Select source items.
-2. Extract keys.
-3. Deduplicate request keys.
-4. Call downstream.
-5. Handle 404/empty as soft outcomes.
-6. Index response.
-7. Match response entries to source targets.
-8. Generate JsonPatchDocument.
+- DownstreamBinding
+- KeyExtractionRule
+- KeySource
+- DownstreamCall
+- ResponseIndexingRule
+- WriteRule
+- KeyExtractor
+- ResponseIndexer
+- TargetMatcher
+- JsonPatchBuilder
+```
+
+Do not duplicate path parsing or key extraction logic.
+
+### Supported source in this phase
+
+Phase 7 supports only:
+
+```text
+KeySource.ROOT_SNAPSHOT
+```
+
+The following sources must fail explicitly if used:
+
+```text
+KeySource.CURRENT_ROOT
+KeySource.STEP_RESULT
+KeySource.TRAVERSAL_STATE
+```
+
+Use `UnsupportedOperationException`, `IllegalArgumentException`, or a workflow validation exception consistently, but do not silently ignore unsupported sources.
+
+### Execution algorithm
+
+`KeyedBindingStep` must perform the following steps:
+
+```text
+1. Read source document from WorkflowContext.rootSnapshot().
+2. Extract targets and keys using KeyExtractor.
+3. Deduplicate request keys while preserving first-seen order.
+4. If no keys are found, return SKIPPED / NO_KEYS_IN_MAIN.
+5. Call DownstreamCall with deduplicated keys.
+6. Handle soft downstream outcomes consistently with existing enrichment behavior.
+7. Index downstream response using ResponseIndexer.
+8. Match extracted targets to indexed response entries using TargetMatcher.
+9. Convert matches into JsonPatchDocument using WriteRule and JsonPatchBuilder.
+10. Return StepResult.applied(patch) only when the patch contains real writes.
+11. If the binding has storeAs, store the downstream response or indexed result consistently.
 ```
 
 ### Soft outcome rules
@@ -971,50 +1360,205 @@ Downstream 404:
   EMPTY / DOWNSTREAM_NOT_FOUND
 ```
 
-For non-root sources, follow the soft outcome reason rule from section 5.
+For this phase, do not invent new public `PartSkipReason` values.
+
+For non-root sources, reject the source because Phase 7 does not support them yet.
 
 ### Fatal outcome rules
 
+Fatal downstream exceptions must continue to flow through the existing part failure policy and RFC 9457 facade error handling.
+
+Expected mappings:
+
 ```text
 Auth failure:
-  RFC 9457 dependency failure
+  ENRICH-AUTH-FAILED
 
-Timeout / unavailable:
-  RFC 9457 dependency failure
+Timeout:
+  ENRICH-TIMEOUT
 
-Invalid payload:
-  RFC 9457 dependency failure
+Unavailable:
+  ENRICH-UNAVAILABLE
 
-Patch failure:
-  RFC 9457 orchestration failure
+Unexpected downstream status:
+  ENRICH-BAD-RESPONSE
+
+Invalid downstream payload:
+  ENRICH-INVALID-PAYLOAD or ENRICH-CONTRACT-VIOLATION
+
+Patch generation/application failure:
+  ORCH-MERGE-FAILED
+
+Workflow invariant violation:
+  ORCH-INVARIANT-VIOLATED
+
+Mapping/serialization failure:
+  ORCH-MAPPING-FAILED
+```
+
+Do not forward downstream problem documents to clients.
+
+### Write semantics
+
+Initial supported write actions:
+
+```text
+- ReplaceField
+- AppendToArray
+```
+
+Rules:
+
+```text
+ReplaceField:
+  writes the matched downstream response entry into the named field of the matched target item.
+
+AppendToArray:
+  appends the matched downstream response entry to the named array field of the matched target item.
+
+If AppendToArray target field does not exist:
+  Do not silently create it unless this behavior is already explicitly modeled and tested.
+  Prefer failing fast or adding an explicit option in a later phase.
+
+If ReplaceField target field does not exist:
+  Use add or replace deliberately.
+  Do not rely on accidental ObjectNode.set behavior without documenting it.
+```
+
+The chosen behavior must be tested.
+
+### Empty match behavior
+
+If keys were extracted and downstream returned a valid non-empty response, but no target matched the indexed response:
+
+```text
+Do not silently return APPLIED with an empty patch.
+```
+
+Choose one explicit behavior and document it in tests.
+
+Recommended initial behavior:
+
+```text
+EMPTY / DOWNSTREAM_EMPTY
+```
+
+Alternative acceptable behavior if the existing enrichment contract expects strict consistency:
+
+```text
+ENRICH-CONTRACT-VIOLATION
+```
+
+Do not add a new public reason in Phase 7.
+
+### Validation
+
+`KeyedBindingStep` construction should fail fast for invalid definitions.
+
+Validation should cover:
+
+```text
+- blank step name
+- null DownstreamBinding
+- unsupported KeySource
+- missing WriteRule when the step is expected to write
+- invalid/blank target item path
+- invalid/blank action field name
+- invalid path syntax where PathExpression can detect it
+```
+
+Do not rely only on request-time failures.
+
+### Tests required
+
+Unit tests:
+
+```text
+KeyedBindingStepTest
+```
+
+Required scenarios:
+
+```text
+1. no keys from ROOT_SNAPSHOT -> SKIPPED / NO_KEYS_IN_MAIN
+2. extracted duplicate keys are deduplicated before downstream call
+3. downstream response is indexed with fallback response key paths
+4. matched targets produce JsonPatchDocument writes
+5. unmatched targets are ignored or handled by explicit tested rule
+6. empty downstream response -> EMPTY / DOWNSTREAM_EMPTY
+7. downstream 404 -> EMPTY / DOWNSTREAM_NOT_FOUND
+8. unsupported KeySource fails explicitly
+9. invalid binding definition fails fast
+10. patch contains no accidental writes when no matches exist
+```
+
+Integration-style test:
+
+```text
+WorkflowExecutor + KeyedBindingStep
+```
+
+Required scenarios:
+
+```text
+1. workflow with one KeyedBindingStep produces AggregationPartResult.JsonPatch
+2. soft outcome from KeyedBindingStep maps to AggregationPartResult.NoOp
+3. existing meta.parts behavior remains owned by AggregationPartExecutor
 ```
 
 ### Acceptance criteria
 
 ```text
-Can express account/owners-style enrichment through a binding
-No manual merge code needed in a new workflow part
-meta.parts still produced by existing AggregateService/Executor path
-Soft/fatal behavior matches existing behavior
+Can express account/owners-style simple keyed enrichment through one binding.
+No manual merge code is required in a new workflow part.
+No existing enrichment is migrated yet.
+No public response shape changes.
+No error contract changes.
+No meta.parts changes.
+Focused tests pass locally.
+CI is allowed to run the broader suite.
 ```
 
 ### Forbidden
 
 ```text
-- No multi-binding workflow yet
-- No compute step yet
-- No recursive traversal yet
+- Do not migrate account in Phase 7.
+- Do not migrate owners in Phase 7.
+- Do not migrate beneficialOwners in Phase 7.
+- Do not implement multi-binding workflow.
+- Do not implement compute steps.
+- Do not implement recursive traversal.
+- Do not introduce a full JSONPath engine.
+- Do not add binding metrics yet.
+- Do not introduce public PATCH API.
 ```
 
 ---
 
 ## Phase 8 — Migrate One Simple Enrichment
 
+**Status:** Not started.
+
+### Additional precondition
+
+Before starting Phase 8, Phase 7 must be committed to `workflow-engine` and validated by focused tests and/or CI.
+
+Phase 8 must start by re-reading:
+
+```text
+- Account enrichment implementation
+- Account characterization tests
+- KeyedBindingStep tests
+- AGGREGATION_WORKFLOW_MIGRATION_PLAN.md
+```
+
+Do not start Phase 8 if Phase 7 left unresolved ambiguity around empty matches or write semantics.
+
 ### Goal
 
 Prove the workflow model by migrating one existing simple enrichment.
 
-### Preferred first candidate
+Preferred first candidate:
 
 ```text
 account
@@ -1034,33 +1578,38 @@ or equivalent hand-written AggregationPart implementation.
 After:
 
 ```text
-Account part extends WorkflowAggregationPart
-Account part declares one DownstreamBinding
-Workflow engine handles extraction/fetch/index/write
+Account part extends WorkflowAggregationPart.
+Account part declares one DownstreamBinding.
+Account part uses one KeyedBindingStep.
+Workflow engine handles extraction/fetch/index/write.
 ```
 
 ### Acceptance criteria
 
 ```text
-All old account tests pass unchanged
-No public response shape change
-No error contract change
-No meta.parts change
-Manual execute/merge code removed only for account
-Other parts untouched
+All old account tests pass unchanged.
+No public response shape change.
+No error contract change.
+No meta.parts change.
+Manual execute/merge code removed only for account.
+Other parts untouched.
 ```
 
 ### Forbidden
 
 ```text
-- Do not migrate owners in the same PR
-- Do not migrate beneficialOwners in the same PR
-- Do not change root source
+- Do not migrate owners in the same phase.
+- Do not migrate beneficialOwners in the same phase.
+- Do not introduce recursive traversal.
+- Do not introduce compute framework.
+- Do not introduce binding metrics unless Phase 9 is intentionally done first.
 ```
 
 ---
 
 ## Phase 9 — Binding Metrics and Diagnostics
+
+**Status:** Not started.
 
 ### Goal
 
@@ -1106,20 +1655,32 @@ Do not expose:
 ### Acceptance criteria
 
 ```text
-Existing part metrics unchanged
-New binding metrics emitted for workflow parts
-No binding details leaked to public error bodies
+Existing part metrics unchanged.
+New binding metrics emitted for workflow parts.
+No binding details leaked to public error bodies.
+Focused metrics tests pass locally.
+CI is allowed to run the broader suite.
+```
+
+### Forbidden
+
+```text
+- Do not change public meta.parts shape.
+- Do not expose binding-level status in public response bodies.
+- Do not include raw payloads or secrets in logs.
 ```
 
 ---
 
 ## Phase 10 — Migrate Second Simple Enrichment
 
+**Status:** Not started.
+
 ### Goal
 
 Migrate a keyed enrichment with fallback key paths.
 
-### Preferred candidate
+Preferred candidate:
 
 ```text
 owners
@@ -1137,23 +1698,26 @@ This validates:
 ### Acceptance criteria
 
 ```text
-Owners behavior unchanged
-Fallback key extraction works
-Fallback response indexing works
-No manual keyed join logic remains in owners part
-Existing owners tests pass
+Owners behavior unchanged.
+Fallback key extraction works.
+Fallback response indexing works.
+No manual keyed join logic remains in owners part.
+Existing owners tests pass.
 ```
 
 ### Forbidden
 
 ```text
-- Do not migrate beneficialOwners yet
-- Do not introduce recursive traversal here
+- Do not migrate beneficialOwners yet.
+- Do not introduce recursive traversal here.
+- Do not implement multi-binding workflow unless owners genuinely requires it and the plan is updated first.
 ```
 
 ---
 
 ## Phase 11 — Multi-binding Workflow
+
+**Status:** Not started.
 
 ### Goal
 
@@ -1181,9 +1745,24 @@ One business enrichment
 4. Independent bindings may be optimized later; do not implement parallel optimization now.
 ```
 
+### CURRENT_ROOT requirement
+
+Phase 11 is the first phase that must support real `CURRENT_ROOT` semantics.
+
+Before Phase 11 is accepted, the workflow executor must be able to maintain a workflow-local working document:
+
 ```text
-CURRENT_ROOT in this phase means the workflow-local working document for the current
-business part, not the global mutable root from AggregationPartExecutor.
+CURRENT_ROOT = ROOT_SNAPSHOT + patches produced by previous workflow steps of the same business part
+```
+
+Rules:
+
+```text
+- CURRENT_ROOT is local to one workflow execution.
+- CURRENT_ROOT is not the global root owned by AggregationPartExecutor.
+- Patches may be applied to CURRENT_ROOT between workflow steps.
+- The final AggregationPartResult must still contain the combined patch.
+- The final patch must still be applied to the global root once by AggregationPartExecutor.
 ```
 
 ### Minimal safety contract for this phase
@@ -1192,8 +1771,7 @@ This phase implements only minimal local conflict rejection required for safe mu
 
 Full write ownership and broader conflict validation are handled later in Phase 13.
 
-Before the later dedicated patch-conflict phase, the first multi-binding implementation
-must already reject these cases deterministically:
+Before the later dedicated patch-conflict phase, the first multi-binding implementation must already reject these cases deterministically:
 
 ```text
 1. same final path written twice with different values
@@ -1202,8 +1780,10 @@ must already reject these cases deterministically:
 4. failed test operation
 ```
 
+Initial mapping for these failures remains:
+
 ```text
-Initial mapping for these failures remains ORCH-MERGE-FAILED.
+ORCH-MERGE-FAILED
 ```
 
 ### Suggested source reference
@@ -1219,25 +1799,28 @@ sealed interface KeySourceRef {
 ### Acceptance criteria
 
 ```text
-A workflow with two bindings can run
-A later binding can extract keys from an earlier binding result
-Independent bindings are allowed but not necessarily parallel
-Final patch combines writes from multiple bindings
-Patch operations are applied once at part end
-Bindings may be fetch-only via storeAs(...) without forcing immediate root writes
+A workflow with two bindings can run.
+A later binding can extract keys from an earlier binding result.
+A later binding can extract keys from CURRENT_ROOT.
+Independent bindings are allowed but not necessarily parallel.
+Final patch combines writes from multiple bindings.
+Patch operations are applied once at part end to the global root.
+Bindings may be fetch-only via storeAs(...) without forcing immediate global root writes.
 ```
 
 ### Forbidden
 
 ```text
-- No recursive traversal yet
-- No complex scheduler
-- No automatic parallel dependency planner inside workflow yet
+- No recursive traversal yet.
+- No complex scheduler.
+- No automatic parallel dependency planner inside workflow yet.
 ```
 
 ---
 
 ## Phase 12 — Compute Step
+
+**Status:** Not started.
 
 ### Goal
 
@@ -1284,10 +1867,10 @@ It must not:
 ### Acceptance criteria
 
 ```text
-Can fetch D and E, compute scalar, write scalar into A
-Computation errors map deterministically
-No downstream logic inside computation class
-Tests cover happy path and compute failure
+Can fetch D and E, compute scalar, write scalar into A.
+Computation errors map deterministically.
+No downstream logic inside computation class.
+Tests cover happy path and compute failure.
 ```
 
 ### Error mapping guidance
@@ -1303,6 +1886,8 @@ Bug in computation code:
 ---
 
 ## Phase 13 — Harden Patch Conflict Detection and Write Ownership
+
+**Status:** Not started.
 
 ### Goal
 
@@ -1360,16 +1945,18 @@ Add explicit catalog entries only if tests and product contract need stable dist
 ### Acceptance criteria
 
 ```text
-Conflicting patch fails deterministically
-No partial patch is applied after failure
-Failure returns RFC 9457 problem response
-Tests cover conflicts and failed test operations
-Declared write ownership is checked against obviously conflicting workflow definitions
+Conflicting patch fails deterministically.
+No partial patch is applied after failure.
+Failure returns RFC 9457 problem response.
+Tests cover conflicts and failed test operations.
+Declared write ownership is checked against obviously conflicting workflow definitions.
 ```
 
 ---
 
 ## Phase 14 — Recursive Traversal Skeleton
+
+**Status:** Not started.
 
 ### Goal
 
@@ -1426,25 +2013,27 @@ public record TraversalPolicy(
 ### Acceptance criteria
 
 ```text
-Recursive traversal fetches Z level by level
-Stops on empty frontier
-Stops on maxDepth
-Detects cycles
-Returns TraversalResult
-Does not write to root yet
+Recursive traversal fetches Z level by level.
+Stops on empty frontier.
+Stops on maxDepth.
+Detects cycles.
+Returns TraversalResult.
+Does not write to root yet.
 ```
 
 ### Forbidden
 
 ```text
-- No beneficialOwners migration yet
-- No business-specific reducer in traversal core
-- No complex graph algorithms beyond the needed traversal state
+- No beneficialOwners migration yet.
+- No business-specific reducer in traversal core.
+- No complex graph algorithms beyond the needed traversal state.
 ```
 
 ---
 
 ## Phase 15 — Traversal Reducer
+
+**Status:** Not started.
 
 ### Goal
 
@@ -1463,495 +2052,274 @@ A -> keys -> REST Z recursively
 
 ```text
 TraversalReducer
-TraversalAggregationResult
+TraversalReductionInput
+TraversalReductionResult
 TraversalWriteRule
 ```
 
-### Interface
+### Rule
 
-```java
-public interface TraversalReducer {
-    JsonNode reduce(TraversalResult traversalResult, WorkflowContext context);
-}
-```
+Traversal core should not contain beneficial-owner-specific business logic.
 
-### Flow
+Business-specific aggregation belongs in reducer classes.
+
+A reducer may:
 
 ```text
-1. RecursiveFetchStep returns TraversalResult.
-2. TraversalReducer aggregates collected nodes.
-3. WriteJsonPatchStep writes result to original A.
+- read TraversalResult
+- collect nodes
+- compute final JsonNode values
+- return a JsonPatchDocument or a write instruction consumed by workflow writing code
+```
+
+A reducer must not:
+
+```text
+- call downstream services
+- mutate global root directly
+- build HTTP error bodies
+- bypass WorkflowExecutor
 ```
 
 ### Acceptance criteria
 
 ```text
-Can collect nodes from all traversal levels
-Can deduplicate by business key
-Can write aggregate result into root A
-No business-specific owner logic in recursive framework
+TraversalResult can be reduced into one or more JsonPatchDocument operations.
+Reducer is independently unit-testable.
+Reducer errors map deterministically.
+No beneficialOwners migration yet.
+```
+
+### Error mapping guidance
+
+```text
+Invalid traversal payload shape:
+  ENRICH-CONTRACT-VIOLATION or ENRICH-INVALID-PAYLOAD
+
+Reducer invariant failure:
+  ORCH-INVARIANT-VIOLATED
+
+Patch/write failure:
+  ORCH-MERGE-FAILED
 ```
 
 ---
 
 ## Phase 16 — Migrate Beneficial Owners
 
+**Status:** Not started.
+
 ### Goal
 
-Move the existing recursive beneficial owners enrichment to the new traversal framework.
+Migrate the recursive beneficial owners enrichment to workflow traversal.
 
-### Worked example: beneficialOwners
+This is the main proof that the workflow model can handle a non-trivial recursive enrichment without embedding that business logic into the core workflow engine.
 
-The target migration should preserve the current concrete flow rather than replace it
-with an abstract recursive demo that happens to look similar.
+### Migration rule
 
-Current business flow, restated in workflow terms:
-
-```text
-1. Part name stays beneficialOwners.
-2. Part still depends on owners.
-3. Seed root entities are collected from ROOT_SNAPSHOT using the existing root targeting
-   logic after the owners dependency has already been applied at the part-executor level.
-4. For each root entity, seed child owner numbers are extracted.
-5. Recursive traversal batches requests through the existing owners downstream client.
-6. Traversal stops on:
-   - empty frontier
-   - already visited keys
-   - max depth
-7. Response nodes are split by business meaning:
-   - individual nodes are collected into the final result set
-   - entity nodes contribute more child numbers to the next frontier
-8. Missing or malformed requested owner entries remain contract violations.
-9. Final write still populates beneficialOwnersDetails on the original root entity.
-10. Existing tree metrics and public meta.parts behavior stay stable.
-```
-
-Illustrative pseudocode:
-
-```java
-super(AggregationWorkflow.builder("beneficialOwners")
-    .dependsOn("owners")
-    .recursiveBinding("ownersTraversal")
-        .source(KeySource.ROOT_SNAPSHOT)
-        .seedItems("$.data[*].basicDetails.owners[*]")
-        .seedKeys("number")
-        .call(keys -> ownersClient.fetch(keys))
-        .responseItems("$.data[*]")
-        .responseKeys("individual.number", "id")
-        .traversalPolicy(BeneficialOwnersTraversalPolicy.defaults())
-        .storeAs("ownersTraversal")
-        .endBinding()
-    .reduce(new BeneficialOwnersReducer())
-    .write()
-        .targetItems("$.data[*]")
-        .replaceField("beneficialOwnersDetails")
-    .build(), executor);
-```
-
-This pseudocode is illustrative only. The concrete implementation must preserve today's
-observable behavior even if the final API shape of recursive steps differs.
-
-### Required approach
+Before:
 
 ```text
-1. Add or confirm exact current behavior tests first.
-2. Implement BeneficialOwnersTraversalPolicy.
-3. Implement BeneficialOwnersReducer.
-4. Replace manual recursion with RecursiveFetchStep + reducer.
-5. Keep old implementation temporarily if needed for comparison tests.
-6. Remove old implementation only after all tests pass.
+beneficialOwners uses business-specific recursive traversal/orchestration code.
 ```
 
-### Public contract must stay unchanged
+After:
 
 ```text
-- part name remains beneficialOwners
-- response field remains beneficialOwnersDetails
-- meta.parts.beneficialOwners remains stable
-- empty/skipped/failure behavior remains stable
+beneficialOwners extends WorkflowAggregationPart.
+beneficialOwners declares traversal configuration and reducer logic.
+Recursive workflow infrastructure handles traversal mechanics.
+Business-specific reducer handles beneficial-owner output shape.
 ```
 
 ### Acceptance criteria
 
 ```text
-Existing beneficialOwners tests pass
-Depth behavior unchanged
-Cycle behavior explicitly tested
-Malformed nested owner payload still maps to enrichment contract violation
-No response shape change
+Existing beneficialOwners tests pass unchanged or with intentionally documented contract updates.
+Depth limit behavior unchanged.
+Cycle behavior unchanged.
+Downstream failure behavior unchanged.
+No public response shape change unless explicitly documented.
+No manual recursive orchestration remains in beneficialOwners beyond reducer/configuration.
 ```
 
 ### Forbidden
 
 ```text
-- Do not change account/owners response shape
-- Do not change include semantics
-- Do not change public field names
+- Do not change account or owners behavior in this phase.
+- Do not rewrite traversal core specifically for beneficialOwners.
+- Do not introduce a generic graph query language.
 ```
 
 ---
 
 ## Phase 17 — Optional Root Role Abstraction
 
+**Status:** Not started.
+
 ### Goal
 
-Reduce hardcoding of the root/main downstream in `AggregateService`.
+Evaluate whether the current root/main downstream naming is too account-specific for future workflows.
 
-This phase is optional. Do it only after workflow migration is stable.
+This phase is optional and should be done only if earlier phases show that root naming creates real friction.
 
-Do not start this phase until:
-
-```text
-- account is migrated
-- owners is migrated
-- at least one multi-binding workflow test exists
-- beneficialOwners migration is either completed or explicitly postponed
-```
-
-### Design rule
+### Candidate abstractions
 
 ```text
-Move away from AccountGroups-as-root if needed, but keep the root as an explicit bootstrap
-role even if it is registered through the same configurator / registry as other aggregation
-nodes.
-
-Recommended model:
-- one registered aggregation node is marked with role ROOT
-- normal business enrichments keep role ENRICHMENT
-- the execution graph is rooted at the selected ROOT node
-
-The ROOT role still has different runtime semantics from normal enrichments:
-- it is mandatory for every request
-- it establishes the initial document shape
-- it uses main-dependency error mapping rather than enrichment error mapping
-- it is not selected through include like business enrichments
-- it should not appear as a normal meta.parts business entry
-- it does not run through the normal AggregationPart.execute(AggregationContext) path
+RootDocument
+RootRole
+MainDependency
+PrimaryDocument
 ```
 
-### New abstractions
+### Rule
 
-```text
-AggregationNodeRole
-RootSelector
-RootRequestFactory
-RootClient
-RootResponseContract
-```
+Do not rename working, stable concepts just for aesthetics.
 
-The ROOT node shares registration and graph metadata with normal aggregation nodes, but its
-bootstrap fetch contract remains separate from the normal enrichment execution contract.
-It is registered alongside `AggregationPart` implementations rather than executed as one.
-
-### Shape
-
-```java
-public interface RootAggregationNode {
-    AggregationNodeRole role();
-    String name();
-    String clientName();
-    Mono<JsonNode> fetch(AggregateRequest request, ClientRequestContext context);
-    ObjectNode requireObject(JsonNode response);
-}
-```
-
-```java
-public enum AggregationNodeRole {
-    ROOT,
-    ENRICHMENT
-}
-```
-
-### Desired flow
-
-```text
-AggregateService
-  -> rootSelector.select(...)
-  -> execute ROOT node fetch
-  -> validate / materialize initial root document
-  -> plan ENRICHMENT graph rooted from the selected ROOT node
-  -> partExecutor.execute(rootNode.clientName(), root, ctx, plan)
-  -> attach meta
-```
+Only introduce this abstraction if it simplifies real workflow code or removes misleading account-specific naming from generic workflow infrastructure.
 
 ### Acceptance criteria
 
 ```text
-AggregateService no longer depends directly on AccountGroups
-AccountGroups is registered as the current ROOT node
-Graph construction can start from the selected ROOT node
-External API unchanged
-All tests pass
+If implemented, generic workflow code no longer depends on account-specific root naming.
+Public API unchanged.
+Existing behavior unchanged.
+Tests updated only where names/types changed.
 ```
 
 ### Forbidden
 
 ```text
-- Do not change controller API
-- Do not add multiple ROOT nodes unless needed
-- Do not change request DTO shape
+- No public response contract change.
+- No broad rename-only PR unless the benefit is concrete.
+- No migration of unrelated business code.
 ```
 
 ---
 
 ## Phase 18 — Documentation, Test Kit, and Examples
 
+**Status:** Not started.
+
 ### Goal
 
-Make future enrichment implementation and verification easy.
+Make the new workflow authoring style understandable and safe for future developers and coding agents.
 
-### New docs
+### Required documentation
 
 ```text
-docs/aggregation-workflow.md
-docs/add-new-enrichment.md
-error-handling-design.md update only if necessary
+- How to create a simple keyed workflow part.
+- How to choose ROOT_SNAPSHOT vs CURRENT_ROOT vs STEP_RESULT.
+- How to define a DownstreamBinding.
+- How to define response indexing rules.
+- How write rules map to JsonPatchDocument.
+- How soft outcomes map to meta.parts.
+- How required/optional criticality affects failures.
+- How to test a workflow part.
+- How to use fff to navigate workflow-related code.
 ```
 
-### New test support
+### Test kit candidates
 
 ```text
-WorkflowPartTestKit
-WorkflowPartFixtureBuilder
-WorkflowAssertions
+WorkflowPartTestSupport
+DownstreamBindingTestFixtures
+JsonNodeFixtureBuilder
+WorkflowExecutionAssertions
 ```
 
-### Required content
+### Examples
+
+Provide at least:
 
 ```text
-1. Part vs Binding vs Step
-2. Simple keyed enrichment example
-3. Multi-binding enrichment example
-4. Compute enrichment example
-5. Recursive traversal example
-6. Soft vs fatal outcomes
-7. RFC 9457 error mapping
-8. Internal JSON Patch rules
-9. Testing checklist for new enrichment
+- one simple keyed enrichment example
+- one fallback-key enrichment example
+- one multi-binding example
+- one recursive traversal example if Phase 16 is complete
 ```
 
 ### Acceptance criteria
 
 ```text
-A developer can add a simple enrichment by following the docs
-A developer can verify a new workflow part through the shared test kit without bespoke
-test scaffolding for the standard outcome matrix
-Examples compile or are clearly marked as pseudocode
-Docs match actual code
+A new developer can author a simple workflow part without reading every internal class.
+Examples compile or are clearly marked as documentation-only pseudocode.
+Tests demonstrate recommended patterns.
+No public API behavior changed.
 ```
 
 ---
 
 ## Phase 19 — Retire Legacy Enrichment Authoring
 
+**Status:** Not started.
+
 ### Goal
 
-Make workflow the only supported authoring model for business enrichments after migration
-stabilizes.
+After all target enrichments are migrated and stabilized, remove or deprecate legacy authoring paths that are no longer needed.
 
-### Required changes
+### Preconditions
+
+Do not start Phase 19 until:
 
 ```text
-1. Migrate the remaining legacy enrichments to workflow-based implementations.
-2. Freeze new usages of AggregationEnrichment and KeyedArrayEnrichment for business parts.
-3. Remove legacy authoring base classes, or move them into a clearly deprecated internal area
-   only if a short-lived compatibility bridge is still required.
-4. Keep only the low-level reusable services still needed by the workflow engine.
-5. Update docs and examples so new enrichments are documented only through workflow.
+- account is migrated
+- owners is migrated
+- beneficialOwners is migrated, if still in project scope
+- workflow docs and examples exist
+- CI is green on workflow-engine
+- public behavior is verified by characterization tests
 ```
 
-### Acceptance criteria
+### Allowed changes
 
 ```text
-No business enrichment is authored through legacy base classes
-New enrichment examples use workflow only
-Public behavior unchanged
-./gradlew test passes
+- remove unused legacy helper classes
+- deprecate old authoring APIs if removal is too risky
+- simplify tests that only existed for legacy internals
+- keep characterization tests that protect public behavior
 ```
 
 ### Forbidden
 
 ```text
-- Do not change public response shapes during the retirement step
-- Do not change the public error contract during the retirement step
-- Do not keep dual authoring indefinitely without a concrete retained use case
+- Do not remove public behavior.
+- Do not remove tests that protect API contracts.
+- Do not combine with new feature work.
+- Do not change RFC 9457 error contract.
+- Do not change meta.parts contract.
+```
+
+### Acceptance criteria
+
+```text
+No unused legacy enrichment authoring path remains, or it is explicitly deprecated.
+Workflow authoring is the documented default.
+Full local/global verification or CI verification is green.
+Migration plan is updated with final status.
 ```
 
 ---
 
-# 8. Testing Checklist for Every New Workflow Enrichment
+## Final Integration Checklist for workflow-engine
 
-Every new workflow-based enrichment must have tests for:
-
-```text
-1. Happy path: enrichment is applied.
-2. No keys in source: SKIPPED / NO_KEYS_IN_MAIN or a documented source-specific reason.
-3. Downstream empty body: EMPTY / DOWNSTREAM_EMPTY.
-4. Downstream 404: EMPTY / DOWNSTREAM_NOT_FOUND.
-5. Downstream timeout: RFC 9457 dependency failure.
-6. Downstream 401/403: RFC 9457 auth dependency failure.
-7. Invalid downstream payload: RFC 9457 invalid payload or contract violation.
-8. Patch application failure: RFC 9457 orchestration failure.
-9. meta.parts entry is present and correct.
-10. Metrics are emitted.
-```
-
-For multi-binding enrichments also test:
+Before preparing any eventual integration PR from `workflow-engine` to `main`, verify:
 
 ```text
-1. Binding B uses keysB.
-2. Binding C uses keysC.
-3. Later binding can read from previous binding result.
-4. One binding no-op behavior is deterministic.
-5. Combined patch is applied correctly.
+- migration tracker is accurate
+- all completed phases have handoff notes
+- no phase accidentally changed public response shape without documentation
+- no downstream details leak into public error bodies
+- meta.parts remains stable unless explicitly documented
+- RFC 9457 problem responses remain facade-owned
+- fff search confirms no duplicate old/new implementations remain unintentionally
+- full verification has run locally or CI is green for equivalent checks
 ```
 
-For recursive enrichments also test:
-
-```text
-1. Empty seed keys.
-2. Single-level traversal.
-3. Multi-level traversal.
-4. Max depth reached.
-5. Cycle detected.
-6. Duplicate nodes deduplicated.
-7. Reducer output is stable.
-```
-
----
-
-# 9. Handoff Template for Agents
-
-Every agent must finish with a handoff note in the PR description or task output:
-
-````markdown
-## What changed
-
-- ...
-
-## Why
-
-- ...
-
-## Files touched
-
-- ...
-
-## Behavior changes
-
-- None / describe exactly
-
-## Tests added or updated
-
-- ...
-
-## How verified
+Recommended final commands:
 
 ```bash
 ./gradlew test
+./gradlew spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification
+./gradlew build
 ```
-
-## Known risks
-
-- ...
-
-## Next recommended phase
-
-- Phase N: ...
-````
-
----
-
-# 10. Final Definition of Done
-
-This migration is complete when:
-
-```text
-1. New simple keyed enrichment can be added with one client and one workflow part class.
-2. New multi-REST enrichment can define multiple endpoint-specific bindings.
-3. Each binding can extract its own keys from root, current root, or previous step result.
-4. New compute enrichment can calculate a scalar/object and write it into A.
-5. Recursive traversal is reusable and beneficialOwners uses it.
-6. Writes are explicit JsonPatch-like operations internally.
-7. Public API response shape remains stable.
-8. meta.parts remains stable.
-9. RFC 9457 problem contract remains stable.
-10. Documentation explains how to add new enrichments.
-11. Workflow is the only supported authoring model for new business enrichments.
-```
-
----
-
-# 11. Recommended Execution Order
-
-```text
-[x] Phase 1  -> Characterization tests
-[x] Phase 2  -> Internal JSON Patch model
-[x] Phase 3  -> Patch builder helpers
-[x] Phase 4  -> DownstreamBinding model
-[x] Phase 5  -> Adapt existing keyed support
-[ ] Phase 6  -> Workflow model skeleton
-[ ] Phase 7  -> KeyedBindingStep
-[ ] Phase 8  -> Migrate account
-[ ] Phase 9  -> Binding metrics
-[ ] Phase 10 -> Migrate owners
-[ ] Phase 11 -> Multi-binding workflow
-[ ] Phase 12 -> Compute step
-[ ] Phase 13 -> Harden patch conflict detection and write ownership
-[ ] Phase 14 -> Recursive traversal skeleton
-[ ] Phase 15 -> Traversal reducer
-[ ] Phase 16 -> Migrate beneficialOwners
-[ ] Phase 17 -> Optional Root role abstraction
-[ ] Phase 18 -> Documentation and examples
-[ ] Phase 19 -> Retire legacy enrichment authoring
-```
-
-Do not skip Phase 1.
-
-Do not start recursive traversal before at least one simple keyed enrichment is migrated successfully.
-
-Do not introduce external workflow DSL until all Java-based workflow patterns are stable.
-
----
-
-# 12. Architectural Summary for Agents
-
-The migration should move the project from this:
-
-```text
-New enrichment = write a custom AggregationPart.execute() with extraction, REST call, merge, errors
-```
-
-to this:
-
-```text
-New enrichment = describe business part + downstream bindings + write rules
-```
-
-The engine should own:
-
-```text
-- planning
-- ordering
-- concurrency
-- downstream failure normalization
-- soft outcomes
-- patch application
-- metrics
-- meta.parts
-- RFC 9457 errors
-```
-
-The enrichment should own only:
-
-```text
-- business name
-- dependencies
-- endpoint-specific key selectors
-- downstream client method
-- response key selectors
-- target write rule
-- optional compute/reduce logic
-```
-
-This is the central architecture goal. Do not dilute it.
