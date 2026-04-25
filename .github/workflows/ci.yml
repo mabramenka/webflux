@@ -17,6 +17,7 @@ jobs:
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
 
     steps:
       - name: Checkout
@@ -35,6 +36,10 @@ jobs:
 
       - name: Check
         run: ./gradlew check
+
+      - name: Security Check
+        if: env.NVD_API_KEY != ''
+        run: ./gradlew securityCheck
 
       - name: SonarQube Cloud
         if: env.SONAR_TOKEN != ''

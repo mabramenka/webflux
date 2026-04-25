@@ -100,6 +100,7 @@ spotless {
 dependencyCheck {
     failBuildOnCVSS = 7.0F
     formats = listOf("HTML", "JSON")
+    scanConfigurations = listOf("runtimeClasspath")
     nvd {
         apiKey = System.getenv("NVD_API_KEY")
     }
