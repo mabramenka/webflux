@@ -2,7 +2,7 @@ package dev.abramenka.aggregation.patch;
 
 import java.util.List;
 import java.util.Objects;
-import org.jspecify.annotations.Nullable;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -94,7 +94,7 @@ public final class JsonPatchApplicator {
     }
 
     private static void applyTest(JsonNode parent, String leaf, JsonNode value, String path) {
-        @Nullable JsonNode actual;
+        JsonNode actual;
         if (parent instanceof ObjectNode object) {
             actual = object.get(leaf);
         } else if (parent instanceof ArrayNode array) {
