@@ -15,7 +15,7 @@ Error handling follows a **soft / fatal split**. Data absence is soft — per-pa
 - **Fatal (aborts the request):** failures on the *main* call (empty/unreadable body, non-success status, transport error, timeout); auth failures (`401`/`403`) on *any* downstream; enricher transport failures, timeouts, `5xx`, or decoding errors; merge exceptions; internal invariant violations.
 - **Soft (part is recorded as `EMPTY` or `SKIPPED`, request succeeds):** main payload missing the keys a part needs (`NO_KEYS_IN_MAIN`); `supports(context)` returned `false` (`UNSUPPORTED_CONTEXT`); enricher body empty (`DOWNSTREAM_EMPTY`); enricher returned `404` (`DOWNSTREAM_NOT_FOUND`); a required dependency applied nothing (`DEPENDENCY_EMPTY`).
 
-Success responses carry a `meta.parts` object that names each requested or transitively-required part with its `status` (`APPLIED` / `EMPTY` / `SKIPPED`) and, for non-`APPLIED` parts, a machine-readable `reason`. Error responses conform to RFC 9457 using Spring Framework 7 `ProblemDetail` / `ErrorResponse` constructs and a stable, facade-owned vocabulary of problem types, error codes, and categories. No downstream internals — hostnames, raw bodies, stack traces, bean names — are ever exposed to the client.
+Success responses carry a `meta.parts` object that names each requested or transitively-enabled part with its `status` (`APPLIED` / `EMPTY` / `SKIPPED`) and, for non-`APPLIED` parts, a machine-readable `reason`. Error responses conform to RFC 9457 using Spring Framework 7 `ProblemDetail` / `ErrorResponse` constructs and a stable, facade-owned vocabulary of problem types, error codes, and categories. No downstream internals — hostnames, raw bodies, stack traces, bean names — are ever exposed to the client.
 
 ---
 
@@ -66,7 +66,7 @@ The facade recognises five top-level categories. Every thrown or caught error mu
 | --------------------------- | --------------------------------------------------------------------------------------------------- | ----------------- | ------------- |
 | `CLIENT_REQUEST`            | The request is malformed, unauthenticated, forbidden, or targets a non-existent domain resource.    | 4xx               | Yes           |
 | `MAIN_DEPENDENCY`           | The main upstream endpoint is unreachable, slow, returned an invalid or contract-violating payload. | 502 / 504         | No            |
-| `ENRICHMENT_DEPENDENCY`     | A required enrichment endpoint failed with any of the same failure modes.                           | 502 / 504         | No            |
+| `ENRICHMENT_DEPENDENCY`     | A selected enrichment path failed with a fatal dependency-level error.                              | 502 / 504         | No            |
 | `ORCHESTRATION`             | A failure inside facade logic: merge error, invariant violation, misconfiguration, mapping bug.     | 500               | No            |
 | `PLATFORM`                  | Runtime or infrastructure problem: OOM, thread starvation, unhandled exception, bean init failure.  | 500 / 503         | No            |
 
@@ -89,7 +89,7 @@ Each category has a closed set of sub-types. This set is the authoritative catal
 - `MAIN-UNAVAILABLE` — connection refused, DNS failure, `503`, circuit open.
 - `MAIN-BAD-RESPONSE` — non-success status outside a whitelisted domain-meaningful set.
 - `MAIN-INVALID-PAYLOAD` — response is not valid JSON or fails schema.
-- `MAIN-CONTRACT-VIOLATION` — response is valid JSON but is empty or missing keys required for enrichment.
+- `MAIN-CONTRACT-VIOLATION` — response is empty or violates the root payload contract (for example, a non-object root document).
 - `MAIN-AUTH-FAILED` — facade cannot authenticate to main (credential / token problem).
 
 **ENRICHMENT_DEPENDENCY** (only for fatal enricher failures — data absence is soft, see §4.3)
@@ -410,14 +410,14 @@ This separation is the single enforcement point for §9.2.
 }
 ```
 
-### 10.2 Main contract violation (missing required key)
+### 10.2 Main contract violation (empty or non-object root payload)
 
 ```json
 {
   "type": "/problems/main/contract-violation",
   "title": "Main dependency payload violates contract",
   "status": 502,
-  "detail": "The main upstream payload is missing keys required for required enrichment.",
+  "detail": "The main dependency payload does not satisfy the required contract.",
   "instance": "/requests/1d5f6cfc-2c0e-4e2f-9a4d-2f1f4e0c8c4b",
   "errorCode": "MAIN-CONTRACT-VIOLATION",
   "category": "MAIN_DEPENDENCY",
@@ -480,13 +480,13 @@ This section is prescriptive for code generation. It states *what* must exist, n
    - A shared error filter and response normalizer translating HTTP, transport, empty-body, and decode outcomes into `MAIN-*` / `ENRICH-*` exceptions.
    - Explicit connect / read timeouts per dependency.
    - Classification of `IOException` / timeout types to `*-TIMEOUT` vs `*-UNAVAILABLE`.
-4. **Main payload validator** — verifies non-empty response and presence of all keys required for required enrichers. Emits `MAIN-CONTRACT-VIOLATION` on failure.
-5. **Orchestrator** — fan-out to required enrichers; first failure cancels the rest; wraps merge/mapping errors into `ORCH-*` exceptions.
+4. **Main payload validator** — verifies non-empty response and the root-document contract (for example, object-shaped JSON). Emits `MAIN-CONTRACT-VIOLATION` on failure.
+5. **Orchestrator** — fans out to selected parts by dependency level; soft no-op outcomes stay in `meta.parts`, while fatal failures cancel the request and wrap merge/mapping errors into `ORCH-*` exceptions.
 6. **Global exception handler** — `@RestControllerAdvice` extending `ResponseEntityExceptionHandler`:
    - Handles the `FacadeException` hierarchy.
    - Handles Spring's built-in exceptions (`MethodArgumentNotValidException`, `HttpMessageNotReadableException`, `HttpMediaTypeNotSupportedException`, etc.) by mapping them to the corresponding `CLIENT-*` catalog entry. If a security filter chain is enabled, its authentication entry point and access-denied handler must delegate to the same problem assembler.
    - Last-resort `Throwable` handler maps to `PLATFORM-INTERNAL`.
-7. **ProblemDetail assembler** — single component that, given a catalog entry + context, produces a `ProblemDetail` with all extension fields from §6.2. Single source of truth for serialisation.
+7. **ProblemDetail assembler / helpers** — a single source of truth that enriches `ProblemDetail` instances with contract fields from §6.2 and maps validation failures to stable pointers. In the current codebase this logic is split between `AggregationErrorResponseAdvice`, `ProblemResponseSupport`, and `ValidationErrorMapper`.
 8. **Sanitisation filter** — assertion / test-time guard that fails the build if any response body leaks fields outside the whitelist in §9.1.
 
 ### 11.2 Tests required
@@ -512,8 +512,8 @@ These are separate decisions layered on top of the contract defined here.
 
 - **Facade** — the service specified by this document.
 - **Main dependency** — the single upstream endpoint called first per request.
-- **Enricher** — a required downstream endpoint called using keys extracted from the main response.
-- **Required enrichment** — enrichment that the facade considers mandatory; its failure invalidates the whole response.
-- **Contract violation** — a downstream returned a syntactically valid response that does not satisfy the facade's semantic expectations (missing keys, empty data for a valid id, etc.).
+- **Enricher** — a downstream endpoint called using keys extracted from the main response.
+- **Fatal enrichment failure** — a selected enrichment path failed with transport, timeout, auth, invalid-payload, merge, or invariant errors and therefore aborts the whole response.
+- **Contract violation** — a downstream returned a syntactically valid response that does not satisfy the facade's semantic expectations for that boundary (for example, a non-object root payload or malformed nested beneficial-owners resolution data).
 - **Orchestration** — facade-internal logic that coordinates main call, enrichment calls, and merge.
 - **Catalog** — the authoritative table in §8.

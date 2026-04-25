@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Refactoring
+
+* split problem-response support and validation-error mapping out of the global error advice
+* split beneficial-owners enrichment into focused helper collaborators
+* split large aggregate service and controller test suites into scenario-focused classes
+
+### Documentation
+
+* align README and error-handling design docs with current soft-outcome aggregation semantics
+
 ## [0.10.0](https://github.com/mabramenka/webflux/compare/v0.9.0...v0.10.0) (2026-04-24)
 
 
