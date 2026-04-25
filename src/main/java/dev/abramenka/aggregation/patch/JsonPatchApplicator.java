@@ -2,7 +2,6 @@ package dev.abramenka.aggregation.patch;
 
 import java.util.List;
 import java.util.Objects;
-
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
