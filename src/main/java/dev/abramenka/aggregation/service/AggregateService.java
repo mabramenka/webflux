@@ -33,7 +33,9 @@ public class AggregateService {
     private static final String META_FIELD = "meta";
     private static final String PARTS_FIELD = "parts";
     private static final String STATUS_FIELD = "status";
+    private static final String CRITICALITY_FIELD = "criticality";
     private static final String REASON_FIELD = "reason";
+    private static final String ERROR_CODE_FIELD = "errorCode";
 
     private final AccountGroups accountGroupClient;
     private final AggregationPartPlanner partPlanner;
@@ -109,8 +111,12 @@ public class AggregateService {
         outcomes.forEach((name, outcome) -> {
             ObjectNode partNode = objectMapper.createObjectNode();
             partNode.put(STATUS_FIELD, outcome.status().name());
+            partNode.put(CRITICALITY_FIELD, outcome.criticality().name());
             if (outcome.reason() != null) {
                 partNode.put(REASON_FIELD, outcome.reason().name());
+            }
+            if (outcome.errorCode() != null) {
+                partNode.put(ERROR_CODE_FIELD, outcome.errorCode());
             }
             parts.set(name, partNode);
         });

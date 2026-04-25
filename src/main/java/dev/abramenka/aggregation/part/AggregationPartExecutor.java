@@ -8,6 +8,7 @@ import dev.abramenka.aggregation.model.AggregationPartPlan;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
+import dev.abramenka.aggregation.model.PartFailureReason;
 import dev.abramenka.aggregation.model.PartOutcome;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
@@ -30,6 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class AggregationPartExecutor {
 
     private final AggregationPartRunner partRunner;
+    private final AggregationPartFailurePolicy failurePolicy;
     private final AggregationRootFactory rootFactory;
     private final AggregationPartResultApplicator resultApplicator;
     private final AggregationPartMetrics metrics;
@@ -68,10 +70,22 @@ public class AggregationPartExecutor {
 
         int concurrency = Math.max(1, toRun.size());
         return Flux.fromIterable(toRun)
-                .flatMap(part -> partRunner.execute(part, levelContext), concurrency)
-                .collectMap(AggregationPartResult::partName)
+                .flatMap(part -> executeWithPolicy(part, levelContext), concurrency)
+                .collectMap(PartExecutionResult::partName)
                 .doOnNext(resultsByName -> applyResults(toRun, resultsByName, root, executionState, outcomes))
                 .then();
+    }
+
+    private Mono<PartExecutionResult> executeWithPolicy(AggregationPart part, AggregationContext levelContext) {
+        return partRunner.execute(part, levelContext)
+                .map(PartExecutionResult::success)
+                .onErrorResume(error -> {
+                    AggregationPartFailurePolicy.FailureDecision decision = failurePolicy.decide(part, error);
+                    if (decision.failRequest()) {
+                        return Mono.error(decision.error());
+                    }
+                    return Mono.just(PartExecutionResult.failure(part.name(), decision.reason(), decision.errorCode()));
+                });
     }
 
     private @Nullable PartSkipReason skipReasonFor(
@@ -101,16 +115,21 @@ public class AggregationPartExecutor {
 
     private void applyResults(
             List<AggregationPart> level,
-            Map<String, AggregationPartResult> resultsByName,
+            Map<String, PartExecutionResult> resultsByName,
             ObjectNode root,
             AggregationPartExecutionState executionState,
             Map<String, PartOutcome> outcomes) {
         requireOneResultPerPart(level, resultsByName);
         for (AggregationPart part : level) {
-            AggregationPartResult result = resultsByName.get(part.name());
-            if (result == null) {
+            PartExecutionResult executionResult = resultsByName.get(part.name());
+            if (executionResult == null) {
                 continue;
             }
+            if (executionResult.failed()) {
+                recordFailure(part, executionResult.failureReason(), executionResult.errorCode(), outcomes);
+                continue;
+            }
+            AggregationPartResult result = executionResult.result();
             if (result instanceof AggregationPartResult.NoOp noOp) {
                 recordNoOp(part, noOp, outcomes);
                 continue;
@@ -126,31 +145,53 @@ public class AggregationPartExecutor {
             }
             metrics.record(part.name(), "success");
             executionState.markApplied(part);
-            outcomes.put(part.name(), PartOutcome.applied());
+            outcomes.put(part.name(), PartOutcome.applied(part.criticality()));
         }
     }
 
     private void recordSkip(AggregationPart part, PartSkipReason reason, Map<String, PartOutcome> outcomes) {
         metrics.record(part.name(), "skipped");
-        outcomes.put(part.name(), PartOutcome.skipped(reason));
+        outcomes.put(part.name(), PartOutcome.skipped(part.criticality(), reason));
     }
 
     private void recordNoOp(AggregationPart part, AggregationPartResult.NoOp noOp, Map<String, PartOutcome> outcomes) {
         PartOutcome outcome = noOp.status() == PartOutcomeStatus.EMPTY
-                ? PartOutcome.empty(noOp.reason())
-                : PartOutcome.skipped(noOp.reason());
+                ? PartOutcome.empty(part.criticality(), noOp.reason())
+                : PartOutcome.skipped(part.criticality(), noOp.reason());
         metrics.record(part.name(), noOp.status() == PartOutcomeStatus.EMPTY ? "empty" : "skipped");
         outcomes.put(part.name(), outcome);
     }
 
+    private void recordFailure(
+            AggregationPart part, PartFailureReason reason, String errorCode, Map<String, PartOutcome> outcomes) {
+        metrics.record(part.name(), "failed_optional");
+        outcomes.put(part.name(), PartOutcome.failed(part.criticality(), reason, errorCode));
+    }
+
     private void requireOneResultPerPart(
-            List<AggregationPart> level, Map<String, AggregationPartResult> resultsByName) {
+            List<AggregationPart> level, Map<String, PartExecutionResult> resultsByName) {
         for (AggregationPart part : level) {
             if (!resultsByName.containsKey(part.name())) {
                 metrics.record(part.name(), "failure");
                 throw OrchestrationException.invariantViolated(
                         new IllegalStateException("Aggregation part '" + part.name() + "' did not emit a result"));
             }
+        }
+    }
+
+    private record PartExecutionResult(
+            String partName, @Nullable AggregationPartResult result, @Nullable PartFailureReason failureReason, @Nullable String errorCode) {
+
+        static PartExecutionResult success(AggregationPartResult result) {
+            return new PartExecutionResult(result.partName(), result, null, null);
+        }
+
+        static PartExecutionResult failure(String partName, PartFailureReason reason, String errorCode) {
+            return new PartExecutionResult(partName, null, reason, errorCode);
+        }
+
+        boolean failed() {
+            return failureReason != null;
         }
     }
 }

@@ -12,6 +12,7 @@ import dev.abramenka.aggregation.model.AggregationResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.PartOutcome;
+import dev.abramenka.aggregation.model.PartOutcomeReason;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.model.Projections;
@@ -42,6 +43,7 @@ class AggregationPartExecutorTest {
         AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         executor = new AggregationPartExecutor(
                 new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
+                new AggregationPartFailurePolicy(),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),
                 metrics);
@@ -106,10 +108,10 @@ class AggregationPartExecutorTest {
                 .assertNext(result -> {
                     PartOutcome source = outcome(result, "source");
                     assertThat(source.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
-                    assertThat(source.reason()).isEqualTo(PartSkipReason.UNSUPPORTED_CONTEXT);
+                    assertThat(source.reason()).isEqualTo(PartOutcomeReason.UNSUPPORTED_CONTEXT);
                     PartOutcome dependentOutcome = outcome(result, "dependent");
                     assertThat(dependentOutcome.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
-                    assertThat(dependentOutcome.reason()).isEqualTo(PartSkipReason.DEPENDENCY_EMPTY);
+                    assertThat(dependentOutcome.reason()).isEqualTo(PartOutcomeReason.DEPENDENCY_EMPTY);
                     assertThat(result.data().has("sourceRan")).isFalse();
                     assertThat(result.data().has("dependentRan")).isFalse();
                 })
@@ -130,10 +132,10 @@ class AggregationPartExecutorTest {
                 .assertNext(result -> {
                     PartOutcome source = outcome(result, "source");
                     assertThat(source.status()).isEqualTo(PartOutcomeStatus.EMPTY);
-                    assertThat(source.reason()).isEqualTo(PartSkipReason.DOWNSTREAM_EMPTY);
+                    assertThat(source.reason()).isEqualTo(PartOutcomeReason.DOWNSTREAM_EMPTY);
                     PartOutcome dependentOutcome = outcome(result, "dependent");
                     assertThat(dependentOutcome.status()).isEqualTo(PartOutcomeStatus.SKIPPED);
-                    assertThat(dependentOutcome.reason()).isEqualTo(PartSkipReason.DEPENDENCY_EMPTY);
+                    assertThat(dependentOutcome.reason()).isEqualTo(PartOutcomeReason.DEPENDENCY_EMPTY);
                 })
                 .verifyComplete();
 
