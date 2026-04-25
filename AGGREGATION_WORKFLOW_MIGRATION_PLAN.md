@@ -451,7 +451,7 @@ current operator.
 [x] Phase 1  — Characterization tests
 [x] Phase 2  — Internal JSON Patch model
 [x] Phase 3  — Patch builder helpers
-[ ] Phase 4  — Downstream binding model
+[x] Phase 4  — Downstream binding model
 [ ] Phase 5  — Adapt existing keyed support
 [ ] Phase 6  — Workflow model skeleton
 [ ] Phase 7  — Keyed binding step
@@ -1888,7 +1888,7 @@ This migration is complete when:
 [x] Phase 1  -> Characterization tests
 [x] Phase 2  -> Internal JSON Patch model
 [x] Phase 3  -> Patch builder helpers
-[ ] Phase 4  -> DownstreamBinding model
+[x] Phase 4  -> DownstreamBinding model
 [ ] Phase 5  -> Adapt existing keyed support
 [ ] Phase 6  -> Workflow model skeleton
 [ ] Phase 7  -> KeyedBindingStep
