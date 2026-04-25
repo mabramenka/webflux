@@ -15,9 +15,8 @@ class AggregationPartFailurePolicy {
 
     FailureDecision decide(AggregationPart part, Throwable error) {
         Throwable resolved = error instanceof FacadeException ? error : OrchestrationException.invariantViolated(error);
-        ProblemCatalog catalog = resolved instanceof FacadeException facade
-                ? facade.catalog()
-                : ProblemCatalog.ORCH_INVARIANT_VIOLATED;
+        ProblemCatalog catalog =
+                resolved instanceof FacadeException facade ? facade.catalog() : ProblemCatalog.ORCH_INVARIANT_VIOLATED;
         PartFailureReason reason = toFailureReason(catalog);
         PartCriticality criticality = part.criticality();
         if (criticality == PartCriticality.REQUIRED) {
