@@ -21,7 +21,6 @@ class AggregationPartRunner {
     private static final String PART_OBSERVATION = "aggregation.part";
     private static final String PART_TAG = "part";
 
-    private final AggregationPartMetrics metrics;
     private final ObservationRegistry observationRegistry;
 
     Mono<AggregationPartResult> execute(AggregationPart part, AggregationContext context) {
@@ -32,10 +31,7 @@ class AggregationPartRunner {
                     .switchIfEmpty(Mono.error(() ->
                             OrchestrationException.invariantViolated(new IllegalStateException("Aggregation part '"
                                     + part.name() + "' returned an empty Mono; parts must emit a result"))))
-                    .doOnError(Exception.class, ex -> {
-                        metrics.record(part.name(), "failure");
-                        log.warn("Aggregation part '{}' failed", part.name(), ex);
-                    })
+                    .doOnError(Exception.class, ex -> log.warn("Aggregation part '{}' failed", part.name(), ex))
                     .onErrorMap(ex -> !(ex instanceof FacadeException), OrchestrationException::invariantViolated)
                     .contextWrite(ctx -> ctx.put(ObservationThreadLocalAccessor.KEY, observation))
                     .doOnError(observation::error)

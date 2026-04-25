@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
 import dev.abramenka.aggregation.enrichment.owners.OwnersEnrichmentTestFactory;
+import dev.abramenka.aggregation.error.OrchestrationException;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -69,7 +70,7 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
     }
 
     @Test
-    void aggregate_recordsFailedOutcomeWhenOptionalEnrichmentFetchFails() {
+    void aggregate_failsSelectedEnrichmentWhenFetchFails() {
         AggregateService service = aggregateServiceWith(List.of(failingFetchEnrichment("auditTrail")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
@@ -82,16 +83,12 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
                 .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
-                .assertNext(aggregated -> {
-                    JsonNode partMeta = aggregated.path("meta").path("parts").path("auditTrail");
-                    assertThat(partMeta.path("status").asString()).isEqualTo("FAILED");
-                    assertThat(partMeta.path("criticality").asString()).isEqualTo("OPTIONAL");
-                    assertThat(partMeta.path("reason").asString()).isEqualTo("INTERNAL");
-                    assertThat(partMeta.path("errorCode").asString()).isEqualTo("ORCH-INVARIANT-VIOLATED");
-                })
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(OrchestrationException.class)
+                        .hasMessage("The service detected an internal aggregation invariant violation."))
+                .verify();
 
-        assertPartMetric("auditTrail", "failed_optional", 1);
+        assertPartMetric("auditTrail", "failure", 1);
     }
 
     @Test
@@ -209,7 +206,7 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
     }
 
     @Test
-    void aggregate_recordsFailedOutcomeWhenOptionalEnrichmentMergeFails() {
+    void aggregate_failsSelectedEnrichmentWhenMergeFails() {
         AggregateService service = aggregateServiceWith(failingMergeEnrichment());
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), null);
         JsonNode accountGroupResponse = json("""
@@ -222,15 +219,11 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
                 .thenReturn(Mono.just(accountGroupResponse));
 
         StepVerifier.create(service.aggregate(request, clientRequestContext()))
-                .assertNext(aggregated -> {
-                    JsonNode partMeta = aggregated.path("meta").path("parts").path("mergeFailure");
-                    assertThat(partMeta.path("status").asString()).isEqualTo("FAILED");
-                    assertThat(partMeta.path("criticality").asString()).isEqualTo("OPTIONAL");
-                    assertThat(partMeta.path("reason").asString()).isEqualTo("INTERNAL");
-                    assertThat(partMeta.path("errorCode").asString()).isEqualTo("ORCH-MERGE-FAILED");
-                })
-                .verifyComplete();
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(OrchestrationException.class)
+                        .hasMessage("The service could not assemble the aggregated response."))
+                .verify();
 
-        assertPartMetric("mergeFailure", "failed_optional", 1);
+        assertPartMetric("mergeFailure", "failure", 1);
     }
 }

@@ -41,7 +41,7 @@ class AggregationPartFailurePolicyMatrixTest {
     void setUp() {
         AggregationPartMetrics metrics = new AggregationPartMetrics(new SimpleMeterRegistry());
         executor = new AggregationPartExecutor(
-                new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
+                new AggregationPartRunner(ObservationRegistry.NOOP),
                 new AggregationPartFailurePolicy(),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),

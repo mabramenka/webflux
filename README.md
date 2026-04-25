@@ -20,7 +20,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 - Dynamic JSON aggregation without fixed downstream response DTOs
 - Spring Boot 4 HTTP service clients backed by reactive `WebClient`
-- Dependency-ordered aggregation parts with per-part `APPLIED` / `EMPTY` / `SKIPPED` outcomes
+- Dependency-ordered aggregation parts with per-part `APPLIED` / `EMPTY` / `SKIPPED` / `FAILED` outcomes and `REQUIRED` / `OPTIONAL` criticality
 - Declarative path-based enrichment rules for keyed array joins
 - Fallback key paths for inconsistent downstream schemas
 - Recursive beneficial-owners aggregation with bounded depth
@@ -138,7 +138,7 @@ Aggregation Gateway is a synchronous domain facade, not an owner of account, acc
 5. `part` expands dependencies, groups parts by dependency level, and validates every selected part against the current root snapshot.
 6. A selected part whose `supports(context)` is false is recorded under `meta.parts` as `SKIPPED` with reason `UNSUPPORTED_CONTEXT`.
 7. Runnable parts in the same level execute concurrently; the next level starts only after successful results are applied in graph order.
-8. Data absence is soft per part: `NO_KEYS_IN_MAIN`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `UNSUPPORTED_CONTEXT`, and `DEPENDENCY_EMPTY` succeed with `meta.parts`; transport/auth/timeout/invalid-payload/merge failures still terminate the request.
+8. Data absence is soft per part: `NO_KEYS_IN_MAIN`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `UNSUPPORTED_CONTEXT`, and `DEPENDENCY_EMPTY` succeed with `meta.parts`; transport/auth/timeout/invalid-payload/merge failures still terminate the request unless the part opts in to `OPTIONAL` criticality, in which case its `DownstreamClientException` is recorded as `meta.parts.<name> = { status: FAILED, criticality: OPTIONAL, reason, errorCode }` and the request continues. Orchestration/merge/invariant failures always propagate regardless of criticality.
 
 ### Consistency And Failure Semantics
 
@@ -193,8 +193,8 @@ Fields sent to the account group service:
 - empty array: only the account group response is returned
 - supported values: `account`, `owners`, `beneficialOwners`
 - unknown values fail before calling the account group service
-- selected parts may finish as `APPLIED`, `EMPTY`, or `SKIPPED` in `meta.parts`
-- dependency transport/auth/timeout/invalid-payload failures and merge/invariant failures still fail the request
+- selected parts may finish as `APPLIED`, `EMPTY`, `SKIPPED`, or `FAILED` in `meta.parts`; each entry carries its `criticality` (`REQUIRED` by default; `OPTIONAL` is opt-in per part)
+- dependency transport/auth/timeout/invalid-payload failures fail the request for `REQUIRED` parts and are recorded as `FAILED` outcomes for `OPTIONAL` parts; merge/invariant failures always fail the request
 
 ### Query Parameters
 
