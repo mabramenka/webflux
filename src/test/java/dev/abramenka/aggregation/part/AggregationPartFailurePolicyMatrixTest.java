@@ -71,7 +71,8 @@ class AggregationPartFailurePolicyMatrixTest {
 
         StepVerifier.create(execution)
                 .assertNext(result -> {
-                    PartOutcome outcome = Objects.requireNonNull(result.partOutcomes().get("owners"));
+                    PartOutcome outcome =
+                            Objects.requireNonNull(result.partOutcomes().get("owners"));
                     assertThat(outcome.status()).isEqualTo(PartOutcomeStatus.FAILED);
                     assertThat(outcome.criticality()).isEqualTo(PartCriticality.OPTIONAL);
                     assertThat(outcome.errorCode()).isEqualTo(expectedErrorCode);

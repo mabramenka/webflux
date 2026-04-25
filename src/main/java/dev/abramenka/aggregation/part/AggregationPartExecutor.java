@@ -77,7 +77,8 @@ public class AggregationPartExecutor {
     }
 
     private Mono<PartExecutionResult> executeWithPolicy(AggregationPart part, AggregationContext levelContext) {
-        return partRunner.execute(part, levelContext)
+        return partRunner
+                .execute(part, levelContext)
                 .map(PartExecutionResult::success)
                 .onErrorResume(error -> {
                     AggregationPartFailurePolicy.FailureDecision decision = failurePolicy.decide(part, error);
@@ -168,8 +169,7 @@ public class AggregationPartExecutor {
         outcomes.put(part.name(), PartOutcome.failed(part.criticality(), reason, errorCode));
     }
 
-    private void requireOneResultPerPart(
-            List<AggregationPart> level, Map<String, PartExecutionResult> resultsByName) {
+    private void requireOneResultPerPart(List<AggregationPart> level, Map<String, PartExecutionResult> resultsByName) {
         for (AggregationPart part : level) {
             if (!resultsByName.containsKey(part.name())) {
                 metrics.record(part.name(), "failure");
@@ -180,7 +180,10 @@ public class AggregationPartExecutor {
     }
 
     private record PartExecutionResult(
-            String partName, @Nullable AggregationPartResult result, @Nullable PartFailureReason failureReason, @Nullable String errorCode) {
+            String partName,
+            @Nullable AggregationPartResult result,
+            @Nullable PartFailureReason failureReason,
+            @Nullable String errorCode) {
 
         static PartExecutionResult success(AggregationPartResult result) {
             return new PartExecutionResult(result.partName(), result, null, null);
