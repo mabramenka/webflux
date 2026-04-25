@@ -3,12 +3,16 @@ package dev.abramenka.aggregation.enrichment.beneficialowners;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.error.DownstreamClientException;
+import dev.abramenka.aggregation.error.EnrichmentDependencyException;
+import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartResult;
@@ -277,6 +281,150 @@ class BeneficialOwnersEnrichmentTest {
     @Test
     void dependencies_includeOwnersEnrichment() {
         assertThat(beneficialOwners.dependencies()).containsExactly("owners");
+    }
+
+    @Test
+    void name_returnsStablePartName() {
+        assertThat(beneficialOwners.name()).isEqualTo("beneficialOwners");
+    }
+
+    @Test
+    void fetch_returnsEmptyPayloadWhenCalledWithoutRootEntities() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {"individual": {"number": "I-1"}}
+                  ]
+                }
+              ]
+            }
+            """);
+
+        StepVerifier.create(beneficialOwners.fetch(context(root)))
+                .assertNext(response -> assertThat(response.path("data")).isEmpty())
+                .verifyComplete();
+    }
+
+    @Test
+    void execute_appliesWhenRootEntitiesExist() {
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {
+                      "entity": {
+                        "number": "E-1",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "P-1"}}]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
+                .thenAnswer(invocation -> {
+                    ObjectNode response = objectMapper.createObjectNode();
+                    response.putArray("data").add(individual("P-1"));
+                    return Mono.just(response);
+                });
+
+        StepVerifier.create(beneficialOwners.execute(context(root)))
+                .assertNext(result -> {
+                    assertThat(result).isInstanceOf(AggregationPartResult.MergePatch.class);
+                    AggregationPartResult.MergePatch patch = (AggregationPartResult.MergePatch) result;
+                    assertThat(patch.partName()).isEqualTo("beneficialOwners");
+                    assertThat(patch.replacement()
+                                    .path("data")
+                                    .path(0)
+                                    .path("owners1")
+                                    .path(0)
+                                    .path("beneficialOwnersDetails"))
+                            .hasSize(1);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void fetch_preservesFacadeExceptionCauseFromResolver() {
+        OwnershipResolver resolver = mock(OwnershipResolver.class);
+        BeneficialOwnersEnrichment enrichment = new BeneficialOwnersEnrichment(
+                resolver, new RootEntityTargets(), new BeneficialOwnersDetailsPayload(objectMapper), meterRegistry);
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {
+                      "entity": {
+                        "number": "E-1",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "P-1"}}]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+        AggregationContext context = context(root);
+        OrchestrationException facadeException = OrchestrationException.configInvalid(new RuntimeException("boom"));
+        when(resolver.resolveTree(any(JsonNode.class), same(context)))
+                .thenReturn(Mono.error(new BeneficialOwnersResolutionException(
+                        BeneficialOwnersResolutionException.Reason.DOWNSTREAM_FAILED, "failed", facadeException)));
+
+        StepVerifier.create(enrichment.fetch(context))
+                .expectErrorSatisfies(error -> assertThat(error).isSameAs(facadeException))
+                .verify();
+
+        assertTreeMetric("failure", 1);
+    }
+
+    @Test
+    void fetch_mapsNonFacadeResolutionFailuresToContractViolation() {
+        OwnershipResolver resolver = mock(OwnershipResolver.class);
+        BeneficialOwnersEnrichment enrichment = new BeneficialOwnersEnrichment(
+                resolver, new RootEntityTargets(), new BeneficialOwnersDetailsPayload(objectMapper), meterRegistry);
+        ObjectNode root = json("""
+            {
+              "data": [
+                {
+                  "owners1": [
+                    {
+                      "entity": {
+                        "number": "E-1",
+                        "ownershipStructure": [
+                          {"principalOwners": [{"memberDetails": {"number": "P-1"}}]}
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+        AggregationContext context = context(root);
+        when(resolver.resolveTree(any(JsonNode.class), same(context)))
+                .thenReturn(Mono.error(new BeneficialOwnersResolutionException(
+                        BeneficialOwnersResolutionException.Reason.MALFORMED_RESPONSE,
+                        "failed",
+                        new RuntimeException("bad"))));
+
+        StepVerifier.create(enrichment.fetch(context))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(EnrichmentDependencyException.class)
+                        .satisfies(ex -> assertThat(((EnrichmentDependencyException) ex).catalog())
+                                .isEqualTo(ProblemCatalog.ENRICH_CONTRACT_VIOLATION)))
+                .verify();
+
+        assertTreeMetric("failure", 1);
     }
 
     private JsonNode individual(String number) {
