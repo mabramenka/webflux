@@ -46,7 +46,10 @@ class BeneficialOwnersEnrichmentTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         beneficialOwners = new BeneficialOwnersEnrichment(
-                new OwnershipResolver(ownersClient, objectMapper), meterRegistry, objectMapper);
+                new OwnershipResolver(ownersClient, objectMapper),
+                new RootEntityTargets(),
+                new BeneficialOwnersDetailsPayload(objectMapper),
+                meterRegistry);
     }
 
     @Test
