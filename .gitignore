@@ -11,7 +11,7 @@ out/
 .claude/
 AGENTS.md
 CLAUDE.md
-PROJECT_REVIEW.md
+docs/project-review.md
 
 # Dev-only TLS material (see scripts/gen-dev-certs.sh). Never commit key material.
 src/main/resources/certs/
