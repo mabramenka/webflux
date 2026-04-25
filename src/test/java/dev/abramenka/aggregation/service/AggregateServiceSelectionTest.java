@@ -29,7 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
 
     @Test
-    void aggregate_failsWhenSelectedEnrichmentFails_andMergesSuccessfulSelectedResults() {
+    void aggregate_recordsFailedOptionalSelectedEnrichment_andMergesSuccessfulSelectedResults() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("account"));
         ClientRequestContext clientRequestContext = new ClientRequestContext(
                 ForwardedHeaders.builder().authorization("Bearer token").build(), true, Projections.empty());
@@ -55,14 +55,16 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
                 .thenReturn(Mono.error(new RuntimeException("account down")));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext))
-                .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(DownstreamClientException.class)
-                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
-                                        .getBody()
-                                        .getType())
-                                .isEqualTo(ProblemCatalog.ENRICH_UNAVAILABLE.type())))
-                .verify();
-        assertPartMetric("account", "failure", 1);
+                .assertNext(aggregated -> {
+                    JsonNode partMeta = aggregated.path("meta").path("parts").path("account");
+                    assertThat(partMeta.path("status").asString()).isEqualTo("FAILED");
+                    assertThat(partMeta.path("criticality").asString()).isEqualTo("OPTIONAL");
+                    assertThat(partMeta.path("reason").asString()).isEqualTo("INTERNAL");
+                    assertThat(partMeta.path("errorCode").asString()).isEqualTo("ORCH-INVARIANT-VIOLATED");
+                    assertThat(aggregated.path("data").path(0).has("account1")).isFalse();
+                })
+                .verifyComplete();
+        assertPartMetric("account", "failed_optional", 1);
 
         JsonNode accountResponse = json("""
             {
