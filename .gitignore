@@ -6,6 +6,12 @@ build/
 
 out/
 
+# Local AI/tooling notes and profiles. Keep the files in their default lookup paths,
+# but do not treat them as project artifacts.
+.claude/
+AGENTS.md
+CLAUDE.md
+PROJECT_REVIEW.md
+
 # Dev-only TLS material (see scripts/gen-dev-certs.sh). Never commit key material.
 src/main/resources/certs/
-
