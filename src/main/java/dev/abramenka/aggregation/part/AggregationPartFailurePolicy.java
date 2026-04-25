@@ -7,6 +7,7 @@ import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.PartCriticality;
 import dev.abramenka.aggregation.model.PartFailureReason;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -52,7 +53,11 @@ class AggregationPartFailurePolicy {
         }
     }
 
-    record FailureDecision(boolean failRequest, Throwable error, PartFailureReason reason, String errorCode) {
+    record FailureDecision(
+            boolean failRequest,
+            @Nullable Throwable error,
+            @Nullable PartFailureReason reason,
+            @Nullable String errorCode) {
 
         static FailureDecision fail(Throwable error) {
             return new FailureDecision(true, error, null, null);

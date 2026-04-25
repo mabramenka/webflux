@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
@@ -83,9 +84,12 @@ public class AggregationPartExecutor {
                 .onErrorResume(error -> {
                     AggregationPartFailurePolicy.FailureDecision decision = failurePolicy.decide(part, error);
                     if (decision.failRequest()) {
-                        return Mono.error(decision.error());
+                        return Mono.error(Objects.requireNonNull(decision.error()));
                     }
-                    return Mono.just(PartExecutionResult.failure(part.name(), decision.reason(), decision.errorCode()));
+                    return Mono.just(PartExecutionResult.failure(
+                            part.name(),
+                            Objects.requireNonNull(decision.reason()),
+                            Objects.requireNonNull(decision.errorCode())));
                 });
     }
 
@@ -127,10 +131,12 @@ public class AggregationPartExecutor {
                 continue;
             }
             if (executionResult.failed()) {
-                recordFailure(part, executionResult.failureReason(), executionResult.errorCode(), outcomes);
+                PartFailureReason reason = Objects.requireNonNull(executionResult.failureReason());
+                String errorCode = Objects.requireNonNull(executionResult.errorCode());
+                recordFailure(part, reason, errorCode, outcomes);
                 continue;
             }
-            AggregationPartResult result = executionResult.result();
+            AggregationPartResult result = Objects.requireNonNull(executionResult.result());
             if (result instanceof AggregationPartResult.NoOp noOp) {
                 recordNoOp(part, noOp, outcomes);
                 continue;
