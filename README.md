@@ -1,7 +1,7 @@
 # Aggregation Gateway
 
 [![Java 21](https://img.shields.io/badge/Java-21-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
-[![Spring Boot 4.0.5](https://img.shields.io/badge/Spring%20Boot-4.0.5-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Spring Boot 4.0.6](https://img.shields.io/badge/Spring%20Boot-4.0.6-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Spring WebFlux](https://img.shields.io/badge/WebFlux-reactive-6DB33F?logo=spring&logoColor=white)](https://docs.spring.io/spring-framework/reference/web/webflux.html)
 [![Gradle 9.4.1](https://img.shields.io/badge/Gradle-9.4.1-02303A?logo=gradle&logoColor=white)](https://gradle.org/)
 [![Jackson 3.1.2](https://img.shields.io/badge/Jackson-3.1.2-2F6DB3)](https://github.com/FasterXML/jackson)
@@ -20,7 +20,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 - Dynamic JSON aggregation without fixed downstream response DTOs
 - Spring Boot 4 HTTP service clients backed by reactive `WebClient`
-- Dependency-ordered aggregation parts that are required once selected
+- Dependency-ordered aggregation parts with per-part `APPLIED` / `EMPTY` / `SKIPPED` outcomes
 - Declarative path-based enrichment rules for keyed array joins
 - Fallback key paths for inconsistent downstream schemas
 - Recursive beneficial-owners aggregation with bounded depth
@@ -35,8 +35,8 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 ## Stack
 
 - Java 21
-- Spring Boot 4.0.5
-- Spring Framework 7.0.x managed by the Spring Boot BOM
+- Spring Boot 4.0.6
+- Spring Framework 7.0.7
 - Spring WebFlux
 - Spring HTTP service clients
 - Jackson 3.1.2
@@ -114,7 +114,7 @@ All downstream clients send and accept JSON. Downstream 4xx/5xx responses, trans
 
 ## Architecture
 
-Aggregation Gateway is a synchronous domain facade, not an owner of account, account-group, or owner data. Its boundary is response composition: it validates the caller request, calls the mandatory account-group dependency, expands the selected aggregation graph, calls required enrichment dependencies, and returns one merged JSON document.
+Aggregation Gateway is a synchronous domain facade, not an owner of account, account-group, or owner data. Its boundary is response composition: it validates the caller request, calls the mandatory account-group dependency, expands the selected aggregation graph, runs the selected and dependency-enabled enrichment paths, and returns one merged JSON document.
 
 ### Module Boundaries
 
@@ -122,9 +122,9 @@ Aggregation Gateway is a synchronous domain facade, not an owner of account, acc
 | --- | --- | --- |
 | `api` | HTTP endpoints and transport DTOs | Public request shape and route versioning |
 | `service` | Request orchestration entry point | Account-group request construction and top-level observation |
-| `part` | Aggregation graph planning, dependency levels, execution, merge application, metrics | Required selected-part execution semantics |
+| `part` | Aggregation graph planning, dependency levels, execution, merge application, metrics | Selected-part execution semantics and per-part outcomes |
 | `enrichment.<name>` | Business-specific enrichment parts | Part name, dependency declaration, downstream request and merge rule |
-| `enrichment.support` | Reusable enrichment mechanics | Path selection, keyed joins, required keyed-response completeness checks |
+| `enrichment.support` | Reusable enrichment mechanics | Path selection, keyed joins, and tolerant keyed-response attachment |
 | `client` | Spring HTTP service clients and downstream error filter | Outbound paths, forwarded context, HTTP-layer failure normalization |
 | `error` | Problem Detail mapping | Stable validation and known domain/downstream problem shapes |
 | `config` | WebFlux, client, SSL, MDC, and context propagation wiring | Runtime plumbing and framework integration |
@@ -136,26 +136,26 @@ Aggregation Gateway is a synchronous domain facade, not an owner of account, acc
 3. `service` plans selected parts before calling downstreams, so unknown part names fail before any account-group call.
 4. `service` calls the mandatory account-group downstream and requires an object-shaped JSON response.
 5. `part` expands dependencies, groups parts by dependency level, and validates every selected part against the current root snapshot.
-6. A selected part whose `supports(context)` is false fails as a main contract violation because the root payload lacks data required for mandatory enrichment.
+6. A selected part whose `supports(context)` is false is recorded under `meta.parts` as `SKIPPED` with reason `UNSUPPORTED_CONTEXT`.
 7. Runnable parts in the same level execute concurrently; the next level starts only after successful results are applied in graph order.
-8. A selected part is required: execution errors, empty downstream bodies, incomplete keyed responses, downstream failures, and merge failures terminate the request.
+8. Data absence is soft per part: `NO_KEYS_IN_MAIN`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `UNSUPPORTED_CONTEXT`, and `DEPENDENCY_EMPTY` succeed with `meta.parts`; transport/auth/timeout/invalid-payload/merge failures still terminate the request.
 
 ### Consistency And Failure Semantics
 
 - The account-group call is the mandatory root. If it fails or returns unreadable/non-object JSON, the whole request fails.
-- `include == null` selects every registered part. Because selected parts are required, the main payload must contain the keys needed by every registered part. `include == []` returns only the account-group response.
+- `include == null` selects every registered part. `include == []` returns only the account-group response.
 - Explicitly selected transitive dependencies are enabled automatically. For example, `beneficialOwners` also selects `owners`.
-- Keyed enrichments (`account`, `owners`) request every distinct key found in the root payload and require the downstream response to contain an entry for each requested key.
+- Keyed enrichments (`account`, `owners`) request every distinct key found in the root payload and attach only the entries that are actually returned.
 - Same-level part results are generated from the same immutable root snapshot, then merged into the mutable root in stable graph order.
 - The service does not persist state and has no distributed transaction. Consistency is per request and depends on downstream responses at request time.
 
 ### Error Contract Boundaries
 
-The implemented public error contract follows [error-handling-design.md](error-handling-design.md): every error response is a facade-owned RFC 9457 Problem Detail with stable `type`, `errorCode`, `category`, `retryable`, `traceId`, `timestamp`, and `instance` fields. Validation failures, unsupported aggregation parts, downstream dependency failures, missing selected-part keys, enrichment contract violations, orchestration failures, framework 4xx errors, overload failures, and unexpected platform failures are all normalized through this catalog.
+The implemented public error contract follows [error-handling-design.md](error-handling-design.md): every error response is a facade-owned RFC 9457 Problem Detail with stable `type`, `errorCode`, `category`, `retryable`, `traceId`, `timestamp`, and `instance` fields. Validation failures, downstream dependency failures, enrichment contract violations, orchestration failures, framework 4xx errors, overload failures, and unexpected platform failures are all normalized through this catalog.
 
-Selected enrichment failures are no longer anonymous internal errors. Missing keys required to run a selected part map to `/problems/main/contract-violation`; missing keyed enrichment entries map to `/problems/enrichment/contract-violation`; merge failures map to `/problems/orchestration/merge-failed`; unclassified unchecked failures map to `/problems/platform/internal`.
+Selected enrichment failures are no longer anonymous internal errors. Missing keys in the main payload, empty enrichment bodies, `404` enrichment responses, unsupported contexts, and empty dependencies are success-side `meta.parts` outcomes; nested beneficial-owners contract violations still map to `/problems/enrichment/contract-violation`; merge failures map to `/problems/orchestration/merge-failed`; unclassified unchecked failures map to `/problems/platform/internal`.
 
-Raw downstream `404` responses are treated as opaque dependency failures unless facade code explicitly classifies the condition as a domain not-found outcome. `ORCH-CONFIG-INVALID` is reserved for runtime configuration failures detected after startup; configuration errors found during bean creation may fail application startup before an HTTP response exists.
+Raw downstream `404` responses from the main dependency are treated as opaque dependency failures unless facade code explicitly classifies the condition as a domain not-found outcome. Top-level enrichment `404` responses are converted to `meta.parts.<name> = { status: EMPTY, reason: DOWNSTREAM_NOT_FOUND }`. `ORCH-CONFIG-INVALID` is reserved for runtime configuration failures detected after startup; configuration errors found during bean creation may fail application startup before an HTTP response exists.
 
 ## API
 
@@ -193,7 +193,8 @@ Fields sent to the account group service:
 - empty array: only the account group response is returned
 - supported values: `account`, `owners`, `beneficialOwners`
 - unknown values fail before calling the account group service
-- selected parts are required: execution, downstream, empty-result, missing keyed-response entry, or merge failures fail the request
+- selected parts may finish as `APPLIED`, `EMPTY`, or `SKIPPED` in `meta.parts`
+- dependency transport/auth/timeout/invalid-payload failures and merge/invariant failures still fail the request
 
 ### Query Parameters
 
@@ -269,7 +270,7 @@ Bean validation failures, malformed JSON, invalid query/path values, and unknown
 }
 ```
 
-This is emitted, for example, when a keyed enrichment response omits an entry for a requested key.
+This is emitted, for example, when the nested beneficial-owners resolver receives malformed or incomplete owners payloads while walking the ownership tree.
 
 ### 502/504 — downstream dependency failure
 
@@ -316,10 +317,10 @@ Unclassified exceptions use `/problems/platform/internal` with `errorCode: PLATF
 2. Build and send the account group request to `/account-groups`.
 3. Expand aggregation part dependencies for the requested `include` set.
 4. Build dependency levels from the selected aggregation parts.
-5. For each level, require every selected part to support the current root snapshot.
-6. Execute runnable parts in the same level in parallel; a selected part failure fails the request.
+5. For each level, evaluate whether each selected part can run against the current root snapshot or should yield a soft `meta.parts` outcome.
+6. Execute runnable parts in the same level in parallel; fatal dependency, decoding, merge, or invariant failures fail the request.
 7. Apply successful results in stable graph order before the next dependency level starts.
-8. Fail the request if a selected part cannot run because required dependency data is absent.
+8. Record non-fatal no-op outcomes in `meta.parts` and skip dependents with `DEPENDENCY_EMPTY` when a prerequisite part did not apply.
 
 Default part dependency order:
 
@@ -455,6 +456,11 @@ Custom metric names:
 - `aggregation.beneficial_owners.tree`, tagged by `outcome` (per root entity resolved by the beneficial-owners part)
 
 ## Quality Gates
+
+Large suites are grouped by scenario:
+
+- `AggregateServiceSelectionTest`, `AggregateServiceDependencyTest`, `AggregateServiceJoinTest`
+- `AggregateControllerRequestValidationTest`, `AggregateControllerProblemMappingTest`, `AggregateControllerRoutingTest`
 
 Run unit and integration tests:
 
