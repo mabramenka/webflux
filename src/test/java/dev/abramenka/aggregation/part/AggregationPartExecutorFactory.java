@@ -11,6 +11,7 @@ public final class AggregationPartExecutorFactory {
         AggregationPartMetrics metrics = new AggregationPartMetrics(meterRegistry);
         return new AggregationPartExecutor(
                 new AggregationPartRunner(metrics, ObservationRegistry.NOOP),
+                new AggregationPartFailurePolicy(),
                 new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),
                 metrics);

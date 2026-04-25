@@ -16,6 +16,11 @@ public interface AggregationEnrichment extends AggregationPart {
     void merge(ObjectNode root, JsonNode enrichmentResponse);
 
     @Override
+    default PartCriticality criticality() {
+        return PartCriticality.OPTIONAL;
+    }
+
+    @Override
     default Mono<AggregationPartResult> execute(AggregationContext context) {
         return fetch(context)
                 .map(response -> mergeIntoSnapshot(context.accountGroupResponse(), response))

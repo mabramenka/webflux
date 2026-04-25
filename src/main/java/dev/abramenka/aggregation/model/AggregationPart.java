@@ -19,5 +19,9 @@ public interface AggregationPart {
         return true;
     }
 
+    default PartCriticality criticality() {
+        return PartCriticality.REQUIRED;
+    }
+
     Mono<AggregationPartResult> execute(AggregationContext context);
 }

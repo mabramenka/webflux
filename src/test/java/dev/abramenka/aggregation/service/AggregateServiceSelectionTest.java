@@ -312,12 +312,13 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
                 .thenReturn(Mono.error(new DecodingException("bad json")));
 
         StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
-                .expectErrorSatisfies(error -> assertThat(error)
-                        .isInstanceOf(DownstreamClientException.class)
-                        .satisfies(ex -> assertThat(((DownstreamClientException) ex)
-                                        .getBody()
-                                        .getType())
-                                .isEqualTo(ProblemCatalog.ENRICH_INVALID_PAYLOAD.type())))
+                .assertNext(aggregated -> {
+                    JsonNode partMeta = aggregated.path("meta").path("parts").path("account");
+                    assertThat(partMeta.path("status").asString()).isEqualTo("FAILED");
+                    assertThat(partMeta.path("criticality").asString()).isEqualTo("OPTIONAL");
+                    assertThat(partMeta.path("reason").asString()).isEqualTo("INVALID_PAYLOAD");
+                    assertThat(partMeta.path("errorCode").asString()).isEqualTo("ENRICH-INVALID-PAYLOAD");
+                })
                 .verify();
     }
 
