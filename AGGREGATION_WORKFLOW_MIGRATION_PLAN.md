@@ -781,7 +781,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 10 — Migrate owners
 [x] Phase 11 — Multi-binding workflow
 [x] Phase 12 — Compute step
-[ ] Phase 13 — Harden patch conflict detection and write ownership
+[x] Phase 13 — Harden patch conflict detection and write ownership
 [ ] Phase 14 — Recursive traversal skeleton
 [ ] Phase 15 — Traversal reducer
 [ ] Phase 16 — Migrate beneficial owners
@@ -2190,7 +2190,21 @@ Bug in computation code:
 
 ## Phase 13 — Harden Patch Conflict Detection and Write Ownership
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 13 — harden patch conflict detection and write ownership
+- **Files added (production):** `workflow/ownership/OwnedTarget.java`, `workflow/ownership/WriteOwnership.java`, `workflow/ownership/package-info.java`
+- **Files modified (production):** `AggregationWorkflow.java` (optional 5th `@Nullable WriteOwnership` field; backward-compatible 4-arg constructor delegates to 5-arg), `WorkflowStep.java` (added `default writtenFieldName()`), `KeyedBindingStep.java` (overrides `writtenFieldName()`), `WorkflowDefinitionValidator.java` (ownership validation when declared)
+- **Files added (test):** `WriteOwnershipValidationTest.java` (12 scenarios)
+- **Files modified (test):** `WorkflowExecutorTest.java` (4 new Phase 13 scenarios: idempotent write, array append, no-partial-patch on global root ×2, ORCH-MERGE-FAILED mapping)
+- **Phase 11 conflict detection unchanged** — already covered rules 1-5; Phase 13 adds static ownership on top
+- **No partial global patch**: `accumulated.addAll()` only runs after both conflict-check and applicator succeed; workflow failure prevents AggregationPartExecutor from touching the global root — proven by two new tests
+- **Error mapping**: conflicts stay ORCH-MERGE-FAILED; no new catalog entries needed
+- **Intentionally not done:** ORCH-PATCH-CONFLICT/ORCH-PATCH-INVALID not introduced (no product contract requires distinction); account/owners/multi-binding/compute unchanged
+- **Local checks run:** focused + full suite green; Phase 11–13 checkpoint: `./gradlew test spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification` green
+- **Next phase:** Phase 14 — recursive traversal skeleton
 
 ### Goal
 

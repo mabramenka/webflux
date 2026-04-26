@@ -98,6 +98,12 @@ public final class KeyedBindingStep implements WorkflowStep {
     }
 
     @Override
+    public Optional<String> writtenFieldName() {
+        WriteRule writeRule = binding.writeRule();
+        return writeRule != null ? Optional.of(writeRule.action().fieldName()) : Optional.empty();
+    }
+
+    @Override
     public Mono<StepResult> execute(WorkflowContext context) {
         JsonNode source = resolveSource(
                 binding.keyExtraction().source(), binding.keyExtraction().stepResultName(), context);

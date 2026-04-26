@@ -23,5 +23,15 @@ public interface WorkflowStep {
         return Optional.empty();
     }
 
+    /**
+     * Returns the root-document field name this step writes (e.g. {@code "account1"}), if any.
+     * Used by {@link dev.abramenka.aggregation.workflow.WorkflowDefinitionValidator} to validate
+     * {@link dev.abramenka.aggregation.workflow.ownership.WriteOwnership} declarations. Steps that
+     * do not write to the root return empty.
+     */
+    default Optional<String> writtenFieldName() {
+        return Optional.empty();
+    }
+
     Mono<StepResult> execute(WorkflowContext context);
 }
