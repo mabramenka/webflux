@@ -1253,7 +1253,7 @@ Do not migrate `account` in the same phase as Phase 7.
 - **Files added:** `workflow/step/KeyedBindingStep.java`, `workflow/step/package-info.java`
 - **Files modified:** `enrichment/support/keyed/PathExpression.java` (added `toItemPointerAt(int)`), `WorkflowExecutorTest.java` (2 integration tests added)
 - **Files added (test):** `workflow/step/KeyedBindingStepTest.java` (14 scenarios)
-- **Intentionally not done:** no existing enrichment migrated; CURRENT_ROOT/STEP_RESULT/TRAVERSAL_STATE sources rejected at construction; AppendToArray auto-creation not supported; multi-binding not implemented
+- **Intentionally not done:** no existing enrichment migrated; CURRENT_ROOT/STEP_RESULT/TRAVERSAL_STATE sources rejected at construction; multi-binding not implemented. AppendToArray auto-creation was finalized later during Phase 8 to match legacy keyed-enrichment behavior.
 - **Local checks run:** `./gradlew test --tests '*KeyedBindingStepTest' --tests '*WorkflowExecutorTest'` — green; `spotlessJavaCheck` — green
 - **CI:** full suite deferred to CI per plan section 2
 - **Next phase:** Phase 8 — migrate `account` enrichment to `WorkflowAggregationPart` using one `KeyedBindingStep`
@@ -1414,12 +1414,21 @@ AppendToArray:
   appends the matched downstream response entry to the named array field of the matched target item.
 
 If AppendToArray target field does not exist:
-  Do not silently create it unless this behavior is already explicitly modeled and tested.
-  Prefer failing fast or adding an explicit option in a later phase.
+  Implemented behavior after Phase 8 is to auto-create an empty array before the first append.
+  This matches legacy keyed-enrichment behavior based on withArrayProperty-style output.
+  The behavior must remain explicit and tested.
+
+If AppendToArray target field exists but is not an array:
+  Fail fast with an orchestration merge failure.
+
+If one owner item matches multiple response entries:
+  Emit the array-create operation only once for that owner item, then append all matched entries.
 
 If ReplaceField target field does not exist:
-  Use add or replace deliberately.
-  Do not rely on accidental ObjectNode.set behavior without documenting it.
+  Use add deliberately.
+
+If ReplaceField target field already exists:
+  Use replace deliberately.
 ```
 
 The chosen behavior must be tested.
@@ -1696,41 +1705,279 @@ CI is allowed to run the broader suite.
 
 **Status:** Not started.
 
+### Preconditions
+
+Phase 10 starts from the actual `main` implementation after Phases 7 through 9.
+
+Required current state:
+
+```text
+- Phase 7 is completed: KeyedBindingStep exists and supports one keyed binding from ROOT_SNAPSHOT.
+- Phase 8 is completed: account is already migrated to WorkflowAggregationPart.
+- Phase 9 is completed: aggregation.binding.requests metrics exist for workflow bindings.
+- owners is still legacy-based and has not been migrated yet.
+- beneficialOwners is still out of scope for this phase.
+```
+
+Before editing, verify the current implementation rather than relying only on this summary.
+Use `fff`/`rg` to inspect at least:
+
+```text
+OwnersEnrichment
+AccountEnrichment
+KeyedBindingStep
+DownstreamBinding
+KeyExtractionRule
+ResponseIndexingRule
+WriteRule
+WorkflowExecutor
+WorkflowBindingMetrics
+```
+
 ### Goal
 
-Migrate a keyed enrichment with fallback key paths.
+Migrate the second simple keyed enrichment to the workflow model.
 
-Preferred candidate:
+Target enrichment:
 
 ```text
 owners
 ```
 
-This validates:
+This phase validates the already-implemented single-binding workflow support with a slightly richer legacy rule:
 
 ```text
-- multiple key paths
+- multiple source key paths
 - fallback source keys
 - fallback response keys
-- write target field
+- append-to-array target field
+- binding-level metrics for a second workflow part
 ```
+
+### Current owners legacy rule
+
+The current legacy owners enrichment is represented by this behavior and must be preserved exactly:
+
+```text
+Business part name:
+  owners
+
+Source/root item path:
+  $.data[*]
+
+Source key paths, in fallback/declaration order:
+  basicDetails.owners[*].id
+  basicDetails.owners[*].number
+
+Request keys field:
+  ids
+
+Downstream client call:
+  Owners.fetchOwners(request, Owners.DEFAULT_FIELDS, context.clientRequestContext())
+
+Response item path:
+  $.data[*]
+
+Response key paths, in fallback/declaration order:
+  individual.number
+  id
+
+Write action:
+  AppendToArray("owners1")
+
+Target field:
+  owners1
+```
+
+Phase 10 should migrate this behavior, not reinterpret it.
+
+### Expected migration result
+
+Before:
+
+```text
+OwnersEnrichment extends the legacy KeyedArrayEnrichment path and declares an EnrichmentRule.
+```
+
+After:
+
+```text
+OwnersEnrichment extends WorkflowAggregationPart.
+OwnersEnrichment declares one AggregationWorkflow.
+OwnersEnrichment declares one DownstreamBinding.
+OwnersEnrichment uses one KeyedBindingStep.
+Workflow infrastructure performs key extraction, downstream fetch, response indexing, target matching, patch generation, and binding metrics.
+```
+
+Expected binding shape:
+
+```text
+DownstreamBinding name:
+  owners
+
+KeyExtractionRule:
+  source = ROOT_SNAPSHOT
+  sourceItemPath = $.data[*]
+  keyPaths = [basicDetails.owners[*].id, basicDetails.owners[*].number]
+
+ResponseIndexingRule:
+  responseItemPath = $.data[*]
+  responseKeyPaths = [individual.number, id]
+
+WriteRule:
+  targetItemPath = $.data[*]
+  matchBy = existing keyed match fields required by KeyedBindingStep
+  action = AppendToArray("owners1")
+
+DownstreamCall:
+  build request object with field ids
+  call Owners.fetchOwners(request, Owners.DEFAULT_FIELDS, context.clientRequestContext())
+  wrap optional body through the existing DownstreamClientResponses.optionalBody semantics
+```
+
+### Phase 10 must not become Phase 11
+
+The current workflow infrastructure already supports the pieces Phase 10 needs:
+
+```text
+- multiple source key paths through KeyExtractionRule / KeyExtractor
+- fallback response key paths through ResponseIndexingRule / ResponseIndexer
+- append-to-array writes through KeyedBindingStep
+- absent-array auto-create behavior through KeyedBindingStep
+- workflow binding metrics through WorkflowExecutor + WorkflowBindingMetrics
+```
+
+Therefore Phase 10 should be a migration phase, not an architecture-expansion phase.
+
+If owners cannot be migrated with the current single-binding model, stop and report the exact missing capability instead of implementing Phase 11 inside Phase 10.
+
+### WriteRule.MatchBy guardrail
+
+Do not redesign `WriteRule.MatchBy` in Phase 10 unless focused owners tests prove it is required.
+
+For Phase 10, prefer using the existing fallback paths in:
+
+```text
+- KeyExtractionRule.keyPaths()
+- ResponseIndexingRule.responseKeyPaths()
+```
+
+`WriteRule.MatchBy` currently carries the keyed matching fields required by `KeyedBindingStep`; broader list-based or multi-source matching belongs to a later phase only if the implementation proves it is necessary.
+
+If `WriteRule.MatchBy` becomes insufficient for owners, stop and report before changing the model.
+
+### Required implementation steps
+
+```text
+1. Re-read the legacy OwnersEnrichment behavior.
+2. Re-read AccountEnrichment as the working workflow-based example.
+3. Re-read KeyedBindingStep tests that cover fallback source/response keys and AppendToArray behavior.
+4. Convert OwnersEnrichment from the legacy keyed-enrichment base class to WorkflowAggregationPart.
+5. Declare one owners DownstreamBinding with the exact legacy paths and target field.
+6. Declare one KeyedBindingStep in the owners workflow.
+7. Preserve the existing downstream call semantics and optional-body handling.
+8. Remove only the owners-specific manual/legacy keyed join path.
+9. Keep account unchanged.
+10. Keep beneficialOwners unchanged.
+```
+
+### Tests required
+
+Add or update focused tests so they prove at least:
+
+```text
+1. owners uses fallback source key path basicDetails.owners[*].id.
+2. owners uses fallback source key path basicDetails.owners[*].number.
+3. owners indexes downstream response by individual.number.
+4. owners indexes downstream response by id when individual.number is absent.
+5. owners writes to owners1 with the same response shape as before.
+6. owners preserves absent-array auto-create behavior if the legacy behavior expected it.
+7. owners keeps existing soft outcomes unchanged: no keys, empty downstream, 404 downstream.
+8. account workflow behavior is not changed by the owners migration.
+9. binding metric aggregation.binding.requests is emitted for owners with binding=owners.
+```
+
+Prefer preserving existing owners characterization tests. Only update test wiring if the implementation moved from legacy base class to workflow part.
 
 ### Acceptance criteria
 
 ```text
 Owners behavior unchanged.
+Owners response shape unchanged.
+Owners error behavior unchanged.
+Success-side meta.parts unchanged.
 Fallback key extraction works.
 Fallback response indexing works.
 No manual keyed join logic remains in owners part.
 Existing owners tests pass.
+Existing account workflow tests pass.
+Binding metrics still work for account and owners.
+No Phase 11 multi-binding semantics are introduced.
+```
+
+### Verification
+
+Run focused checks first:
+
+```bash
+./gradlew test --tests '*Owners*'
+./gradlew test --tests '*Account*'
+./gradlew test --tests '*KeyedBindingStepTest'
+./gradlew test --tests '*WorkflowExecutorTest'
+```
+
+Because Phase 9 and Phase 10 are a recommended checkpoint, run or explicitly defer broader verification:
+
+```bash
+./gradlew test
+./gradlew spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification
+./gradlew build
+```
+
+If broader verification is skipped locally because CI is expected to cover it, record that explicitly in the Phase 10 handoff note.
+
+### Handoff note template for Phase 10
+
+After completing Phase 10, update this section with a handoff note containing:
+
+```text
+- Completed: Phase 10 — migrate owners enrichment to WorkflowAggregationPart
+- Files changed in production
+- Files changed in tests
+- Exact legacy behavior preserved
+- What was intentionally not done
+- Local checks run
+- CI/full verification status
+- Next phase: Phase 11 — Multi-binding workflow
+```
+
+### Stop and report instead of guessing if
+
+```text
+- owners cannot be represented by one DownstreamBinding and one KeyedBindingStep
+- owners requires true multi-binding workflow
+- owners requires CURRENT_ROOT or STEP_RESULT
+- fallback source key extraction does not behave like the legacy EnrichmentRule
+- fallback response indexing does not behave like the legacy EnrichmentRule
+- existing owners tests reveal a public contract difference
+- changing WriteRule.MatchBy appears necessary
+- current code contradicts this plan
 ```
 
 ### Forbidden
 
 ```text
 - Do not migrate beneficialOwners yet.
+- Do not migrate any other enrichment.
 - Do not introduce recursive traversal here.
-- Do not implement multi-binding workflow unless owners genuinely requires it and the plan is updated first.
+- Do not introduce compute steps here.
+- Do not implement multi-binding workflow here.
+- Do not implement CURRENT_ROOT or STEP_RESULT here.
+- Do not redesign WriteRule.MatchBy unless tests prove owners cannot work without it and the plan is updated first.
+- Do not change the public REST API.
+- Do not change the public response JSON contract.
+- Do not change RFC 9457 ProblemDetail behavior.
+- Do not change success-side meta.parts behavior.
 ```
 
 ---
