@@ -3,6 +3,7 @@ package dev.abramenka.aggregation.workflow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
@@ -26,7 +27,7 @@ class WorkflowAggregationPartTest {
     void exposesWorkflowMetadata() {
         WorkflowAggregationPart part = new TestPart(
                 new AggregationWorkflow("test", Set.of("dep"), PartCriticality.OPTIONAL, List.of(applyStep("s1"))),
-                new WorkflowExecutor());
+                AccountEnrichmentTestFactory.noopWorkflowExecutor());
 
         assertThat(part.name()).isEqualTo("test");
         assertThat(part.dependencies()).containsExactly("dep");
@@ -37,7 +38,7 @@ class WorkflowAggregationPartTest {
     void executeRoundTripsThroughExecutorAndProducesJsonPatchResult() {
         WorkflowAggregationPart part = new TestPart(
                 new AggregationWorkflow("test", Set.of(), PartCriticality.REQUIRED, List.of(applyStep("s1"))),
-                new WorkflowExecutor());
+                AccountEnrichmentTestFactory.noopWorkflowExecutor());
 
         StepVerifier.create(part.execute(context()))
                 .assertNext(result -> {
@@ -52,7 +53,7 @@ class WorkflowAggregationPartTest {
         AggregationWorkflow invalid = new AggregationWorkflow(
                 "test", Set.of(), PartCriticality.REQUIRED, List.of(applyStep("dup"), applyStep("dup")));
 
-        assertThatThrownBy(() -> new TestPart(invalid, new WorkflowExecutor()))
+        assertThatThrownBy(() -> new TestPart(invalid, AccountEnrichmentTestFactory.noopWorkflowExecutor()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("duplicate step name");
     }

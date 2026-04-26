@@ -791,7 +791,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 6  — Workflow model skeleton
 [x] Phase 7  — Keyed binding step
 [x] Phase 8  — Migrate account
-[ ] Phase 9  — Binding metrics and diagnostics
+[x] Phase 9  — Binding metrics and diagnostics
 [ ] Phase 10 — Migrate owners
 [ ] Phase 11 — Multi-binding workflow
 [ ] Phase 12 — Compute step
@@ -1630,7 +1630,20 @@ Other parts untouched.
 
 ## Phase 9 — Binding Metrics and Diagnostics
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 9 — binding metrics and diagnostics
+- **Files added:** `WorkflowBindingMetrics.java` (new `@Component`)
+- **Files modified (production):** `WorkflowStep.java` (added default `bindingName()`), `KeyedBindingStep.java` (overrides `bindingName()` → binding.name().value()), `WorkflowExecutor.java` (injects WorkflowBindingMetrics, records per step)
+- **Files modified (test):** `WorkflowExecutorTest.java` (5 new binding metrics scenarios), `WorkflowAggregationPartTest.java` (executor wiring), `AccountEnrichmentTestFactory.java` (executor wiring + `noopWorkflowExecutor()` helper)
+- **Metric:** `aggregation.binding.requests{part, binding, outcome}` — outcomes: success/empty/skipped/failed
+- **Binding tag:** `KeyedBindingStep.bindingName()` exposes `DownstreamBinding.name()` so the tag shows the downstream identity (`"account"`) rather than the generic step name (`"fetch"`)
+- **Intentionally not done:** no logging added (safe field logging not required by the plan for this phase), no binding details in public bodies
+- **Local checks run:** focused workflow + account tests green; spotlessApply clean
+- **CI:** full suite deferred to Phase 10 checkpoint per plan section 2
+- **Next phase:** Phase 10 — migrate owners enrichment to workflow model
 
 ### Goal
 
