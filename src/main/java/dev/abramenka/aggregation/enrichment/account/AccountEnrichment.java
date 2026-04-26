@@ -13,6 +13,7 @@ import dev.abramenka.aggregation.workflow.binding.KeyExtractionRule;
 import dev.abramenka.aggregation.workflow.binding.KeySource;
 import dev.abramenka.aggregation.workflow.binding.ResponseIndexingRule;
 import dev.abramenka.aggregation.workflow.binding.WriteRule;
+import dev.abramenka.aggregation.workflow.ownership.WriteOwnership;
 import dev.abramenka.aggregation.workflow.step.KeyedBindingStep;
 import java.util.List;
 import java.util.Set;
@@ -59,7 +60,8 @@ class AccountEnrichment extends WorkflowAggregationPart {
                                         new WriteRule(
                                                 "$.data[*]",
                                                 new WriteRule.MatchBy("accounts[*].id", "id"),
-                                                new WriteRule.WriteAction.AppendToArray("account1")))))),
+                                                new WriteRule.WriteAction.AppendToArray("account1"))))),
+                        WriteOwnership.of("account1")),
                 workflowExecutor);
     }
 }
