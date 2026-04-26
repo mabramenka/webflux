@@ -449,7 +449,7 @@ class WorkflowExecutorTest {
 
         // The AggregationContext root (the one the executor and applicator would mutate at part end)
         // must be unchanged during workflow execution — the patch is not yet applied.
-        assertThat(ctx.accountGroupResponse().toString()).isEqualTo(originalJson);
+        assertThat(ctx.accountGroupResponse()).hasToString(originalJson);
     }
 
     @Test
@@ -616,7 +616,7 @@ class WorkflowExecutorTest {
                 .verify();
 
         // Global root must be completely unchanged — no partial writes visible
-        assertThat(ctx.accountGroupResponse().toString()).isEqualTo(originalJson);
+        assertThat(ctx.accountGroupResponse()).hasToString(originalJson);
     }
 
     @Test
@@ -638,7 +638,7 @@ class WorkflowExecutorTest {
                 .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
                 .verify();
 
-        assertThat(ctx.accountGroupResponse().toString()).isEqualTo(originalJson);
+        assertThat(ctx.accountGroupResponse()).hasToString(originalJson);
     }
 
     @Test

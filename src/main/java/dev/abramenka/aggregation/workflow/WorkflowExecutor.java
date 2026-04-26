@@ -2,6 +2,7 @@ package dev.abramenka.aggregation.workflow;
 
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.patch.JsonPatchApplicator;
 import dev.abramenka.aggregation.patch.JsonPatchDocument;
 import dev.abramenka.aggregation.patch.JsonPatchException;
@@ -11,6 +12,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Executes the steps of an {@link AggregationWorkflow} sequentially.
@@ -62,17 +64,17 @@ public class WorkflowExecutor {
                 .doOnNext(result -> bindingMetrics.record(workflowName, metricBindingTag, outcomeTag(result)))
                 .doOnError(ex -> bindingMetrics.record(workflowName, metricBindingTag, "failed"))
                 .flatMap(result -> switch (result) {
-                    case StepResult.Applied applied -> {
-                        if (applied.storeAs() != null && applied.storedValue() != null) {
-                            context.variables().put(applied.storeAs(), applied.storedValue());
+                    case StepResult.Applied(JsonPatchDocument patch, String storeAs, JsonNode storedValue) -> {
+                        if (storeAs != null && storedValue != null) {
+                            context.variables().put(storeAs, storedValue);
                         }
-                        if (applied.patch() != null) {
-                            applyAndAccumulate(applied.patch(), context, accumulated, conflictDetector);
+                        if (patch != null) {
+                            applyAndAccumulate(patch, context, accumulated, conflictDetector);
                         }
                         yield runSteps(steps, context, index + 1, accumulated, workflowName, conflictDetector);
                     }
-                    case StepResult.Skipped skipped -> Mono.just(WorkflowResult.skipped(skipped.reason()));
-                    case StepResult.Empty empty -> Mono.just(WorkflowResult.empty(empty.reason()));
+                    case StepResult.Skipped(PartSkipReason reason) -> Mono.just(WorkflowResult.skipped(reason));
+                    case StepResult.Empty(PartSkipReason reason) -> Mono.just(WorkflowResult.empty(reason));
                 });
     }
 

@@ -198,20 +198,20 @@ public final class KeyedBindingStep implements WorkflowStep {
             JsonNode responseEntry,
             Set<ObjectNode> arrayCreatedForOwner) {
         switch (action) {
-            case WriteRule.WriteAction.ReplaceField rf -> {
-                String pointer = basePointer + "/" + escapeToken(rf.fieldName());
-                if (owner.has(rf.fieldName())) {
+            case WriteRule.WriteAction.ReplaceField(String fieldName) -> {
+                String pointer = basePointer + "/" + escapeToken(fieldName);
+                if (owner.has(fieldName)) {
                     builder.replace(pointer, responseEntry);
                 } else {
                     builder.add(pointer, responseEntry);
                 }
             }
-            case WriteRule.WriteAction.AppendToArray aa -> {
-                String fieldPointer = basePointer + "/" + escapeToken(aa.fieldName());
-                JsonNode existing = owner.get(aa.fieldName());
+            case WriteRule.WriteAction.AppendToArray(String fieldName) -> {
+                String fieldPointer = basePointer + "/" + escapeToken(fieldName);
+                JsonNode existing = owner.get(fieldName);
                 if (existing != null && !existing.isArray()) {
                     throw OrchestrationException.mergeFailed(new JsonPatchException(
-                            "AppendToArray: field '" + aa.fieldName() + "' exists but is not an array in target item"));
+                            "AppendToArray: field '" + fieldName + "' exists but is not an array in target item"));
                 }
                 if (existing == null && !arrayCreatedForOwner.contains(owner)) {
                     builder.add(fieldPointer, JsonNodeFactory.instance.arrayNode());

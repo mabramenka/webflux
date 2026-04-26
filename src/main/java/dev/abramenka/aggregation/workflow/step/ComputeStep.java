@@ -94,7 +94,7 @@ public final class ComputeStep implements WorkflowStep {
 
         return Mono.fromCallable(() -> runCompute(values))
                 .map(result -> StepResult.stored(result.name(), result.value()))
-                .onErrorMap(ex -> !(ex instanceof FacadeException), ex -> OrchestrationException.invariantViolated(ex));
+                .onErrorMap(ex -> !(ex instanceof FacadeException), OrchestrationException::invariantViolated);
     }
 
     private ComputationResult runCompute(WorkflowValues values) {

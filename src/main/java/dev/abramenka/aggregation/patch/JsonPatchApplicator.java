@@ -29,31 +29,35 @@ public final class JsonPatchApplicator {
         JsonNode parent = navigate(root, pointer.parentSegments(), operation.path());
         String leaf = pointer.lastSegment();
         switch (operation) {
-            case JsonPatchOperation.Add add -> applyAdd(parent, leaf, add.value(), add.path());
-            case JsonPatchOperation.Replace replace -> applyReplace(parent, leaf, replace.value(), replace.path());
-            case JsonPatchOperation.Test test -> applyTest(parent, leaf, test.value(), test.path());
+            case JsonPatchOperation.Add(String path, JsonNode value) -> applyAdd(parent, leaf, value, path);
+            case JsonPatchOperation.Replace(String path, JsonNode value) -> applyReplace(parent, leaf, value, path);
+            case JsonPatchOperation.Test(String path, JsonNode value) -> applyTest(parent, leaf, value, path);
         }
     }
 
     private static JsonNode navigate(ObjectNode root, List<String> segments, String path) {
         JsonNode current = root;
         for (String segment : segments) {
-            if (current instanceof ObjectNode object) {
-                JsonNode next = object.get(segment);
-                if (next == null) {
-                    throw new JsonPatchException("Missing parent at segment '" + segment + "' for path '" + path + "'");
+            switch (current) {
+                case ObjectNode object -> {
+                    JsonNode next = object.get(segment);
+                    if (next == null) {
+                        throw new JsonPatchException(
+                                "Missing parent at segment '" + segment + "' for path '" + path + "'");
+                    }
+                    current = next;
                 }
-                current = next;
-            } else if (current instanceof ArrayNode array) {
-                int index = parseIndex(segment, path, array.size(), false);
-                JsonNode next = array.get(index);
-                if (next == null) {
-                    throw new JsonPatchException("Missing parent at index " + index + " for path '" + path + "'");
+                case ArrayNode array -> {
+                    int index = parseIndex(segment, path, array.size(), false);
+                    JsonNode next = array.get(index);
+                    if (next == null) {
+                        throw new JsonPatchException("Missing parent at index " + index + " for path '" + path + "'");
+                    }
+                    current = next;
                 }
-                current = next;
-            } else {
-                throw new JsonPatchException(
-                        "Cannot navigate into non-container node at segment '" + segment + "' for path '" + path + "'");
+                case null, default ->
+                    throw new JsonPatchException("Cannot navigate into non-container node at segment '" + segment
+                            + "' for path '" + path + "'");
             }
         }
         return current;
@@ -94,13 +98,14 @@ public final class JsonPatchApplicator {
 
     private static void applyTest(JsonNode parent, String leaf, JsonNode value, String path) {
         JsonNode actual;
-        if (parent instanceof ObjectNode object) {
-            actual = object.get(leaf);
-        } else if (parent instanceof ArrayNode array) {
-            int index = parseIndex(leaf, path, array.size(), false);
-            actual = array.get(index);
-        } else {
-            throw new JsonPatchException("Cannot test inside non-container parent for path '" + path + "'");
+        switch (parent) {
+            case ObjectNode object -> actual = object.get(leaf);
+            case ArrayNode array -> {
+                int index = parseIndex(leaf, path, array.size(), false);
+                actual = array.get(index);
+            }
+            case null, default ->
+                throw new JsonPatchException("Cannot test inside non-container parent for path '" + path + "'");
         }
         if (!Objects.equals(actual, value)) {
             throw new JsonPatchException("Test operation failed at path '" + path + "'");

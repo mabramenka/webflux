@@ -157,7 +157,7 @@ class ComputeStepTest {
         StepVerifier.create(step.execute(ctx)).expectNextCount(1).verifyComplete();
 
         // Global root (AggregationContext.accountGroupResponse) must be unchanged
-        assertThat(aggCtx.accountGroupResponse().toString()).isEqualTo(originalJson);
+        assertThat(aggCtx.accountGroupResponse()).hasToString(originalJson);
     }
 
     // -------------------------------------------------------------------------
@@ -181,7 +181,7 @@ class ComputeStepTest {
 
         StepVerifier.create(step.execute(ctx)).expectNextCount(1).verifyComplete();
 
-        assertThat(ctx.rootSnapshot().toString()).isEqualTo(originalSnapshot);
+        assertThat(ctx.rootSnapshot()).hasToString(originalSnapshot);
     }
 
     // -------------------------------------------------------------------------
