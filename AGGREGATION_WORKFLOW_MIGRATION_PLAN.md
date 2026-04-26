@@ -780,7 +780,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 9  — Binding metrics and diagnostics
 [x] Phase 10 — Migrate owners
 [x] Phase 11 — Multi-binding workflow
-[ ] Phase 12 — Compute step
+[x] Phase 12 — Compute step
 [ ] Phase 13 — Harden patch conflict detection and write ownership
 [ ] Phase 14 — Recursive traversal skeleton
 [ ] Phase 15 — Traversal reducer
@@ -2112,7 +2112,18 @@ Bindings may be fetch-only via storeAs(...) without forcing immediate global roo
 
 ## Phase 12 — Compute Step
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 12 — compute step
+- **Files added (production):** `workflow/compute/WorkflowComputation.java` (interface), `workflow/compute/WorkflowValues.java` (read-only input view), `workflow/compute/ComputationInput.java` (input declaration record), `workflow/compute/ComputationResult.java` (output wrapper record), `workflow/compute/ComputationException.java` (input-error vs invariant flag), `workflow/compute/package-info.java`, `workflow/step/ComputeStep.java` (WorkflowStep implementation)
+- **No existing production files changed** — ComputeStep integrates via StepResult.stored() which the executor already handles
+- **Files added (test):** `workflow/step/ComputeStepTest.java` (16 scenarios)
+- **Error mapping:** ComputationException.inputViolation() → ENRICH-CONTRACT-VIOLATION; all other exceptions → ORCH-INVARIANT-VIOLATED
+- **Intentionally not done:** no downstream calls in compute, no patch application, no recursive traversal, no Phase 13 ownership model; TRAVERSAL_STATE rejected in ComputationInput at construction
+- **Local checks run:** ComputeStepTest + Account + Owners + WorkflowExecutorTest all green; `./gradlew test spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification` green
+- **Next phase:** Phase 13 — harden patch conflict detection and write ownership
 
 ### Goal
 
