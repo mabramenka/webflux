@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.11.0](https://github.com/mabramenka/webflux/compare/v0.10.1...v0.11.0) (2026-04-26)
+
+
+### Features
+
+* **workflow:** add binding-level metrics (Phase 9) ([d37cd45](https://github.com/mabramenka/webflux/commit/d37cd45965c74b645a48ecef791472fd7f47740f))
+* **workflow:** add keyed binding step (Phase 7) ([96fc87b](https://github.com/mabramenka/webflux/commit/96fc87b5e1b488667bd62b96d30a1bcc2f5b2173))
+* **workflow:** migrate account enrichment to workflow model (Phase 8) ([12a4788](https://github.com/mabramenka/webflux/commit/12a478822c2af7fa565909fbbed53018de8cab15))
+
 ## [0.10.1](https://github.com/mabramenka/webflux/compare/v0.10.0...v0.10.1) (2026-04-25)
 
 
