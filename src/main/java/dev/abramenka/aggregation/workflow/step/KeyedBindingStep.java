@@ -3,6 +3,7 @@ package dev.abramenka.aggregation.workflow.step;
 import dev.abramenka.aggregation.enrichment.support.keyed.PathExpression;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.OrchestrationException;
+import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.patch.JsonPatchBuilder;
 import dev.abramenka.aggregation.patch.JsonPatchDocument;
@@ -18,6 +19,7 @@ import dev.abramenka.aggregation.workflow.binding.support.KeyExtractor;
 import dev.abramenka.aggregation.workflow.binding.support.MatchedTarget;
 import dev.abramenka.aggregation.workflow.binding.support.ResponseIndexer;
 import dev.abramenka.aggregation.workflow.binding.support.TargetMatcher;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -28,6 +30,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
@@ -48,8 +51,11 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>Only {@link KeySource#ROOT_SNAPSHOT} is supported in this phase. {@code CURRENT_ROOT},
  * {@code STEP_RESULT}, and {@code TRAVERSAL_STATE} are rejected at construction.
  *
- * <p>{@link WriteRule.WriteAction.AppendToArray}: the target array field must already exist in the
- * matched owner item; automatic creation is not supported in this phase.
+ * <p>{@link WriteRule.WriteAction.AppendToArray}: if the target array field is absent in the owner
+ * item, an empty array is created before the first append (matching legacy keyed-enrichment
+ * behaviour). If the field exists but is not an array, the step fails with {@link
+ * OrchestrationException}. When one owner item matches multiple response entries, the array is
+ * created only once regardless of match count.
  *
  * <p>{@link WriteRule.WriteAction.ReplaceField}: uses {@code add} when the field is absent and
  * {@code replace} when it already exists.
@@ -94,6 +100,7 @@ public final class KeyedBindingStep implements WorkflowStep {
     @Override
     public Mono<StepResult> execute(WorkflowContext context) {
         ObjectNode rootSnapshot = context.rootSnapshot();
+        AggregationContext aggCtx = context.aggregationContext();
         List<ExtractedTarget> targets = KEY_EXTRACTOR.extract(binding.keyExtraction(), rootSnapshot);
         Set<String> keys = deduplicateKeys(targets);
 
@@ -102,7 +109,7 @@ public final class KeyedBindingStep implements WorkflowStep {
         }
 
         return binding.downstreamCall()
-                .fetch(List.copyOf(keys))
+                .fetch(List.copyOf(keys), aggCtx)
                 .flatMap(response -> Mono.fromCallable(() -> processResponse(response, targets, rootSnapshot)))
                 .switchIfEmpty(Mono.fromSupplier(() -> StepResult.empty(PartSkipReason.DOWNSTREAM_EMPTY)))
                 .onErrorResume(
@@ -157,15 +164,25 @@ public final class KeyedBindingStep implements WorkflowStep {
         }
 
         JsonPatchBuilder patchBuilder = JsonPatchBuilder.create();
+        // Tracks owners for which an array-creation op has already been emitted in this build pass,
+        // so that multiple matches against the same owner emit only one create op.
+        Set<ObjectNode> arrayCreatedForOwner = Collections.newSetFromMap(new IdentityHashMap<>());
+
         for (MatchedTarget match : matches) {
             Integer idx = ownerToIndex.get(match.owner());
             if (idx == null) {
                 // Owner not found in write-target path — source and target paths differ.
-                // Silently skipped for Phase 7; Phase 11 will address multi-target writes.
+                // Silently skipped for Phase 7/8; Phase 11 will address multi-target writes.
                 continue;
             }
             String basePointer = itemPath.toItemPointerAt(idx);
-            applyWriteAction(patchBuilder, basePointer, writeRule.action(), match.owner(), match.responseEntry());
+            applyWriteAction(
+                    patchBuilder,
+                    basePointer,
+                    writeRule.action(),
+                    match.owner(),
+                    match.responseEntry(),
+                    arrayCreatedForOwner);
         }
 
         return patchBuilder.build();
@@ -176,7 +193,8 @@ public final class KeyedBindingStep implements WorkflowStep {
             String basePointer,
             WriteRule.WriteAction action,
             ObjectNode owner,
-            JsonNode responseEntry) {
+            JsonNode responseEntry,
+            Set<ObjectNode> arrayCreatedForOwner) {
         switch (action) {
             case WriteRule.WriteAction.ReplaceField rf -> {
                 String pointer = basePointer + "/" + escapeToken(rf.fieldName());
@@ -187,15 +205,18 @@ public final class KeyedBindingStep implements WorkflowStep {
                 }
             }
             case WriteRule.WriteAction.AppendToArray aa -> {
+                String fieldPointer = basePointer + "/" + escapeToken(aa.fieldName());
                 JsonNode existing = owner.get(aa.fieldName());
-                if (existing == null || !existing.isArray()) {
-                    throw OrchestrationException.mergeFailed(new JsonPatchException(
-                            "AppendToArray: field '" + aa.fieldName() + "' does not exist or is not an array"
-                                    + " in target item; automatic array creation is not supported"
-                                    + " in KeyedBindingStep"));
+                if (existing != null && !existing.isArray()) {
+                    throw OrchestrationException.mergeFailed(new JsonPatchException("AppendToArray: field '"
+                            + aa.fieldName() + "' exists but is not an array" + " in target item"));
                 }
-                String pointer = basePointer + "/" + escapeToken(aa.fieldName()) + "/-";
-                builder.add(pointer, responseEntry);
+                if (existing == null && !arrayCreatedForOwner.contains(owner)) {
+                    // First match for this owner — emit a create-array op then track it.
+                    builder.add(fieldPointer, JsonNodeFactory.instance.arrayNode());
+                    arrayCreatedForOwner.add(owner);
+                }
+                builder.add(fieldPointer + "/-", responseEntry);
             }
         }
     }

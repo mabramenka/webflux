@@ -10,7 +10,7 @@ import reactor.core.publisher.Mono;
 
 class DownstreamBindingTest {
 
-    private static final DownstreamCall NO_CALL = keys -> Mono.empty();
+    private static final DownstreamCall NO_CALL = (keys, ctx) -> Mono.empty();
     private static final KeyExtractionRule ROOT_EXTRACTION =
             new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
     private static final ResponseIndexingRule RESPONSE_INDEX = new ResponseIndexingRule("$.data[*]", List.of("id"));

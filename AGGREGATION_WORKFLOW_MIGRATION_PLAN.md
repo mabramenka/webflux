@@ -790,7 +790,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 5  — Adapt existing keyed support
 [x] Phase 6  — Workflow model skeleton
 [x] Phase 7  — Keyed binding step
-[ ] Phase 8  — Migrate account
+[x] Phase 8  — Migrate account
 [ ] Phase 9  — Binding metrics and diagnostics
 [ ] Phase 10 — Migrate owners
 [ ] Phase 11 — Multi-binding workflow
@@ -1548,7 +1548,17 @@ CI is allowed to run the broader suite.
 
 ## Phase 8 — Migrate One Simple Enrichment
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 8 — migrate account enrichment to WorkflowAggregationPart
+- **Files changed (production):** `DownstreamCall.java` (added `AggregationContext context` param), `KeyedBindingStep.java` (pass context to fetch; AppendToArray auto-creates absent array with per-owner dedup), `AccountEnrichment.java` (rewritten to extend WorkflowAggregationPart)
+- **Files changed (test):** `KeyedBindingStepTest.java` (lambdas updated; AppendToArray tests extended), `WorkflowExecutorTest.java`, `DownstreamBindingTest.java`, `AccountEnrichmentTestFactory.java`, `AggregateServiceTestSupport.java`, `AggregateServiceDependencyTest.java`
+- **Phase 7 extension:** AppendToArray now auto-creates the array field if absent (matches legacy `withArrayProperty` behavior); existing-non-array field still fails fast; per-owner identity tracking prevents double-create for multiple matches on the same item
+- **Intentionally not done:** owners not migrated; beneficialOwners not migrated; ObjectMapper dependency removed from account (uses JsonNodeFactory directly)
+- **Local checks run:** focused account + workflow tests green; `./gradlew test` green; `spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification` green
+- **Next phase:** Phase 9 — binding metrics and diagnostics
 
 ### Additional precondition
 

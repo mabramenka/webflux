@@ -30,7 +30,6 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 class KeyedBindingStepTest {
@@ -46,7 +45,7 @@ class KeyedBindingStepTest {
         ObjectNode root = parse("""
                 {"data": []}
                 """);
-        KeyedBindingStep step = stepWithReplaceField(keys -> {
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> {
             throw new AssertionError("should not be called");
         });
 
@@ -68,7 +67,7 @@ class KeyedBindingStepTest {
                 {"data": [{"id": "a"}, {"id": "a"}, {"id": "b"}]}
                 """);
         List<List<String>> capturedCalls = new ArrayList<>();
-        KeyedBindingStep step = stepWithReplaceField(keys -> {
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> {
             capturedCalls.add(List.copyOf(keys));
             return Mono.just(emptyDataResponse());
         });
@@ -97,7 +96,7 @@ class KeyedBindingStepTest {
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "number"), new WriteRule.WriteAction.ReplaceField("details"));
         DownstreamBinding binding = new DownstreamBinding(
-                new BindingName("test"), keyRule, keys -> Mono.just(response), indexRule, null, writeRule);
+                new BindingName("test"), keyRule, (keys, ctx) -> Mono.just(response), indexRule, null, writeRule);
         KeyedBindingStep step = new KeyedBindingStep("step", binding);
 
         StepVerifier.create(step.execute(contextFor(root)))
@@ -123,7 +122,7 @@ class KeyedBindingStepTest {
         JsonNode response = parse("""
                 {"items": [{"id": "a1", "details": "d1"}, {"id": "a2", "details": "d2"}]}
                 """);
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.just(response));
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.just(response));
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
@@ -147,7 +146,7 @@ class KeyedBindingStepTest {
         JsonNode response = parse("""
                 {"items": [{"id": "a1", "details": "d1"}]}
                 """);
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.just(response));
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.just(response));
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
@@ -161,10 +160,10 @@ class KeyedBindingStepTest {
     }
 
     @Test
-    void matchedTargetsProduceJsonPatchDocumentWrites_appendToArray() {
+    void matchedTargetsProduceJsonPatchDocumentWrites_appendToExistingArray() {
         ObjectNode item = mapper.createObjectNode();
         item.put("id", "a1");
-        item.set("tags", mapper.createArrayNode()); // array exists
+        item.set("tags", mapper.createArrayNode()); // array already exists
         ObjectNode root = mapper.createObjectNode();
         root.set("data", mapper.createArrayNode().add(item));
 
@@ -176,16 +175,80 @@ class KeyedBindingStepTest {
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.AppendToArray("tags"));
         DownstreamBinding binding = new DownstreamBinding(
-                new BindingName("test"), keyRule, keys -> Mono.just(response), indexRule, null, writeRule);
+                new BindingName("test"), keyRule, (keys, ctx) -> Mono.just(response), indexRule, null, writeRule);
         KeyedBindingStep step = new KeyedBindingStep("step", binding);
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
                     assertThat(result).isInstanceOf(StepResult.Applied.class);
                     JsonPatchDocument patch = Objects.requireNonNull(((StepResult.Applied) result).patch(), "patch");
+                    // array pre-exists → one append op only, no create op
                     assertThat(patch.operations()).hasSize(1);
                     assertThat(patch.operations().get(0)).isInstanceOf(JsonPatchOperation.Add.class);
                     assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/tags/-");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void matchedTargetsProduceJsonPatchDocumentWrites_appendToAbsentArray_autoCreates() {
+        ObjectNode root = parse("""
+                {"data": [{"id": "a1"}]}
+                """); // no "tags" array — auto-create expected
+        JsonNode response = parse("""
+                {"items": [{"id": "a1", "label": "lbl1"}]}
+                """);
+        KeyExtractionRule keyRule = new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        WriteRule writeRule = new WriteRule(
+                "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.AppendToArray("tags"));
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("test"), keyRule, (keys, ctx) -> Mono.just(response), indexRule, null, writeRule);
+        KeyedBindingStep step = new KeyedBindingStep("step", binding);
+
+        StepVerifier.create(step.execute(contextFor(root)))
+                .assertNext(result -> {
+                    assertThat(result).isInstanceOf(StepResult.Applied.class);
+                    JsonPatchDocument patch = Objects.requireNonNull(((StepResult.Applied) result).patch(), "patch");
+                    // create-array op followed by append op
+                    assertThat(patch.operations()).hasSize(2);
+                    assertThat(patch.operations().get(0)).isInstanceOf(JsonPatchOperation.Add.class);
+                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/tags");
+                    assertThat(patch.operations().get(1)).isInstanceOf(JsonPatchOperation.Add.class);
+                    assertThat(patch.operations().get(1).path()).isEqualTo("/data/0/tags/-");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void appendToArray_multipleMatchesSameOwner_createsArrayOnceOnly() {
+        // Data item has two account IDs — both match — array must be created only once
+        ObjectNode root = parse("""
+                {"data": [{"accounts": [{"id": "a1"}, {"id": "a2"}]}]}
+                """);
+        JsonNode response = parse("""
+                {"items": [{"id": "a1", "v": 1}, {"id": "a2", "v": 2}]}
+                """);
+        KeyExtractionRule keyRule =
+                new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("accounts[*].id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        WriteRule writeRule = new WriteRule(
+                "$.data[*]",
+                new WriteRule.MatchBy("accounts[*].id", "id"),
+                new WriteRule.WriteAction.AppendToArray("merged"));
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("test"), keyRule, (keys, ctx) -> Mono.just(response), indexRule, null, writeRule);
+        KeyedBindingStep step = new KeyedBindingStep("step", binding);
+
+        StepVerifier.create(step.execute(contextFor(root)))
+                .assertNext(result -> {
+                    assertThat(result).isInstanceOf(StepResult.Applied.class);
+                    JsonPatchDocument patch = Objects.requireNonNull(((StepResult.Applied) result).patch(), "patch");
+                    // one create-array + two append ops (no duplicate create)
+                    assertThat(patch.operations()).hasSize(3);
+                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/merged");
+                    assertThat(patch.operations().get(1).path()).isEqualTo("/data/0/merged/-");
+                    assertThat(patch.operations().get(2).path()).isEqualTo("/data/0/merged/-");
                 })
                 .verifyComplete();
     }
@@ -202,7 +265,7 @@ class KeyedBindingStepTest {
         JsonNode response = parse("""
                 {"items": [{"id": "a1", "details": "d1"}]}
                 """);
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.just(response));
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.just(response));
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
@@ -224,7 +287,7 @@ class KeyedBindingStepTest {
         ObjectNode root = parse("""
                 {"data": [{"id": "a1"}]}
                 """);
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.empty());
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.empty());
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
@@ -245,7 +308,7 @@ class KeyedBindingStepTest {
                 """);
         DownstreamClientException notFound =
                 DownstreamClientException.upstreamStatus("test-client", HttpStatusCode.valueOf(404));
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.error(notFound));
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.error(notFound));
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
@@ -262,7 +325,7 @@ class KeyedBindingStepTest {
                 """);
         DownstreamClientException serverError =
                 DownstreamClientException.upstreamStatus("test-client", HttpStatus.INTERNAL_SERVER_ERROR);
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.error(serverError));
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.error(serverError));
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .expectError(DownstreamClientException.class)
@@ -279,8 +342,8 @@ class KeyedBindingStepTest {
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.ReplaceField("f"));
-        DownstreamBinding binding =
-                new DownstreamBinding(new BindingName("b"), rule, keys -> Mono.empty(), indexRule, null, writeRule);
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, null, writeRule);
 
         assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -293,8 +356,8 @@ class KeyedBindingStepTest {
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.ReplaceField("f"));
-        DownstreamBinding binding =
-                new DownstreamBinding(new BindingName("b"), rule, keys -> Mono.empty(), indexRule, null, writeRule);
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, null, writeRule);
 
         assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -307,8 +370,8 @@ class KeyedBindingStepTest {
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.ReplaceField("f"));
-        DownstreamBinding binding =
-                new DownstreamBinding(new BindingName("b"), rule, keys -> Mono.empty(), indexRule, null, writeRule);
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, null, writeRule);
 
         assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -327,7 +390,7 @@ class KeyedBindingStepTest {
 
     @Test
     void blankName_failsAtConstruction() {
-        DownstreamBinding binding = validWriteBinding(keys -> Mono.empty());
+        DownstreamBinding binding = validWriteBinding((keys, ctx) -> Mono.empty());
         assertThatThrownBy(() -> new KeyedBindingStep("  ", binding))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("blank");
@@ -339,8 +402,8 @@ class KeyedBindingStepTest {
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         // matchBy is null
         WriteRule writeRule = new WriteRule("$.data[*]", null, new WriteRule.WriteAction.ReplaceField("f"));
-        DownstreamBinding binding =
-                new DownstreamBinding(new BindingName("b"), keyRule, keys -> Mono.empty(), indexRule, null, writeRule);
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("b"), keyRule, (keys, ctx) -> Mono.empty(), indexRule, null, writeRule);
 
         assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -360,7 +423,7 @@ class KeyedBindingStepTest {
         JsonNode response = parse("""
                 {"items": [{"id": "zzz", "details": "d"}]}
                 """);
-        KeyedBindingStep step = stepWithReplaceField(keys -> Mono.just(response));
+        KeyedBindingStep step = stepWithReplaceField((keys, ctx) -> Mono.just(response));
 
         StepVerifier.create(step.execute(contextFor(root)))
                 .assertNext(result -> {
@@ -372,14 +435,14 @@ class KeyedBindingStepTest {
     }
 
     // -------------------------------------------------------------------------
-    // Extra: AppendToArray fails fast when target array does not exist
+    // Extra: AppendToArray fails fast when target field exists but is not an array
     // -------------------------------------------------------------------------
 
     @Test
-    void appendToArray_missingArrayField_failsWithOrchestrationException() {
+    void appendToArray_existingNonArrayField_failsWithOrchestrationException() {
         ObjectNode root = parse("""
-                {"data": [{"id": "a1"}]}
-                """); // no "tags" array
+                {"data": [{"id": "a1", "tags": "not-an-array"}]}
+                """);
         JsonNode response = parse("""
                 {"items": [{"id": "a1", "label": "lbl1"}]}
                 """);
@@ -388,7 +451,7 @@ class KeyedBindingStepTest {
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.AppendToArray("tags"));
         DownstreamBinding binding = new DownstreamBinding(
-                new BindingName("test"), keyRule, keys -> Mono.just(response), indexRule, null, writeRule);
+                new BindingName("test"), keyRule, (keys, ctx) -> Mono.just(response), indexRule, null, writeRule);
         KeyedBindingStep step = new KeyedBindingStep("step", binding);
 
         StepVerifier.create(step.execute(contextFor(root)))
@@ -428,15 +491,6 @@ class KeyedBindingStepTest {
     private ObjectNode parse(String json) {
         try {
             return (ObjectNode) mapper.readTree(json);
-        } catch (Exception ex) {
-            throw new IllegalStateException(ex);
-        }
-    }
-
-    @SuppressWarnings("unused")
-    private ArrayNode parseArray(String json) {
-        try {
-            return (ArrayNode) mapper.readTree(json);
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }

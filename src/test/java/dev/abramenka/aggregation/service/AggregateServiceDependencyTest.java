@@ -26,7 +26,7 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
     @Test
     void aggregate_expandsBeneficialOwnerDependencies() {
         AggregateService service = aggregateServiceWith(List.of(
-                AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
+                AccountEnrichmentTestFactory.accountEnrichment(accountClient),
                 OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient, objectMapper),
                 dependentNoopEnrichment("beneficialOwners", "owners")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("beneficialOwners"));
@@ -121,7 +121,7 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
     @Test
     void aggregate_enablesEnrichmentDependencies() {
         AggregateService service = aggregateServiceWith(List.of(
-                AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
+                AccountEnrichmentTestFactory.accountEnrichment(accountClient),
                 dependentNoopEnrichment("auditTrail", "account")));
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("auditTrail"));
         JsonNode accountGroupResponse = json("""
