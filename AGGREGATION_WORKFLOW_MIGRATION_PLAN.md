@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 13 are completed on `main`. The post-Phase-13 safety update is also present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. Phase 14 — recursive traversal skeleton — is the next implementation phase.
+> **Current status:** Phase 1 through Phase 13 are completed on `main`. The post-Phase-13 safety update is also present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. Phase 13.5 — beneficialOwners legacy contract lock — is the next implementation phase. Phase 14 should start only after this contract is documented and, where needed, characterized by focused tests.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -167,7 +167,7 @@ Recommended batch checkpoints:
 - after Phase 7 and Phase 8
 - after Phase 9 and Phase 10
 - after Phase 11 through Phase 13
-- after Phase 14 through Phase 16
+- after Phase 13.5 through Phase 16
 - after Phase 17 through Phase 19
 - before starting the next risky batch or after a direct-to-main phase group
 ```
@@ -782,8 +782,11 @@ Use this plan as a strict sequential runbook:
 [x] Phase 11 — Multi-binding workflow
 [x] Phase 12 — Compute step
 [x] Phase 13 — Harden patch conflict detection and write ownership
-[ ] Phase 14 — Recursive traversal skeleton
-[ ] Phase 15 — Traversal reducer
+[ ] Phase 13.5 — BeneficialOwners legacy contract lock
+[ ] Phase 14A — Recursive traversal data model
+[ ] Phase 14B — Recursive traversal engine
+[ ] Phase 14C — RecursiveFetchStep workflow adapter
+[ ] Phase 15 — Traversal reducer and write-back bridge
 [ ] Phase 16 — Migrate beneficial owners
 [ ] Phase 17 — Optional root role abstraction
 [ ] Phase 18 — Documentation, test kit, and examples
@@ -2272,32 +2275,305 @@ Declared write ownership is checked against obviously conflicting workflow defin
 
 ---
 
+## Phase 13.5 — BeneficialOwners Legacy Contract Lock
+
+**Status:** Not started.
+
+### Goal
+
+Lock the current `beneficialOwners` behavior before introducing reusable recursive traversal infrastructure.
+
+This is a contract-first phase. It is intentionally placed between Phase 13 and Phase 14 because the remaining migration is risky: Phase 14 should model the current recursive behavior, not invent a generic graph framework that later fails to preserve the legacy contract.
+
+### Allowed changes
+
+```text
+- AGGREGATION_WORKFLOW_MIGRATION_PLAN.md
+- BeneficialOwners characterization tests if existing tests do not already lock the contract
+- Test fixtures needed by those characterization tests
+```
+
+### Forbidden
+
+```text
+- No production code changes unless a characterization test requires a tiny testability-only adjustment.
+- No workflow.recursive package yet.
+- No RecursiveFetchStep yet.
+- No reducer yet.
+- No BeneficialOwnersEnrichment migration.
+- No change to public response shape.
+- No change to RFC 9457 problem response shape.
+- No change to meta.parts behavior.
+```
+
+### Code to inspect first
+
+```text
+BeneficialOwnersEnrichment
+OwnershipResolver
+EntityNumbersExtractor
+RootEntityTargets
+BeneficialOwnersDetailsPayload
+BeneficialOwnersResolutionException
+RootEntityTarget
+ResolvedEntity
+Existing beneficialOwners tests and fixtures
+```
+
+### Legacy contract to lock
+
+The following behavior must be treated as authoritative for Phases 14 through 16.
+
+```text
+Business part name:
+  beneficialOwners
+
+Dependency:
+  dependsOn owners
+
+Skip behavior:
+  If no root entity owners exist under owners1, return SKIPPED / NO_KEYS_IN_MAIN.
+
+Root entity target selection:
+  Iterate root.data[*].owners1[*].
+  Select only owner entries where owner.entity is an object.
+  Preserve target coordinates:
+    dataIndex
+    ownerIndex
+    owner node
+
+Initial seed extraction:
+  From each selected root entity owner node, read child owner numbers from:
+    entity.ownershipStructure[*].principalOwners[*].memberDetails.number
+    entity.ownershipStructure[*].indirectOwners[*].memberDetails.number
+  Preserve first-seen order and deduplicate seeds.
+
+Recursive fetch:
+  Fetch owners by ids through:
+    Owners.fetchOwners(request, Owners.DEFAULT_FIELDS, context.clientRequestContext())
+  Request body field:
+    ids
+  Required response shape:
+    data must be an array.
+
+Response indexing:
+  Each fetched owner is indexed by owner number.
+  Number resolution order:
+    individual.number
+    entity.number
+  Blank numbers are ignored.
+
+Missing response item:
+  If the downstream response does not contain every requested owner number, treat it as malformed downstream response.
+  Do not silently ignore a requested owner missing from the response.
+
+Traversal semantics:
+  first downstream level is depth 1
+  MAX_DEPTH is 6
+  depth values 1 through 6 are allowed
+  fail only when attempting depth > 6
+  already resolved/visited numbers are not fetched again
+  cycle behavior is effectively SKIP_VISITED, not FAIL_ON_CYCLE
+
+Node classification:
+  individual owner: owner.individual is an object
+  entity owner: owner.entity is an object
+
+Traversal output ordering:
+  Individual owners are collected in first-resolution order.
+  Preserve this ordering because legacy code uses insertion-order maps for resolved individuals.
+
+Final legacy write shape:
+  For each root entity target, write resolved individual owners into:
+    root.data[dataIndex].owners1[ownerIndex].beneficialOwnersDetails
+
+Failure behavior:
+  depth exceeded -> required enrichment failure / contract violation path
+  downstream failure -> required enrichment failure through existing facade mapping
+  malformed response -> required enrichment failure / contract violation path
+```
+
+### Tests to add only if missing
+
+Before adding tests, inspect existing characterization tests. Add only missing coverage.
+
+Recommended contract scenarios:
+
+```text
+1. no entity owners under owners1 -> SKIPPED / NO_KEYS_IN_MAIN
+2. root target selection preserves dataIndex and ownerIndex
+3. principalOwners and indirectOwners both contribute child numbers
+4. duplicated child numbers are fetched once
+5. first downstream level is depth 1
+6. max depth allows levels 1..6 and fails only beyond 6
+7. already resolved / cyclic numbers are not fetched twice
+8. missing requested owner in response fails as malformed response / contract violation
+9. non-array data response fails as malformed response / contract violation
+10. resolved individuals keep first-resolution order
+11. merge writes to data[dataIndex].owners1[ownerIndex].beneficialOwnersDetails
+12. existing public response shape and meta.parts behavior remain unchanged
+```
+
+### Acceptance criteria
+
+```text
+The legacy beneficialOwners contract is documented in this plan.
+Existing beneficialOwners characterization coverage is reviewed.
+Any missing high-risk characterization tests are added.
+No production behavior changes.
+Phase 14 can start with explicit legacy semantics rather than assumptions.
+```
+
+### Verification
+
+Run focused beneficialOwners tests first:
+
+```bash
+./gradlew test --tests '*BeneficialOwners*'
+```
+
+If only the markdown is changed and no tests are added, record that this is a docs-only contract lock.
+
+### Handoff to Phase 14
+
+After Phase 13.5, Phase 14 must use this contract to shape reusable traversal mechanics. Phase 14 must not reinterpret depth, missing-response, cycle, ordering, or target-addressing semantics.
+
+
+### Phase 13.5 coding prompt
+
+Use this prompt when starting the next coding session:
+
+```text
+Read AGGREGATION_WORKFLOW_MIGRATION_PLAN.md and apply the CLAUDE.md operating rules.
+
+We are starting Phase 13.5 — BeneficialOwners Legacy Contract Lock.
+
+Task: documentation/test-only contract lock for legacy beneficialOwners behavior.
+
+Scope:
+- Inspect BeneficialOwnersEnrichment, OwnershipResolver, EntityNumbersExtractor, RootEntityTargets, RootEntityTarget, BeneficialOwnersDetailsPayload, BeneficialOwnersResolutionException, and existing BeneficialOwners tests.
+- Do not change production code unless a tiny testability-only adjustment is absolutely required.
+- Do not add workflow.recursive yet.
+- Do not add RecursiveFetchStep.
+- Do not add reducer infrastructure.
+- Do not migrate BeneficialOwnersEnrichment.
+
+Before editing:
+1. List existing tests that already cover the contract.
+2. List only the missing high-risk tests, if any.
+3. Propose the smallest test-only change set.
+4. Stop if the existing tests already cover the contract well enough and only the plan needs a handoff note.
+
+Required contract points to verify or document:
+- dependsOn owners
+- no entity owners under owners1 -> SKIPPED / NO_KEYS_IN_MAIN
+- root targets are data[*].owners1[*] where owner.entity is an object
+- dataIndex and ownerIndex are preserved
+- child numbers come from principalOwners and indirectOwners memberDetails.number
+- first downstream depth is 1
+- max depth is 6
+- depth > 6 fails, no silent truncation
+- visited/resolved numbers are not fetched twice
+- missing requested owner in downstream response is malformed response / contract violation
+- individual owners preserve first-resolution order
+- output writes to data[dataIndex].owners1[ownerIndex].beneficialOwnersDetails
+
+Verification:
+./gradlew test --tests '*BeneficialOwners*'
+
+After completion:
+- update the tracker/handoff note for Phase 13.5
+- mark Phase 14A as the next coding phase
+```
+
+---
+
 ## Phase 14 — Recursive Traversal Skeleton
 
 **Status:** Not started.
+
+### Phase 14 structure
+
+Phase 14 is split into three focused substeps:
+
+```text
+Phase 14A — Traversal data model
+Phase 14B — Recursive traversal engine
+Phase 14C — RecursiveFetchStep workflow adapter
+```
+
+These substeps may be committed separately or as a small commit group, but they must remain infrastructure-only.
 
 ### Current handoff into Phase 14
 
 ```text
 - Phase 1 through Phase 13 are completed on main.
+- Phase 13.5 locked the legacy beneficialOwners contract.
 - Account and owners are workflow-based enrichments.
 - Account declares WriteOwnership.of("account1").
 - Owners declares WriteOwnership.of("owners1").
 - Binding metrics, multi-binding workflow, CURRENT_ROOT, STEP_RESULT, ComputeStep, patch conflict detection, and write ownership validation are implemented.
-- TRAVERSAL_STATE is still unsupported and belongs to Phase 14.
+- ROOT_SNAPSHOT, CURRENT_ROOT, and STEP_RESULT are supported workflow input sources.
+- TRAVERSAL_STATE remains unsupported as a general workflow KeySource. Phase 14 should keep traversal state internal and store traversal outputs through existing STEP_RESULT variables unless later phases prove a new source is necessary.
 - beneficialOwners is still legacy and must remain unchanged until Phase 16.
 ```
 
-Phase 14 must be infrastructure-only. It should introduce recursive traversal state/mechanics and return a `TraversalResult`, but it must not write to the root, add a business reducer, or migrate `beneficialOwners`.
+Phase 14 must be infrastructure-only. It should introduce recursive traversal state/mechanics and produce a traversal result, but it must not write to the root, add a business reducer, or migrate `beneficialOwners`.
+
+Important storage decision for Phase 14:
+
+```text
+WorkflowVariableStore currently stores JsonNode values.
+Therefore RecursiveFetchStep must store the traversal output as JsonNode/ObjectNode/ArrayNode through STEP_RESULT.
+Typed traversal records may exist inside workflow.recursive for implementation clarity, but the workflow-visible stored value must remain JsonNode.
+Do not change WorkflowVariableStore to Object-based storage in Phase 14.
+Do not add a public/general TRAVERSAL_STATE KeySource in Phase 14 unless STEP_RESULT is proven insufficient and the plan is updated first.
+```
 
 ### Goal
 
-Support recursive downstream traversal.
+Extract the minimum reusable traversal mechanics needed to model the current `OwnershipResolver` algorithm later.
+
+Do not build a general graph engine.
 
 Pattern:
 
 ```text
-A -> keys -> REST Z recursively until condition
+ROOT_SNAPSHOT seed extraction
+  -> batch fetch frontier keys
+  -> index response
+  -> require all requested keys when configured
+  -> classify fetched nodes
+  -> extract child keys
+  -> repeat until empty frontier or max depth
+  -> store TraversalResult as STEP_RESULT
+```
+
+### Design intent
+
+Good Phase 14 design:
+
+```text
+- simple frontier-based breadth-first traversal
+- deterministic first-seen ordering
+- explicit maxDepth
+- explicit visited/resolved set
+- explicit child-key extraction callback/configuration
+- explicit node classification callback/configuration
+- explicit response indexing by configured key extractor
+- TraversalResult stored as a named STEP_RESULT value encoded as JsonNode
+```
+
+Avoid in Phase 14:
+
+```text
+- generic graph query language
+- complicated graph algorithms
+- parallel frontier scheduler
+- business-specific beneficialOwners output reduction
+- root patch creation
+- public response changes
+- a second path DSL
 ```
 
 ### New package
@@ -2306,51 +2582,248 @@ A -> keys -> REST Z recursively until condition
 dev.abramenka.aggregation.workflow.recursive
 ```
 
-### New classes
+### Phase 14A — Traversal data model
+
+#### Goal
+
+Introduce the smallest immutable model needed to represent traversal state and results.
+
+#### Candidate classes
 
 ```text
-RecursiveFetchStep
-TraversalState
-TraversalNode
-TraversalFrontier
 TraversalPolicy
-TraversalStopCondition
 CyclePolicy
-DepthLimit
+TraversalNode
 TraversalResult
+TraversalState
 ```
 
-### Required capabilities
+Optional only if the implementation genuinely benefits from them:
 
 ```text
-- seed keys from ROOT_SNAPSHOT
-- batch fetch frontier keys
-- extract child keys from each response node
-- deduplicate visited keys
-- stop on empty frontier
-- stop on max depth
-- handle cycle policy
+TraversalFrontier
+DepthLimit
 ```
 
-### Policy shape
-
-```java
-public record TraversalPolicy(
-    int maxDepth,
-    CyclePolicy cyclePolicy,
-    TraversalStopCondition stopCondition
-) {}
-```
-
-### Acceptance criteria
+Defer unless there is a real need:
 
 ```text
-Recursive traversal fetches Z level by level.
-Stops on empty frontier.
-Stops on maxDepth.
-Detects cycles.
-Returns TraversalResult.
-Does not write to root yet.
+TraversalStopCondition
+```
+
+For the first version, `TraversalPolicy` should be enough for:
+
+```text
+maxDepth
+cyclePolicy = SKIP_VISITED
+requireAllRequestedKeys = true for beneficialOwners-compatible traversal
+```
+
+#### Required model properties
+
+```text
+TraversalResult must preserve enough information for Phase 15 reducer. If represented by typed internal records, it must also have a deterministic JsonNode representation for STEP_RESULT storage:
+  - resolved nodes
+  - individual/entity classification or enough raw node data to classify later
+  - stable first-resolution order
+  - depth information if useful for tests/debugging
+  - target metadata must be supported by the surrounding workflow/reducer input, not necessarily by traversal core
+```
+
+Important target-metadata rule:
+
+```text
+Traversal core should not know about beneficialOwners-specific dataIndex/ownerIndex.
+Those coordinates belong to root-target selection / reducer input in Phase 15/16.
+```
+
+#### Acceptance criteria
+
+```text
+Traversal model is small and immutable where practical.
+No downstream calls.
+No WorkflowExecutor changes unless unavoidable.
+No root writes.
+No beneficialOwners migration.
+```
+
+#### Phase 14A coding prompt
+
+Use this prompt only after Phase 13.5 is completed:
+
+```text
+Read AGGREGATION_WORKFLOW_MIGRATION_PLAN.md and apply the CLAUDE.md operating rules.
+
+We are starting Phase 14A — Traversal data model.
+
+Task: add only the minimal recursive traversal data model.
+
+Scope:
+- Add package dev.abramenka.aggregation.workflow.recursive if needed.
+- Add minimal model classes only: TraversalPolicy, CyclePolicy, TraversalNode, TraversalResult, and only add TraversalState if tests/implementation need it.
+- Do not add RecursiveFetchStep yet.
+- Do not add traversal engine yet.
+- Do not call downstream services.
+- Do not touch BeneficialOwnersEnrichment.
+- Do not change WorkflowVariableStore.
+- Do not add TRAVERSAL_STATE support as a public/general KeySource.
+
+Before editing:
+1. Inspect WorkflowVariableStore and StepResult.
+2. Confirm traversal result must be representable as JsonNode for STEP_RESULT storage.
+3. Propose exact classes and tests.
+4. Stop if the model needs Object-based workflow variables or a generic graph framework.
+
+Verification:
+./gradlew test --tests '*Traversal*'
+```
+
+
+### Phase 14B — Recursive traversal engine
+
+#### Goal
+
+Implement the reusable level-by-level traversal algorithm.
+
+The engine should be close to the existing `OwnershipResolver` algorithm, but without beneficial-owner-specific write/reducer logic.
+
+#### Required capabilities
+
+```text
+- accept initial seed keys
+- preserve first-seen seed order
+- deduplicate seeds
+- fetch one frontier batch at a time
+- index response items by configured key
+- optionally require all requested keys to be present
+- classify fetched nodes
+- collect terminal nodes such as individuals
+- extract child keys from expandable nodes such as entities
+- skip already visited/resolved keys
+- stop successfully on empty frontier
+- enforce maxDepth with legacy-compatible semantics
+```
+
+#### BeneficialOwners-compatible semantics to preserve
+
+```text
+first downstream level is depth 1
+MAX_DEPTH = 6 for beneficialOwners
+levels 1..6 are allowed
+failure occurs only when attempting depth > 6
+cycle behavior = SKIP_VISITED
+missing requested response item = malformed response / contract violation
+non-array response data = malformed response / contract violation
+individual results preserve first-resolution order
+```
+
+#### Error guidance
+
+The traversal engine may throw/propagate internal exceptions, but public RFC 9457 mapping must remain owned by the facade/orchestration layer.
+
+```text
+Depth exceeded:
+  deterministic failure, later mapped through existing required-enrichment failure path
+
+Missing requested response item:
+  malformed response / contract violation
+
+Malformed response shape:
+  malformed response / contract violation
+
+Downstream call failure:
+  preserve existing downstream error normalization path
+```
+
+#### Acceptance criteria
+
+```text
+Recursive traversal fetches nodes level by level.
+Visited keys are not fetched twice.
+Cycle behavior is SKIP_VISITED.
+Stops successfully on empty frontier.
+Stops/fails deterministically on maxDepth overflow.
+No JsonPatchDocument/root write is produced.
+No reducer logic.
+No beneficialOwners migration.
+```
+
+### Phase 14C — RecursiveFetchStep workflow adapter
+
+#### Goal
+
+Connect the traversal engine to the workflow runtime as a `WorkflowStep`.
+
+`RecursiveFetchStep` should normally return a stored workflow-visible result encoded as JsonNode:
+
+```text
+StepResult.stored(storeAs, traversalResultJson)
+```
+
+or the project-equivalent `StepResult.Applied` variant with `patch == null`, `storeAs != null`, and `storedValue != null`, depending on the current `StepResult` API.
+
+`storedValue` must be a JsonNode because the current workflow variable store is JsonNode-based.
+
+It must not return root patch operations in Phase 14.
+
+#### Rules
+
+```text
+- read initial traversal seeds from ROOT_SNAPSHOT for the first version
+- store traversal result as JsonNode in the existing workflow-local variable store
+- do not mutate ROOT_SNAPSHOT
+- do not mutate CURRENT_ROOT
+- do not apply JsonPatchDocument
+- do not write to the global root
+- do not expose traversal details in public response bodies
+- keep traversal state internal to RecursiveFetchStep/recursive package; keep KeySource.TRAVERSAL_STATE unsupported outside recursive traversal in Phase 14
+```
+
+### Tests required
+
+Add focused tests for recursive traversal infrastructure, including:
+
+```text
+1. seed keys are extracted from ROOT_SNAPSHOT or supplied to the engine in first-seen order
+2. first downstream level is depth 1
+3. level-by-level fetching happens in deterministic order
+4. duplicate seeds are fetched once
+5. already visited child keys are not fetched again
+6. empty initial seeds produce the chosen explicit empty/skip behavior or empty TraversalResult
+7. empty next frontier completes traversal successfully
+8. maxDepth allows levels 1..maxDepth and fails only beyond maxDepth
+9. downstream response missing a requested key fails as malformed response / contract violation
+10. data response that is not an array fails as malformed response / contract violation
+11. individual nodes are collected in first-resolution order or preserved in TraversalResult
+12. entity nodes produce next frontier through configured child-key extraction
+13. traversal result is stored as STEP_RESULT JsonNode
+14. no JsonPatchDocument/root write is produced
+15. account and owners workflows remain unchanged
+```
+
+### Verification
+
+Run focused traversal tests first. Also run workflow executor tests if `StepResult`, variable storage, or `WorkflowExecutor` is touched.
+
+Suggested commands:
+
+```bash
+./gradlew test --tests '*Recursive*'
+./gradlew test --tests '*Traversal*'
+./gradlew test --tests '*WorkflowExecutorTest'
+./gradlew test --tests '*Account*'
+./gradlew test --tests '*Owners*'
+```
+
+### Stop and report instead of guessing if
+
+```text
+- preserving legacy beneficialOwners depth semantics requires a different traversal model
+- missing-response behavior conflicts with existing downstream helper behavior
+- traversal cannot store its result as JsonNode in the existing workflow variable store
+- traversal requires root patch generation in Phase 14
+- a generic graph engine seems necessary
+- current code contradicts this plan
 ```
 
 ### Forbidden
@@ -2358,27 +2831,49 @@ Does not write to root yet.
 ```text
 - No beneficialOwners migration yet.
 - No business-specific reducer in traversal core.
+- No root writes.
+- No JsonPatchDocument generation for beneficialOwners output.
 - No complex graph algorithms beyond the needed traversal state.
+- No parallel traversal scheduler.
+- No public response shape change.
+- No RFC 9457 contract change unless existing error mapping already requires it.
 ```
 
 ---
 
-## Phase 15 — Traversal Reducer
+## Phase 15 — Traversal Reducer and Write-back Bridge
 
 **Status:** Not started.
 
 ### Goal
 
-Support recursive collection, aggregation, and write-back.
+Support recursive collection, aggregation, and write-back after `RecursiveFetchStep` has produced a `TraversalResult`.
 
 Pattern:
 
 ```text
-A -> keys -> REST Z recursively
-  + collect data on each step
-  + aggregate after traversal
-  + write into original A
+ROOT_SNAPSHOT target selection
+  + STEP_RESULT traversal result
+  -> reducer computes final per-target values
+  -> reducer returns JsonPatchDocument or a workflow write instruction
+  -> WorkflowExecutor applies the patch to CURRENT_ROOT and accumulated final patch
 ```
+
+### Phase 15 boundary
+
+Phase 15 adds reducer/write-back infrastructure only.
+
+It must not migrate `beneficialOwners` yet. The reducer may be tested with fixtures shaped like beneficial-owner traversal data, but production `BeneficialOwnersEnrichment` should remain legacy until Phase 16.
+
+### Recommended Phase 15 split
+
+```text
+Phase 15A — reducer input/output model
+Phase 15B — beneficialOwners-compatible reducer tests using fake TraversalResult
+Phase 15C — JsonPatch generation for beneficialOwnersDetails target field
+```
+
+The reducer infrastructure should be generic enough for traversal results, but it should not hide the concrete target-addressing needs of `beneficialOwners`.
 
 ### New abstractions
 
@@ -2386,10 +2881,24 @@ A -> keys -> REST Z recursively
 TraversalReducer
 TraversalReductionInput
 TraversalReductionResult
+```
+
+Defer unless tests prove a concrete need:
+
+```text
 TraversalWriteRule
 ```
 
-### Rule
+Do not introduce a generic write-rule DSL in Phase 15. For the first reducer, producing a normal `JsonPatchDocument` is preferred.
+
+Recommended execution model:
+
+```text
+Add a dedicated reducer workflow step that returns StepResult.applied(patch).
+Do not overload ComputeStep for reducer write-back, because ComputeStep is intentionally pure and stores JsonNode results only.
+```
+
+### Reducer requirements
 
 Traversal core should not contain beneficial-owner-specific business logic.
 
@@ -2398,10 +2907,11 @@ Business-specific aggregation belongs in reducer classes.
 A reducer may:
 
 ```text
-- read TraversalResult
+- read traversal result from STEP_RESULT JsonNode and convert/validate it explicitly
+- read ROOT_SNAPSHOT or CURRENT_ROOT through declared inputs
 - collect nodes
 - compute final JsonNode values
-- return a JsonPatchDocument or a write instruction consumed by workflow writing code
+- return a JsonPatchDocument through a dedicated reducer workflow step
 ```
 
 A reducer must not:
@@ -2409,17 +2919,74 @@ A reducer must not:
 ```text
 - call downstream services
 - mutate global root directly
+- mutate ROOT_SNAPSHOT directly
+- apply patches directly outside WorkflowExecutor
 - build HTTP error bodies
 - bypass WorkflowExecutor
 ```
 
+### BeneficialOwners-compatible reducer contract
+
+The Phase 15 reducer shape must be able to support the legacy beneficial-owners output in Phase 16:
+
+```text
+For each root entity target:
+  identify root.data[dataIndex].owners1[ownerIndex]
+  compute details array from resolved individual owner nodes
+  write details to field beneficialOwnersDetails
+```
+
+The reducer infrastructure must preserve or receive enough target metadata for that write:
+
+```text
+dataIndex
+ownerIndex
+stable target identity or pointer
+resolved individual nodes in legacy-compatible first-resolution order
+```
+
+Recommended ownership of target metadata:
+
+```text
+Traversal core should not own dataIndex/ownerIndex.
+A Phase 15 reducer input, root target descriptor, or workflow step configuration should provide this target identity.
+This keeps recursive traversal reusable and keeps beneficialOwners write-back business-specific.
+```
+
+Recommended write target for beneficialOwners-compatible tests:
+
+```text
+/data/{dataIndex}/owners1/{ownerIndex}/beneficialOwnersDetails
+```
+
+Use project JSON Pointer builder helpers rather than manual string concatenation where possible.
+
 ### Acceptance criteria
 
 ```text
-TraversalResult can be reduced into one or more JsonPatchDocument operations.
+A STEP_RESULT traversal JsonNode can be reduced into one or more JsonPatchDocument operations.
 Reducer is independently unit-testable.
+Reducer can write to nested owner target fields without mutating the root directly.
+Reducer preserves stable ordering of collected detail nodes.
 Reducer errors map deterministically.
 No beneficialOwners migration yet.
+Existing account and owners workflows remain unchanged.
+```
+
+### Tests required
+
+Add focused reducer tests, including:
+
+```text
+1. reducer reads traversal result from STEP_RESULT JsonNode or equivalent workflow state
+2. reducer writes a nested field under a target owner
+3. reducer produces JsonPatchDocument with escaped JSON Pointer tokens where needed
+4. reducer preserves detail ordering
+5. reducer does not call downstream
+6. reducer does not mutate root directly
+7. invalid traversal payload shape maps deterministically
+8. patch/write failure maps to ORCH-MERGE-FAILED
+9. existing workflow executor multi-step tests still pass
 ```
 
 ### Error mapping guidance
@@ -2435,6 +3002,17 @@ Patch/write failure:
   ORCH-MERGE-FAILED
 ```
 
+### Forbidden
+
+```text
+- Do not migrate beneficialOwners yet.
+- Do not put beneficial-owner-specific traversal rules into traversal core.
+- Do not call downstream services from reducers.
+- Do not mutate the global root directly.
+- Do not bypass WorkflowExecutor patch handling.
+- Do not change public response shape.
+```
+
 ---
 
 ## Phase 16 — Migrate Beneficial Owners
@@ -2446,6 +3024,29 @@ Patch/write failure:
 Migrate the recursive beneficial owners enrichment to workflow traversal.
 
 This is the main proof that the workflow model can handle a non-trivial recursive enrichment without embedding that business logic into the core workflow engine.
+
+### Preconditions
+
+Do not start Phase 16 until:
+
+```text
+- Phase 13.5 legacy beneficialOwners contract lock is completed.
+- Phase 14 recursive traversal skeleton is completed and focused tests are green.
+- Phase 15 traversal reducer infrastructure is completed and focused tests are green.
+- beneficialOwners characterization tests are reviewed.
+- account and owners workflow tests are still green.
+- owners behavior and owners1 output shape remain unchanged.
+```
+
+### Recommended Phase 16 split
+
+```text
+Phase 16A — introduce workflow-based BeneficialOwnersEnrichment behind the existing behavior contract
+Phase 16B — switch production beneficialOwners execution to traversal + reducer
+Phase 16C — retire or isolate the legacy resolver path only after characterization tests prove parity
+```
+
+Phase 16 is migration, not traversal design. If Phase 16 reveals missing traversal or reducer capabilities, stop and either fix Phase 14/15 infrastructure explicitly or update this plan. Do not silently design new traversal mechanics inside the business migration.
 
 ### Migration rule
 
@@ -2464,6 +3065,78 @@ Recursive workflow infrastructure handles traversal mechanics.
 Business-specific reducer handles beneficial-owner output shape.
 ```
 
+### Behavior to preserve exactly
+
+```text
+Part name:
+  beneficialOwners
+
+Dependencies:
+  owners
+
+Criticality:
+  Preserve existing required behavior unless tests prove otherwise.
+
+Skip behavior:
+  If no entity owners exist under owners1, return SKIPPED / NO_KEYS_IN_MAIN.
+
+Seed targets:
+  root.data[*].owners1[*] where owner.entity is an object.
+  Preserve dataIndex and ownerIndex for final write-back.
+
+Seed child numbers:
+  entity.ownershipStructure[*].principalOwners[*].memberDetails.number
+  entity.ownershipStructure[*].indirectOwners[*].memberDetails.number
+
+Recursive fetch:
+  Owners.fetchOwners(request(ids), Owners.DEFAULT_FIELDS, context.clientRequestContext())
+
+Depth behavior:
+  first downstream level is depth 1
+  MAX_DEPTH is 6
+  fail only when depth > 6
+
+Cycle behavior:
+  already resolved/visited owner numbers are skipped, not failed.
+
+Missing requested owner:
+  malformed response / required enrichment failure; do not ignore silently.
+
+Final output:
+  write resolved individual owner nodes to:
+    root.data[dataIndex].owners1[ownerIndex].beneficialOwnersDetails
+
+Metrics:
+  Preserve existing business-level behavior and public meta.parts.
+  Preserve or intentionally replace the internal beneficial_owners tree metric only with documented tests.
+```
+
+### Suggested workflow shape
+
+```text
+Step 1:
+  identify root entity targets and traversal seeds from ROOT_SNAPSHOT
+
+Step 2:
+  RecursiveFetchStep fetches owners recursively and stores TraversalResult as STEP_RESULT
+
+Step 3:
+  Dedicated reducer workflow step reads target metadata + traversal STEP_RESULT JsonNode and produces JsonPatchDocument
+
+Final:
+  WorkflowExecutor applies patch to CURRENT_ROOT and accumulated final patch
+  AggregationPartExecutor applies final part patch to global root once
+```
+
+The exact class split may differ, but these boundaries must remain true:
+
+```text
+Traversal step owns recursion mechanics.
+Reducer owns beneficial-owner output shape.
+WorkflowExecutor owns patch application semantics.
+BeneficialOwnersEnrichment owns only workflow declaration and business reducer wiring.
+```
+
 ### Acceptance criteria
 
 ```text
@@ -2471,8 +3144,43 @@ Existing beneficialOwners tests pass unchanged or with intentionally documented 
 Depth limit behavior unchanged.
 Cycle behavior unchanged.
 Downstream failure behavior unchanged.
+Missing requested owner behavior unchanged.
 No public response shape change unless explicitly documented.
-No manual recursive orchestration remains in beneficialOwners beyond reducer/configuration.
+No success-side meta.parts change unless explicitly documented.
+No RFC 9457 response structure change.
+No manual recursive orchestration remains in BeneficialOwnersEnrichment beyond reducer/configuration.
+Account behavior unchanged.
+Owners behavior unchanged.
+```
+
+### Tests required
+
+At minimum, verify:
+
+```text
+1. no root entity owners -> SKIPPED / NO_KEYS_IN_MAIN
+2. seed extraction from owners1 entity owners
+3. principalOwners child numbers are traversed
+4. indirectOwners child numbers are traversed
+5. individual owners are collected into beneficialOwnersDetails
+6. nested entity owners are traversed recursively
+7. duplicate/cyclic owner numbers are not fetched repeatedly
+8. depth limit preserves legacy off-by-one semantics
+9. missing requested owner response fails as malformed/contract violation
+10. downstream failure maps through existing required-enrichment error path
+11. final response JSON shape matches legacy output
+12. global root is still patched once by AggregationPartExecutor
+13. account and owners workflow tests remain green
+```
+
+### Verification
+
+Because Phase 14 through Phase 16 are a risky batch checkpoint, run or explicitly rely on CI for the full verification after Phase 16:
+
+```bash
+./gradlew test
+./gradlew spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification
+./gradlew build
 ```
 
 ### Forbidden
@@ -2481,6 +3189,10 @@ No manual recursive orchestration remains in beneficialOwners beyond reducer/con
 - Do not change account or owners behavior in this phase.
 - Do not rewrite traversal core specifically for beneficialOwners.
 - Do not introduce a generic graph query language.
+- Do not introduce public JSON Patch API.
+- Do not change public REST API.
+- Do not change RFC 9457 public response structure.
+- Do not hide changed behavior behind test rewrites.
 ```
 
 ---
