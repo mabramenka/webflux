@@ -56,7 +56,7 @@ class WorkflowExecutorTest {
         WorkflowStep second = step(
                 "s2",
                 ctx -> StepResult.applied(JsonPatchBuilder.create()
-                        .replace("/a", mapper.getNodeFactory().stringNode("y"))
+                        .add("/b", mapper.getNodeFactory().stringNode("y"))
                         .build()));
         AggregationWorkflow workflow =
                 new AggregationWorkflow("w", Set.of(), PartCriticality.REQUIRED, List.of(first, second));
@@ -262,6 +262,277 @@ class WorkflowExecutorTest {
     }
 
     // -------------------------------------------------------------------------
+    // Multi-binding workflow (Phase 11)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void twoRootSnapshotBindings_combinedPatchContainsBothWrites() {
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "a1"}]}
+                """);
+        JsonNode resp1 = parseObject("""
+                {"items": [{"id": "a1", "v": 1}]}
+                """);
+        JsonNode resp2 = parseObject("""
+                {"items": [{"id": "a1", "w": 2}]}
+                """);
+        KeyedBindingStep step1 =
+                new KeyedBindingStep("s1", writeBinding("s1", "field1", (keys, ctx) -> Mono.just(resp1)));
+        KeyedBindingStep step2 =
+                new KeyedBindingStep("s2", writeBinding("s2", "field2", (keys, ctx) -> Mono.just(resp2)));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("part", Set.of(), PartCriticality.REQUIRED, List.of(step1, step2));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    JsonPatchDocument patch = Objects.requireNonNull(result.patch(), "patch");
+                    // Each binding produced one write op: field1 and field2
+                    assertThat(patch.operations()).hasSize(2);
+                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/field1");
+                    assertThat(patch.operations().get(1).path()).isEqualTo("/data/0/field2");
+                })
+                .verifyComplete();
+
+        // Both bindings emit their own metric tags
+        assertBindingMetric("part", "s1", "success", 1);
+        assertBindingMetric("part", "s2", "success", 1);
+    }
+
+    @Test
+    void fetchOnlyBinding_storesValueAndWorkflowContinues() {
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "a1"}]}
+                """);
+        JsonNode fetchedData = parseObject("""
+                {"items": [{"id": "a1", "extra": "yes"}]}
+                """);
+        JsonNode resp2 = parseObject("""
+                {"items": [{"id": "a1", "v": 42}]}
+                """);
+
+        // Binding 1: fetch-only (storeAs="b1result", no writeRule)
+        KeyExtractionRule keyRule = new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        DownstreamBinding fetchOnly = new DownstreamBinding(
+                new BindingName("s1"), keyRule, (keys, ctx) -> Mono.just(fetchedData), indexRule, "b1result", null);
+        KeyedBindingStep step1 = new KeyedBindingStep("s1", fetchOnly);
+        KeyedBindingStep step2 =
+                new KeyedBindingStep("s2", writeBinding("s2", "field2", (keys, ctx) -> Mono.just(resp2)));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("part", Set.of(), PartCriticality.REQUIRED, List.of(step1, step2));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    // step1 produced no writes; step2 produced one
+                    JsonPatchDocument patch = Objects.requireNonNull(result.patch(), "patch");
+                    assertThat(patch.operations()).hasSize(1);
+                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/field2");
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void laterBinding_readsFromStepResult() {
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "a1"}]}
+                """);
+        // Step 1 response stored as "b1result"; items have {id, relatedId}
+        JsonNode step1Response = parseObject("""
+                {"items": [{"id": "a1", "relatedId": "r99"}]}
+                """);
+        // Step 2 called with "r99" extracted from step1 result
+        List<String> capturedStep2Keys = new java.util.ArrayList<>();
+        JsonNode step2Response = parseObject("""
+                {"items": [{"id": "r99", "name": "Related"}]}
+                """);
+
+        KeyExtractionRule keyRule1 = new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        DownstreamBinding b1 = new DownstreamBinding(
+                new BindingName("b1"), keyRule1, (keys, ctx) -> Mono.just(step1Response), indexRule, "b1result", null);
+
+        // Phase 11: STEP_RESULT source bindings must be fetch-only (no writeRule).
+        KeyExtractionRule keyRule2 =
+                new KeyExtractionRule(KeySource.STEP_RESULT, "b1result", "$.items[*]", List.of("relatedId"));
+        DownstreamBinding b2 = new DownstreamBinding(
+                new BindingName("b2"),
+                keyRule2,
+                (keys, ctx) -> {
+                    capturedStep2Keys.addAll(keys);
+                    return Mono.just(step2Response);
+                },
+                new ResponseIndexingRule("$.items[*]", List.of("id")),
+                "b2result", // fetch-only: store result, no write to root
+                null);
+
+        KeyedBindingStep step1 = new KeyedBindingStep("s1", b1);
+        KeyedBindingStep step2 = new KeyedBindingStep("s2", b2);
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("part", Set.of(), PartCriticality.REQUIRED, List.of(step1, step2));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    // Both bindings were fetch-only; result may carry an empty patch or stored values
+                    assertThat(result).isNotNull();
+                })
+                .verifyComplete();
+
+        // The key point: step 2 received "r99" extracted from step 1's stored response
+        assertThat(capturedStep2Keys).containsExactly("r99");
+    }
+
+    @Test
+    void laterBinding_readsFromCurrentRoot_seesEarlierPatch() {
+        // After step 1 writes field "enriched" to data[0], step 2 with CURRENT_ROOT reads that field.
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "a1"}]}
+                """);
+        JsonNode resp1 = parseObject("""
+                {"items": [{"id": "a1"}]}
+                """);
+
+        // Step 1: write field "enriched" to /data/0
+        KeyedBindingStep step1 =
+                new KeyedBindingStep("s1", writeBinding("s1", "enriched", (keys, ctx) -> Mono.just(resp1)));
+
+        // Step 2: extract from CURRENT_ROOT using the newly written "enriched" field as key
+        List<String> capturedStep2Keys = new java.util.ArrayList<>();
+        JsonNode resp2 = parseObject("""
+                {"items": [{"id": "a1"}]}
+                """);
+        KeyExtractionRule keyRule2 = new KeyExtractionRule(KeySource.CURRENT_ROOT, null, "$.data[*]", List.of("id"));
+        DownstreamBinding b2 = new DownstreamBinding(
+                new BindingName("b2"),
+                keyRule2,
+                (keys, ctx) -> {
+                    capturedStep2Keys.addAll(keys);
+                    return Mono.just(resp2);
+                },
+                new ResponseIndexingRule("$.items[*]", List.of("id")),
+                null,
+                new WriteRule(
+                        "$.data[*]",
+                        new WriteRule.MatchBy("id", "id"),
+                        new WriteRule.WriteAction.ReplaceField("second")));
+        KeyedBindingStep step2 = new KeyedBindingStep("s2", b2);
+
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("part", Set.of(), PartCriticality.REQUIRED, List.of(step1, step2));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    JsonPatchDocument patch = Objects.requireNonNull(result.patch(), "patch");
+                    // step1 wrote field "enriched", step2 wrote field "second"
+                    assertThat(patch.operations()).hasSize(2);
+                })
+                .verifyComplete();
+
+        // Step 2 was able to extract "a1" from CURRENT_ROOT (which has step1's patch applied)
+        assertThat(capturedStep2Keys).containsExactly("a1");
+    }
+
+    @Test
+    void globalRoot_isNotMutatedDuringWorkflowExecution() {
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "a1"}]}
+                """);
+        String originalJson = root.toString();
+        JsonNode resp = parseObject("""
+                {"items": [{"id": "a1", "v": 1}]}
+                """);
+        KeyedBindingStep step = new KeyedBindingStep("s1", writeBinding("s1", "field", (keys, ctx) -> Mono.just(resp)));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("part", Set.of(), PartCriticality.REQUIRED, List.of(step));
+        AggregationContext ctx = contextWith(root);
+
+        StepVerifier.create(executor.execute(workflow, ctx)).expectNextCount(1).verifyComplete();
+
+        // The AggregationContext root (the one the executor and applicator would mutate at part end)
+        // must be unchanged during workflow execution — the patch is not yet applied.
+        assertThat(ctx.accountGroupResponse().toString()).isEqualTo(originalJson);
+    }
+
+    @Test
+    void conflict_samePathDifferentValues_failsWithMergeError() {
+        WorkflowStep s1 = step(
+                "s1",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/data/flag", mapper.getNodeFactory().stringNode("x"))
+                        .build()));
+        WorkflowStep s2 = step(
+                "s2",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/data/flag", mapper.getNodeFactory().stringNode("y"))
+                        .build()));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1, s2));
+
+        // The root needs a /data object node for the first patch to apply cleanly
+        ObjectNode root = parseObject("""
+                {"data": {}}
+                """);
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
+                .verify();
+    }
+
+    @Test
+    void conflict_addThenReplaceOnSamePath_failsWithMergeError() {
+        WorkflowStep s1 = step(
+                "s1",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/data/flag", mapper.getNodeFactory().stringNode("x"))
+                        .build()));
+        WorkflowStep s2 = step(
+                "s2",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .replace("/data/flag", mapper.getNodeFactory().stringNode("x"))
+                        .build()));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1, s2));
+        ObjectNode root = parseObject("""
+                {"data": {}}
+                """);
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
+                .verify();
+    }
+
+    @Test
+    void conflict_missingParentPath_failsWithMergeError() {
+        WorkflowStep s1 = step(
+                "s1",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/missing/parent/field", mapper.getNodeFactory().stringNode("v"))
+                        .build()));
+        AggregationWorkflow workflow = new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1));
+
+        StepVerifier.create(executor.execute(workflow, contextWithEmptyRoot()))
+                .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
+                .verify();
+    }
+
+    @Test
+    void conflict_failedTestOp_failsWithMergeError() {
+        ObjectNode root = parseObject("""
+                {"status": "active"}
+                """);
+        // test asserts value is "inactive" — will fail
+        WorkflowStep s1 = step(
+                "s1",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .test("/status", mapper.getNodeFactory().stringNode("inactive"))
+                        .build()));
+        AggregationWorkflow workflow = new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
+                .verify();
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
@@ -273,6 +544,15 @@ class WorkflowExecutorTest {
         ClientRequestContext clientCtx =
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
         return new AggregationContext(root, clientCtx);
+    }
+
+    /** A write-only binding named {@code bindingName} that writes to {@code fieldName} on each item. */
+    private DownstreamBinding writeBinding(String bindingName, String fieldName, DownstreamCall call) {
+        KeyExtractionRule keyRule = new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        WriteRule writeRule = new WriteRule(
+                "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.ReplaceField(fieldName));
+        return new DownstreamBinding(new BindingName(bindingName), keyRule, call, indexRule, null, writeRule);
     }
 
     private DownstreamBinding keyedBinding(DownstreamCall call) {

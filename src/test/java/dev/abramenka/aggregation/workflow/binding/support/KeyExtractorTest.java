@@ -1,7 +1,6 @@
 package dev.abramenka.aggregation.workflow.binding.support;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.abramenka.aggregation.workflow.binding.KeyExtractionRule;
 import dev.abramenka.aggregation.workflow.binding.KeySource;
@@ -59,12 +58,17 @@ class KeyExtractorTest {
     }
 
     @Test
-    void rejectsNonRootSnapshotSource() {
+    void extractsFromAnyJsonNodeRegardlessOfSourceEnum() {
+        // Phase 11: KeyExtractor is source-agnostic; the caller resolves the source document.
+        // STEP_RESULT is supplied here only to prove the enum value no longer causes a rejection.
+        JsonNode stepResult = parse("""
+                {"data": [{"id": "sr1"}, {"id": "sr2"}]}
+                """);
         KeyExtractionRule rule = new KeyExtractionRule(KeySource.STEP_RESULT, "previous", "$.data[*]", List.of("id"));
 
-        assertThatThrownBy(() -> extractor.extract(rule, mapper.createObjectNode()))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("ROOT_SNAPSHOT");
+        List<ExtractedTarget> targets = extractor.extract(rule, stepResult);
+
+        assertThat(targets).extracting(ExtractedTarget::key).containsExactly("sr1", "sr2");
     }
 
     private JsonNode parse(String raw) {

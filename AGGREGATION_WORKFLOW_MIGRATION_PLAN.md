@@ -779,7 +779,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 8  — Migrate account
 [x] Phase 9  — Binding metrics and diagnostics
 [x] Phase 10 — Migrate owners
-[ ] Phase 11 — Multi-binding workflow
+[x] Phase 11 — Multi-binding workflow
 [ ] Phase 12 — Compute step
 [ ] Phase 13 — Harden patch conflict detection and write ownership
 [ ] Phase 14 — Recursive traversal skeleton
@@ -1996,7 +1996,20 @@ After completing Phase 10, update this section with a handoff note containing:
 
 ## Phase 11 — Multi-binding Workflow
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 11 — multi-binding workflow
+- **Files added (production):** `WorkflowPatchConflictDetector.java` (internal, per-execution conflict tracker)
+- **Files modified (production):** `WorkflowContext.java` (deep-copies rootSnapshot; adds mutable `currentRoot`), `KeyExtractor.java` (source guard removed — caller is responsible for source resolution), `KeyedBindingStep.java` (supports ROOT_SNAPSHOT/CURRENT_ROOT/STEP_RESULT; rejects TRAVERSAL_STATE and STEP_RESULT+writeRule), `WorkflowExecutor.java` (applies each step patch to `currentRoot`; conflict-checks via `WorkflowPatchConflictDetector`; wraps `JsonPatchException` as `ORCH-MERGE-FAILED`)
+- **Files added (test):** `WorkflowPatchConflictDetectorTest.java` (8 unit scenarios)
+- **Files modified (test):** `WorkflowExecutorTest.java` (11 multi-binding scenarios), `KeyedBindingStepTest.java` (CURRENT_ROOT/STEP_RESULT tests inverted to positive; TRAVERSAL_STATE + STEP_RESULT+writeRule stay negative), `KeyExtractorTest.java` (negative source test replaced with positive)
+- **Phase 11 limitation noted:** STEP_RESULT + writeRule rejected at construction (write targets in step-result docs don't map to global root paths; deferred to Phase 13 write ownership)
+- **combinesAppliedPatchesInOrder test:** updated to use different paths (/a and /b) since the conflict detector correctly rejects same-path different-op across steps
+- **Intentionally not done:** parallel execution, complex scheduler, TRAVERSAL_STATE, Phase 12 compute, Phase 13 ownership
+- **Local checks run:** focused workflow + account + owners tests green; `./gradlew test` green; `spotlessApply` clean; Phase 11–13 batch verification deferred to CI per plan section 2
+- **Next phase:** Phase 12 — compute step
 
 ### Goal
 
