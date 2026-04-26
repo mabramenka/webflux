@@ -53,6 +53,43 @@ public record PathExpression(List<PathSegment> segments) {
         return new PathExpression(List.copyOf(segments.subList(0, segments.size() - 1)));
     }
 
+    /**
+     * Returns the RFC 6901 JSON Pointer string for the item at {@code index} within the array
+     * selected by this expression. Requires exactly one {@code [*]} segment; throws {@link
+     * UnsupportedOperationException} otherwise. Used by {@code KeyedBindingStep} to build patch
+     * operation paths without duplicating path-parsing logic.
+     */
+    public String toItemPointerAt(int index) {
+        if (index < 0) {
+            throw new IllegalArgumentException("index must be non-negative: " + index);
+        }
+        StringBuilder pointer = new StringBuilder();
+        boolean usedIndex = false;
+        for (PathSegment seg : segments) {
+            pointer.append('/').append(escapePointerToken(seg.field()));
+            if (seg.array()) {
+                if (usedIndex) {
+                    throw new UnsupportedOperationException(
+                            "toItemPointerAt does not support paths with multiple [*] segments: " + this);
+                }
+                pointer.append('/').append(index);
+                usedIndex = true;
+            }
+        }
+        if (!usedIndex) {
+            throw new UnsupportedOperationException(
+                    "toItemPointerAt requires a path with at least one [*] segment: " + this);
+        }
+        return pointer.toString();
+    }
+
+    private static String escapePointerToken(String token) {
+        if (token.indexOf('~') < 0 && token.indexOf('/') < 0) {
+            return token;
+        }
+        return token.replace("~", "~0").replace("/", "~1");
+    }
+
     private static List<JsonNode> selectSegment(List<JsonNode> current, PathSegment segment) {
         List<JsonNode> selected = new ArrayList<>();
         current.stream().map(node -> node.path(segment.field())).forEach(node -> {
