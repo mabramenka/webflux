@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.12.0](https://github.com/mabramenka/webflux/compare/v0.11.0...v0.12.0) (2026-04-26)
+
+
+### Features
+
+* **workflow:** add compute step (Phase 12) ([312d8e5](https://github.com/mabramenka/webflux/commit/312d8e5b70f6929934a0ecefaa369b2a4a493b62))
+* **workflow:** harden patch conflict detection and write ownership (Phase 13) ([479a152](https://github.com/mabramenka/webflux/commit/479a1524317eb8a889f2027063aa5cc82f4ceea3))
+* **workflow:** migrate owners enrichment to workflow model (Phase 10) ([2f01c6f](https://github.com/mabramenka/webflux/commit/2f01c6f8093c18a0454789fd48150cbc1b7cf21f))
+* **workflow:** multi-binding workflow with CURRENT_ROOT and STEP_RESULT (Phase 11) ([fbc5929](https://github.com/mabramenka/webflux/commit/fbc5929627856c55265f4af155a8288666cf3f4c))
+
 ## [0.11.0](https://github.com/mabramenka/webflux/compare/v0.10.1...v0.11.0) (2026-04-26)
 
 
