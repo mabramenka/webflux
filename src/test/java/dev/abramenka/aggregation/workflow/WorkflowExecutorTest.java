@@ -20,10 +20,12 @@ import dev.abramenka.aggregation.workflow.binding.KeySource;
 import dev.abramenka.aggregation.workflow.binding.ResponseIndexingRule;
 import dev.abramenka.aggregation.workflow.binding.WriteRule;
 import dev.abramenka.aggregation.workflow.step.KeyedBindingStep;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.assertj.core.api.InstanceOfAssertFactories;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -34,7 +36,15 @@ import tools.jackson.databind.node.ObjectNode;
 class WorkflowExecutorTest {
 
     private final JsonMapper mapper = JsonMapper.builder().build();
-    private final WorkflowExecutor executor = new WorkflowExecutor();
+
+    private SimpleMeterRegistry meterRegistry;
+    private WorkflowExecutor executor;
+
+    @BeforeEach
+    void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
+        executor = new WorkflowExecutor(new WorkflowBindingMetrics(meterRegistry));
+    }
 
     @Test
     void combinesAppliedPatchesInOrder() {
@@ -163,9 +173,100 @@ class WorkflowExecutorTest {
                 .verifyComplete();
     }
 
+    // -------------------------------------------------------------------------
+    // Binding metrics (Phase 9)
+    // -------------------------------------------------------------------------
+
+    @Test
+    void appliedStep_recordsSuccessBindingMetric() {
+        WorkflowStep s =
+                step("s1", ctx -> StepResult.applied(JsonPatchBuilder.create().build()));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("myPart", Set.of(), PartCriticality.REQUIRED, List.of(s));
+
+        StepVerifier.create(executor.execute(workflow, contextWithEmptyRoot()))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertBindingMetric("myPart", "s1", "success", 1);
+        assertBindingMetricMissing("myPart", "s1", "skipped");
+        assertBindingMetricMissing("myPart", "s1", "empty");
+        assertBindingMetricMissing("myPart", "s1", "failed");
+    }
+
+    @Test
+    void skippedStep_recordsSkippedBindingMetric() {
+        WorkflowStep s = step("s1", ctx -> StepResult.skipped(PartSkipReason.NO_KEYS_IN_MAIN));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("myPart", Set.of(), PartCriticality.REQUIRED, List.of(s));
+
+        StepVerifier.create(executor.execute(workflow, contextWithEmptyRoot()))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertBindingMetric("myPart", "s1", "skipped", 1);
+        assertBindingMetricMissing("myPart", "s1", "success");
+    }
+
+    @Test
+    void emptyStep_recordsEmptyBindingMetric() {
+        WorkflowStep s = step("s1", ctx -> StepResult.empty(PartSkipReason.DOWNSTREAM_EMPTY));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("myPart", Set.of(), PartCriticality.REQUIRED, List.of(s));
+
+        StepVerifier.create(executor.execute(workflow, contextWithEmptyRoot()))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        assertBindingMetric("myPart", "s1", "empty", 1);
+        assertBindingMetricMissing("myPart", "s1", "success");
+    }
+
+    @Test
+    void failingStep_recordsFailedBindingMetric() {
+        WorkflowStep s = step("s1", ctx -> {
+            throw new RuntimeException("step boom");
+        });
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("myPart", Set.of(), PartCriticality.REQUIRED, List.of(s));
+
+        StepVerifier.create(executor.execute(workflow, contextWithEmptyRoot()))
+                .expectError()
+                .verify();
+
+        assertBindingMetric("myPart", "s1", "failed", 1);
+        assertBindingMetricMissing("myPart", "s1", "success");
+    }
+
+    @Test
+    void keyedBindingStep_usesBindingNameNotStepNameAsMetricTag() {
+        // KeyedBindingStep.bindingName() exposes the DownstreamBinding name ("b"),
+        // which should appear in the metric instead of the step name ("enrich").
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "x1"}]}
+                """);
+        JsonNode response = parseObject("""
+                {"items": [{"id": "x1"}]}
+                """);
+        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding((keys, ctx) -> Mono.just(response)));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("myPart", Set.of(), PartCriticality.REQUIRED, List.of(keyedStep));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .expectNextCount(1)
+                .verifyComplete();
+
+        // binding tag = "b" (the DownstreamBinding name), not "enrich" (the step name)
+        assertBindingMetric("myPart", "b", "success", 1);
+        assertBindingMetricMissing("myPart", "enrich", "success");
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
     private AggregationContext contextWithEmptyRoot() {
-        ObjectNode root = mapper.createObjectNode();
-        return contextWith(root);
+        return contextWith(mapper.createObjectNode());
     }
 
     private AggregationContext contextWith(ObjectNode root) {
@@ -202,5 +303,26 @@ class WorkflowExecutorTest {
                 return Mono.fromSupplier(() -> body.apply(context));
             }
         };
+    }
+
+    private void assertBindingMetric(String part, String binding, String outcome, double count) {
+        assertThat(meterRegistry
+                        .get("aggregation.binding.requests")
+                        .tag("part", part)
+                        .tag("binding", binding)
+                        .tag("outcome", outcome)
+                        .counter()
+                        .count())
+                .isEqualTo(count);
+    }
+
+    private void assertBindingMetricMissing(String part, String binding, String outcome) {
+        assertThat(meterRegistry
+                        .find("aggregation.binding.requests")
+                        .tag("part", part)
+                        .tag("binding", binding)
+                        .tag("outcome", outcome)
+                        .counter())
+                .isNull();
     }
 }

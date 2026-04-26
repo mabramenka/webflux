@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.workflow;
 
+import java.util.Optional;
 import reactor.core.publisher.Mono;
 
 /**
@@ -11,6 +12,16 @@ public interface WorkflowStep {
 
     /** Identifier unique within an {@link AggregationWorkflow}; used for diagnostics and step-result lookup. */
     String name();
+
+    /**
+     * Returns the downstream binding name for metric tagging. Steps that wrap a {@link
+     * dev.abramenka.aggregation.workflow.binding.DownstreamBinding} should override this to expose
+     * the binding's declared name so metrics clearly identify the downstream dependency. Steps
+     * without a named binding return empty, and the executor falls back to {@link #name()}.
+     */
+    default Optional<String> bindingName() {
+        return Optional.empty();
+    }
 
     Mono<StepResult> execute(WorkflowContext context);
 }
