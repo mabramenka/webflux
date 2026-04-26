@@ -14,6 +14,7 @@ import dev.abramenka.aggregation.patch.JsonPatchBuilder;
 import dev.abramenka.aggregation.patch.JsonPatchDocument;
 import dev.abramenka.aggregation.workflow.binding.BindingName;
 import dev.abramenka.aggregation.workflow.binding.DownstreamBinding;
+import dev.abramenka.aggregation.workflow.binding.DownstreamCall;
 import dev.abramenka.aggregation.workflow.binding.KeyExtractionRule;
 import dev.abramenka.aggregation.workflow.binding.KeySource;
 import dev.abramenka.aggregation.workflow.binding.ResponseIndexingRule;
@@ -125,7 +126,7 @@ class WorkflowExecutorTest {
                 {"items": [{"id": "a1", "details": "d1"}]}
                 """);
 
-        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding(keys -> Mono.just(response)));
+        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding((keys, ctx) -> Mono.just(response)));
         AggregationWorkflow workflow =
                 new AggregationWorkflow("test", Set.of(), PartCriticality.REQUIRED, List.of(keyedStep));
 
@@ -145,7 +146,7 @@ class WorkflowExecutorTest {
                 {"data": []}
                 """);
 
-        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding(keys -> Mono.empty()));
+        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding((keys, ctx) -> Mono.empty()));
         AggregationWorkflow workflow =
                 new AggregationWorkflow("test", Set.of(), PartCriticality.REQUIRED, List.of(keyedStep));
 
@@ -173,13 +174,12 @@ class WorkflowExecutorTest {
         return new AggregationContext(root, clientCtx);
     }
 
-    private DownstreamBinding keyedBinding(java.util.function.Function<java.util.List<String>, Mono<JsonNode>> call) {
+    private DownstreamBinding keyedBinding(DownstreamCall call) {
         KeyExtractionRule keyRule = new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
                 "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.ReplaceField("enriched"));
-        return new DownstreamBinding(
-                new BindingName("b"), keyRule, keys -> call.apply(keys), indexRule, null, writeRule);
+        return new DownstreamBinding(new BindingName("b"), keyRule, call, indexRule, null, writeRule);
     }
 
     private ObjectNode parseObject(String json) {

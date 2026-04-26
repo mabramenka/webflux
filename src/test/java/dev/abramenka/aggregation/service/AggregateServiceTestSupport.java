@@ -52,7 +52,7 @@ abstract class AggregateServiceTestSupport {
         aggregateService = new AggregateService(
                 accountGroupClient,
                 partPlanner(List.of(
-                        AccountEnrichmentTestFactory.accountEnrichment(accountClient, objectMapper),
+                        AccountEnrichmentTestFactory.accountEnrichment(accountClient),
                         OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient, objectMapper))),
                 partExecutor(),
                 ObservationRegistry.create(),
