@@ -789,7 +789,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 4  — Downstream binding model
 [x] Phase 5  — Adapt existing keyed support
 [x] Phase 6  — Workflow model skeleton
-[ ] Phase 7  — Keyed binding step
+[x] Phase 7  — Keyed binding step
 [ ] Phase 8  — Migrate account
 [ ] Phase 9  — Binding metrics and diagnostics
 [ ] Phase 10 — Migrate owners
@@ -1259,7 +1259,18 @@ Do not migrate `account` in the same phase as Phase 7.
 
 ## Phase 7 — Keyed Binding Step
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 7 — Keyed binding step
+- **Files added:** `workflow/step/KeyedBindingStep.java`, `workflow/step/package-info.java`
+- **Files modified:** `enrichment/support/keyed/PathExpression.java` (added `toItemPointerAt(int)`), `WorkflowExecutorTest.java` (2 integration tests added)
+- **Files added (test):** `workflow/step/KeyedBindingStepTest.java` (14 scenarios)
+- **Intentionally not done:** no existing enrichment migrated; CURRENT_ROOT/STEP_RESULT/TRAVERSAL_STATE sources rejected at construction; AppendToArray auto-creation not supported; multi-binding not implemented
+- **Local checks run:** `./gradlew test --tests '*KeyedBindingStepTest' --tests '*WorkflowExecutorTest'` — green; `spotlessJavaCheck` — green
+- **CI:** full suite deferred to CI per plan section 2
+- **Next phase:** Phase 8 — migrate `account` enrichment to `WorkflowAggregationPart` using one `KeyedBindingStep`
 
 ### Goal
 

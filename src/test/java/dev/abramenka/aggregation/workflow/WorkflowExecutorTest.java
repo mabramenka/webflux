@@ -12,12 +12,21 @@ import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.model.Projections;
 import dev.abramenka.aggregation.patch.JsonPatchBuilder;
 import dev.abramenka.aggregation.patch.JsonPatchDocument;
+import dev.abramenka.aggregation.workflow.binding.BindingName;
+import dev.abramenka.aggregation.workflow.binding.DownstreamBinding;
+import dev.abramenka.aggregation.workflow.binding.KeyExtractionRule;
+import dev.abramenka.aggregation.workflow.binding.KeySource;
+import dev.abramenka.aggregation.workflow.binding.ResponseIndexingRule;
+import dev.abramenka.aggregation.workflow.binding.WriteRule;
+import dev.abramenka.aggregation.workflow.step.KeyedBindingStep;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -103,11 +112,82 @@ class WorkflowExecutorTest {
                 .verifyComplete();
     }
 
+    // -------------------------------------------------------------------------
+    // Integration: WorkflowExecutor + KeyedBindingStep
+    // -------------------------------------------------------------------------
+
+    @Test
+    void workflowWithKeyedBindingStep_producesJsonPatch() {
+        ObjectNode root = parseObject("""
+                {"data": [{"id": "a1"}]}
+                """);
+        JsonNode response = parseObject("""
+                {"items": [{"id": "a1", "details": "d1"}]}
+                """);
+
+        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding(keys -> Mono.just(response)));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("test", Set.of(), PartCriticality.REQUIRED, List.of(keyedStep));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    JsonPatchDocument patch = Objects.requireNonNull(result.patch(), "patch");
+                    assertThat(patch.operations()).hasSize(1);
+                    assertThat(result.toPartResult("test")).isInstanceOf(AggregationPartResult.JsonPatch.class);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void softOutcomeFromKeyedBindingStep_mapsToNoOp() {
+        // Root has no items → KeyedBindingStep will produce SKIPPED / NO_KEYS_IN_MAIN
+        ObjectNode root = parseObject("""
+                {"data": []}
+                """);
+
+        KeyedBindingStep keyedStep = new KeyedBindingStep("enrich", keyedBinding(keys -> Mono.empty()));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("test", Set.of(), PartCriticality.REQUIRED, List.of(keyedStep));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    assertThat(result.softStatus()).isEqualTo(WorkflowResult.SoftStatus.SKIPPED);
+                    AggregationPartResult partResult = result.toPartResult("test");
+                    assertThat(partResult).isInstanceOf(AggregationPartResult.NoOp.class);
+                    assertThat(((AggregationPartResult.NoOp) partResult).status())
+                            .isEqualTo(PartOutcomeStatus.SKIPPED);
+                    assertThat(((AggregationPartResult.NoOp) partResult).reason())
+                            .isEqualTo(PartSkipReason.NO_KEYS_IN_MAIN);
+                })
+                .verifyComplete();
+    }
+
     private AggregationContext contextWithEmptyRoot() {
         ObjectNode root = mapper.createObjectNode();
+        return contextWith(root);
+    }
+
+    private AggregationContext contextWith(ObjectNode root) {
         ClientRequestContext clientCtx =
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
         return new AggregationContext(root, clientCtx);
+    }
+
+    private DownstreamBinding keyedBinding(java.util.function.Function<java.util.List<String>, Mono<JsonNode>> call) {
+        KeyExtractionRule keyRule = new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        WriteRule writeRule = new WriteRule(
+                "$.data[*]", new WriteRule.MatchBy("id", "id"), new WriteRule.WriteAction.ReplaceField("enriched"));
+        return new DownstreamBinding(
+                new BindingName("b"), keyRule, keys -> call.apply(keys), indexRule, null, writeRule);
+    }
+
+    private ObjectNode parseObject(String json) {
+        try {
+            return (ObjectNode) mapper.readTree(json);
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private WorkflowStep step(String name, java.util.function.Function<WorkflowContext, StepResult> body) {
