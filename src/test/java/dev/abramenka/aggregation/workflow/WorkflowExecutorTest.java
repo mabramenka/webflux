@@ -533,6 +533,145 @@ class WorkflowExecutorTest {
     }
 
     // -------------------------------------------------------------------------
+    // Phase 13: hardened conflict rules and no-partial-patch guarantee
+    // -------------------------------------------------------------------------
+
+    @Test
+    void conflict_samePathSameValue_isIdempotentAndAllowed() {
+        // Same path, same op type, same value across two steps → idempotent, must not fail
+        WorkflowStep s1 = step(
+                "s1",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/flag", mapper.getNodeFactory().stringNode("v"))
+                        .build()));
+        WorkflowStep s2 = step(
+                "s2",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/flag", mapper.getNodeFactory().stringNode("v"))
+                        .build()));
+        ObjectNode root = parseObject("""
+                {}
+                """);
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1, s2));
+
+        // Idempotent — must complete without error
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> assertThat(result.patch()).isNotNull())
+                .verifyComplete();
+    }
+
+    @Test
+    void conflict_arraAppend_multipleAppendsAllowed() {
+        // /- appends to the same array path must never conflict
+        WorkflowStep s1 = step(
+                "s1",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/items/-", mapper.getNodeFactory().stringNode("a"))
+                        .build()));
+        WorkflowStep s2 = step(
+                "s2",
+                ctx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/items/-", mapper.getNodeFactory().stringNode("b"))
+                        .build()));
+        ObjectNode root = parseObject("""
+                {"items": []}
+                """);
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1, s2));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .assertNext(result -> {
+                    assertThat(result.patch()).isNotNull();
+                    assertThat(Objects.requireNonNull(result.patch()).operations())
+                            .hasSize(2);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void noPartialPatch_globalRootUnchangedAfterConflictFailure() {
+        // Even when a conflict is detected, the global root must remain completely untouched
+        ObjectNode root = parseObject("""
+                {"data": {}}
+                """);
+        String originalJson = root.toString();
+        AggregationContext ctx = contextWith(root);
+
+        WorkflowStep s1 = step(
+                "s1",
+                wCtx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/data/flag", mapper.getNodeFactory().stringNode("x"))
+                        .build()));
+        WorkflowStep s2 = step(
+                "s2",
+                wCtx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/data/flag", mapper.getNodeFactory().stringNode("y"))
+                        .build()));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1, s2));
+
+        StepVerifier.create(executor.execute(workflow, ctx))
+                .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
+                .verify();
+
+        // Global root must be completely unchanged — no partial writes visible
+        assertThat(ctx.accountGroupResponse().toString()).isEqualTo(originalJson);
+    }
+
+    @Test
+    void noPartialPatch_globalRootUnchangedAfterMissingParentFailure() {
+        ObjectNode root = parseObject("""
+                {}
+                """);
+        String originalJson = root.toString();
+        AggregationContext ctx = contextWith(root);
+
+        WorkflowStep s1 = step(
+                "s1",
+                wCtx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/missing/deep/field", mapper.getNodeFactory().stringNode("v"))
+                        .build()));
+        AggregationWorkflow workflow = new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1));
+
+        StepVerifier.create(executor.execute(workflow, ctx))
+                .expectError(dev.abramenka.aggregation.error.OrchestrationException.class)
+                .verify();
+
+        assertThat(ctx.accountGroupResponse().toString()).isEqualTo(originalJson);
+    }
+
+    @Test
+    void conflictFailure_mapsToOrchMergeFailed() {
+        // Verify error type maps to ORCH-MERGE-FAILED catalog entry
+        ObjectNode root = parseObject("""
+                {"data": {}}
+                """);
+        WorkflowStep s1 = step(
+                "s1",
+                wCtx -> StepResult.applied(JsonPatchBuilder.create()
+                        .add("/data/field", mapper.getNodeFactory().stringNode("x"))
+                        .build()));
+        WorkflowStep s2 = step(
+                "s2",
+                wCtx -> StepResult.applied(JsonPatchBuilder.create()
+                        .replace("/data/field", mapper.getNodeFactory().stringNode("x"))
+                        .build()));
+        AggregationWorkflow workflow =
+                new AggregationWorkflow("p", Set.of(), PartCriticality.REQUIRED, List.of(s1, s2));
+
+        StepVerifier.create(executor.execute(workflow, contextWith(root)))
+                .expectErrorSatisfies(error -> {
+                    assertThat(error).isInstanceOf(dev.abramenka.aggregation.error.OrchestrationException.class);
+                    dev.abramenka.aggregation.error.OrchestrationException ex =
+                            (dev.abramenka.aggregation.error.OrchestrationException) error;
+                    assertThat(ex.getBody().getType())
+                            .isEqualTo(dev.abramenka.aggregation.error.ProblemCatalog.ORCH_MERGE_FAILED.type());
+                })
+                .verify();
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
