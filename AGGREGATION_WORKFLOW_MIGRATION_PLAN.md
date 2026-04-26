@@ -4,9 +4,9 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 6 are completed. Phase 7 is the next implementation phase.
+> **Current status:** Phase 1 through Phase 9 are completed on `main`. Phase 10 — migrate `owners` — is the next implementation phase.
 >
-> **Working branch:** all remaining migration work is performed on the long-lived branch `workflow-engine`.
+> **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
 ---
 
@@ -54,26 +54,24 @@ For this migration, the rules mean:
 
 ## 2. Repository, Branch, Commit, and Test Protocol
 
-This section replaces the original “one phase per PR” protocol.
+This section reflects the current repository state after Phases 7 through 9 were merged directly into `main`.
 
-The migration is now done on one long-lived branch.
+The migration is currently continued on `main`, not on a long-lived `workflow-engine` branch.
 
 ### Branch rule
 
 ```text
-All remaining migration work must happen on branch:
-
-workflow-engine
+Current expected branch: main
 ```
 
 Rules:
 
 ```text
-- Do not create a separate branch per phase.
-- Do not open a separate PR per phase.
-- Do not push migration commits directly to main.
-- Commit completed phase work directly into workflow-engine.
-- After finishing one phase, continue with the next phase on the same branch.
+- Continue the remaining phases sequentially.
+- Do not create a separate PR per phase unless the repository owner explicitly asks for it.
+- Commit completed phase work directly to main only if that is the current chosen workflow.
+- If the workflow changes back to a feature branch, update this document before starting the next phase.
+- After finishing one phase, update the tracker and add a handoff note.
 - Keep phase boundaries visible through commit messages and plan tracker updates.
 ```
 
@@ -84,22 +82,10 @@ git branch --show-current
 git status --short
 ```
 
-Expected branch:
+Expected branch for the current workflow:
 
 ```text
-workflow-engine
-```
-
-If the branch does not exist locally, create it from the current integration base only once:
-
-```bash
-git switch -c workflow-engine
-```
-
-If it exists:
-
-```bash
-git switch workflow-engine
+main
 ```
 
 Do not rebase or rewrite history unless explicitly instructed by the repository owner.
@@ -142,9 +128,9 @@ The handoff note should answer:
 Do not create one PR per phase.
 ```
 
-The phase plan still matters, but phases are now checkpoints inside the `workflow-engine` branch.
+The phase plan still matters, but phases are now checkpoints in the current integration branch.
 
-A future PR from `workflow-engine` to `main` may be opened only after a meaningful milestone and only when the repository owner decides to do so.
+If the repository owner later decides to move the remaining work to a feature branch, update this section before continuing.
 
 ### Local test rule
 
@@ -165,7 +151,7 @@ When touching build logic, dependency versions, classpath verification, or share
 
 ### CI rule
 
-Every pushed commit to `workflow-engine` should be left for CI to validate.
+Every pushed commit to `main` should be left for CI to validate.
 
 CI is allowed to run broader checks than the local focused checks.
 
@@ -183,7 +169,7 @@ Recommended batch checkpoints:
 - after Phase 11 through Phase 13
 - after Phase 14 through Phase 16
 - after Phase 17 through Phase 19
-- before opening any eventual PR from workflow-engine to main
+- before starting the next risky batch or after a direct-to-main phase group
 ```
 
 Recommended full verification command set:
@@ -763,19 +749,19 @@ Do not implement these during this migration unless a later section explicitly a
 
 # 10. Sequential Migration Phases
 
-Each phase below is intended to be completed as a focused commit or small commit group on the `workflow-engine` branch.
+Each phase below is intended to be completed as a focused commit or small commit group on the current integration branch, currently `main`.
 
 ### Execution protocol
 
 Use this plan as a strict sequential runbook:
 
 ```text
-- work only on workflow-engine
+- work on the current integration branch, currently `main`
 - complete one phase before starting the next phase
-- commit phase work directly to workflow-engine
-- do not create one PR per phase
+- commit phase work directly to `main` only if that remains the chosen workflow
+- do not create one PR per phase unless explicitly instructed
 - after finishing a phase, update the tracker and add a handoff note
-- after finishing a phase, continue with the next phase on the same branch
+- after finishing a phase, continue with the next phase using the same agreed workflow
 - after a larger logical batch, run global verification locally or rely on CI and state that explicitly
 - if a phase reveals missing prerequisite work, stop and update the plan instead of silently folding extra architecture into the same commit
 ```
@@ -1562,7 +1548,7 @@ CI is allowed to run the broader suite.
 
 ### Additional precondition
 
-Before starting Phase 8, Phase 7 must be committed to `workflow-engine` and validated by focused tests and/or CI.
+Before starting Phase 8, Phase 7 must be present in the current integration branch and validated by focused tests and/or CI.
 
 Phase 8 must start by re-reading:
 
@@ -2301,7 +2287,7 @@ Do not start Phase 19 until:
 - owners is migrated
 - beneficialOwners is migrated, if still in project scope
 - workflow docs and examples exist
-- CI is green on workflow-engine
+- CI is green on main
 - public behavior is verified by characterization tests
 ```
 
@@ -2335,9 +2321,9 @@ Migration plan is updated with final status.
 
 ---
 
-## Final Integration Checklist for workflow-engine
+## Final Migration Checklist for main
 
-Before preparing any eventual integration PR from `workflow-engine` to `main`, verify:
+Before declaring the workflow migration complete on `main`, verify:
 
 ```text
 - migration tracker is accurate
