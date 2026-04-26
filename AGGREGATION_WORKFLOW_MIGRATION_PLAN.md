@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 9 are completed on `main`. Phase 10 — migrate `owners` — is the next implementation phase.
+> **Current status:** Phase 1 through Phase 13 are completed on `main`. The post-Phase-13 safety update is also present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. Phase 14 — recursive traversal skeleton — is the next implementation phase.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -54,7 +54,7 @@ For this migration, the rules mean:
 
 ## 2. Repository, Branch, Commit, and Test Protocol
 
-This section reflects the current repository state after Phases 7 through 9 were merged directly into `main`.
+This section reflects the current repository state after Phases 7 through 13 were merged directly into `main`. It also reflects the small post-Phase-13 safety update that declares `WriteOwnership` for the migrated `account` and `owners` workflow parts.
 
 The migration is currently continued on `main`, not on a long-lived `workflow-engine` branch.
 
@@ -1719,7 +1719,7 @@ CI is allowed to run the broader suite.
 
 ### Preconditions
 
-Phase 10 starts from the actual `main` implementation after Phases 7 through 9.
+Phase 10 was completed from the actual `main` implementation after Phases 7 through 9.
 
 Required current state:
 
@@ -2196,14 +2196,15 @@ Bug in computation code:
 
 - **Completed:** Phase 13 — harden patch conflict detection and write ownership
 - **Files added (production):** `workflow/ownership/OwnedTarget.java`, `workflow/ownership/WriteOwnership.java`, `workflow/ownership/package-info.java`
-- **Files modified (production):** `AggregationWorkflow.java` (optional 5th `@Nullable WriteOwnership` field; backward-compatible 4-arg constructor delegates to 5-arg), `WorkflowStep.java` (added `default writtenFieldName()`), `KeyedBindingStep.java` (overrides `writtenFieldName()`), `WorkflowDefinitionValidator.java` (ownership validation when declared)
+- **Files modified (production):** `AggregationWorkflow.java` (optional 5th `@Nullable WriteOwnership` field; backward-compatible 4-arg constructor delegates to 5-arg), `WorkflowStep.java` (added `default writtenFieldName()`), `KeyedBindingStep.java` (overrides `writtenFieldName()`), `WorkflowDefinitionValidator.java` (ownership validation when declared), `AccountEnrichment.java` (`WriteOwnership.of("account1")`), `OwnersEnrichment.java` (`WriteOwnership.of("owners1")`)
 - **Files added (test):** `WriteOwnershipValidationTest.java` (12 scenarios)
 - **Files modified (test):** `WorkflowExecutorTest.java` (4 new Phase 13 scenarios: idempotent write, array append, no-partial-patch on global root ×2, ORCH-MERGE-FAILED mapping)
 - **Phase 11 conflict detection unchanged** — already covered rules 1-5; Phase 13 adds static ownership on top
 - **No partial global patch**: `accumulated.addAll()` only runs after both conflict-check and applicator succeed; workflow failure prevents AggregationPartExecutor from touching the global root — proven by two new tests
 - **Error mapping**: conflicts stay ORCH-MERGE-FAILED; no new catalog entries needed
-- **Intentionally not done:** ORCH-PATCH-CONFLICT/ORCH-PATCH-INVALID not introduced (no product contract requires distinction); account/owners/multi-binding/compute unchanged
+- **Intentionally not done:** ORCH-PATCH-CONFLICT/ORCH-PATCH-INVALID not introduced (no product contract requires distinction); beneficialOwners not migrated; recursive traversal not introduced; no public API, response JSON, RFC 9457, or success-side `meta.parts` contract changes
 - **Local checks run:** focused + full suite green; Phase 11–13 checkpoint: `./gradlew test spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification` green
+- **Post-Phase-13 safety update:** `AccountEnrichment` now declares ownership for `account1`; `OwnersEnrichment` now declares ownership for `owners1`. This enables the Phase 13 static ownership guardrails on real migrated workflow parts without changing runtime response behavior.
 - **Next phase:** Phase 14 — recursive traversal skeleton
 
 ### Goal
@@ -2274,6 +2275,20 @@ Declared write ownership is checked against obviously conflicting workflow defin
 ## Phase 14 — Recursive Traversal Skeleton
 
 **Status:** Not started.
+
+### Current handoff into Phase 14
+
+```text
+- Phase 1 through Phase 13 are completed on main.
+- Account and owners are workflow-based enrichments.
+- Account declares WriteOwnership.of("account1").
+- Owners declares WriteOwnership.of("owners1").
+- Binding metrics, multi-binding workflow, CURRENT_ROOT, STEP_RESULT, ComputeStep, patch conflict detection, and write ownership validation are implemented.
+- TRAVERSAL_STATE is still unsupported and belongs to Phase 14.
+- beneficialOwners is still legacy and must remain unchanged until Phase 16.
+```
+
+Phase 14 must be infrastructure-only. It should introduce recursive traversal state/mechanics and return a `TraversalResult`, but it must not write to the root, add a business reducer, or migrate `beneficialOwners`.
 
 ### Goal
 
