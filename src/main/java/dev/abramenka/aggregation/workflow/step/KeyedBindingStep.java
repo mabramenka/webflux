@@ -35,31 +35,30 @@ import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * A {@link WorkflowStep} that implements the simple keyed enrichment pattern driven by a single
- * {@link DownstreamBinding}:
+ * A {@link WorkflowStep} that implements the keyed enrichment pattern driven by a single {@link
+ * DownstreamBinding}:
  *
  * <ol>
- *   <li>Read keys from {@code ROOT_SNAPSHOT} via {@link KeyExtractor}.
- *   <li>Deduplicate request keys preserving first-seen order.
+ *   <li>Resolve the key source from {@link WorkflowContext}: ROOT_SNAPSHOT, CURRENT_ROOT, or
+ *       STEP_RESULT.
+ *   <li>Extract targets and deduplicate keys using {@link KeyExtractor}.
  *   <li>If no keys — return {@code SKIPPED / NO_KEYS_IN_MAIN}.
- *   <li>Call the binding's {@link dev.abramenka.aggregation.workflow.binding.DownstreamCall}.
+ *   <li>Call the binding's downstream call.
  *   <li>Handle empty/404 downstream responses as soft outcomes.
  *   <li>Index the response via {@link ResponseIndexer}.
  *   <li>Match extracted targets against the indexed response via {@link TargetMatcher}.
  *   <li>Emit a {@link JsonPatchDocument} from the matches using the binding's {@link WriteRule}.
  * </ol>
  *
- * <p>Only {@link KeySource#ROOT_SNAPSHOT} is supported in this phase. {@code CURRENT_ROOT},
- * {@code STEP_RESULT}, and {@code TRAVERSAL_STATE} are rejected at construction.
+ * <p>Supported key sources: ROOT_SNAPSHOT, CURRENT_ROOT, STEP_RESULT. TRAVERSAL_STATE is rejected
+ * at construction. STEP_RESULT with a non-null WriteRule is also rejected (fetch-only restriction
+ * for Phase 11 — write targets in a step-result document do not map to global root paths).
  *
- * <p>{@link WriteRule.WriteAction.AppendToArray}: if the target array field is absent in the owner
- * item, an empty array is created before the first append (matching legacy keyed-enrichment
- * behaviour). If the field exists but is not an array, the step fails with {@link
- * OrchestrationException}. When one owner item matches multiple response entries, the array is
- * created only once regardless of match count.
+ * <p>{@link WriteRule.WriteAction.AppendToArray}: auto-creates the array when absent; fails if
+ * field exists but is not an array.
  *
- * <p>{@link WriteRule.WriteAction.ReplaceField}: uses {@code add} when the field is absent and
- * {@code replace} when it already exists.
+ * <p>{@link WriteRule.WriteAction.ReplaceField}: uses {@code add} when absent, {@code replace}
+ * when present.
  */
 public final class KeyedBindingStep implements WorkflowStep {
 
@@ -74,17 +73,12 @@ public final class KeyedBindingStep implements WorkflowStep {
     @Nullable
     private final PathExpression targetItemPath;
 
-    /**
-     * @throws IllegalArgumentException if {@code name} is blank, {@code binding} is null, the
-     *     binding's {@link KeySource} is not {@link KeySource#ROOT_SNAPSHOT}, or the binding has a
-     *     non-null {@link WriteRule} without a {@link WriteRule.MatchBy}
-     */
     public KeyedBindingStep(String name, DownstreamBinding binding) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("KeyedBindingStep name must not be blank");
         }
         Objects.requireNonNull(binding, "binding");
-        requireRootSnapshotSource(binding);
+        requireSupportedSource(binding);
         requireMatchByWhenWriteRulePresent(binding);
         this.name = name;
         this.binding = binding;
@@ -105,9 +99,11 @@ public final class KeyedBindingStep implements WorkflowStep {
 
     @Override
     public Mono<StepResult> execute(WorkflowContext context) {
-        ObjectNode rootSnapshot = context.rootSnapshot();
+        JsonNode source = resolveSource(
+                binding.keyExtraction().source(), binding.keyExtraction().stepResultName(), context);
         AggregationContext aggCtx = context.aggregationContext();
-        List<ExtractedTarget> targets = KEY_EXTRACTOR.extract(binding.keyExtraction(), rootSnapshot);
+
+        List<ExtractedTarget> targets = KEY_EXTRACTOR.extract(binding.keyExtraction(), source);
         Set<String> keys = deduplicateKeys(targets);
 
         if (keys.isEmpty()) {
@@ -116,7 +112,7 @@ public final class KeyedBindingStep implements WorkflowStep {
 
         return binding.downstreamCall()
                 .fetch(List.copyOf(keys), aggCtx)
-                .flatMap(response -> Mono.fromCallable(() -> processResponse(response, targets, rootSnapshot)))
+                .flatMap(response -> Mono.fromCallable(() -> processResponse(response, targets, source)))
                 .switchIfEmpty(Mono.fromSupplier(() -> StepResult.empty(PartSkipReason.DOWNSTREAM_EMPTY)))
                 .onErrorResume(
                         DownstreamClientException.class,
@@ -125,7 +121,7 @@ public final class KeyedBindingStep implements WorkflowStep {
                                 : Mono.error(ex));
     }
 
-    private StepResult processResponse(JsonNode response, List<ExtractedTarget> targets, ObjectNode rootSnapshot) {
+    private StepResult processResponse(JsonNode response, List<ExtractedTarget> targets, JsonNode source) {
         Map<String, JsonNode> indexedResponse = RESPONSE_INDEXER.index(binding.responseIndexing(), response);
         List<MatchedTarget> matches = TARGET_MATCHER.match(targets, indexedResponse);
 
@@ -138,30 +134,28 @@ public final class KeyedBindingStep implements WorkflowStep {
         }
 
         if (matches.isEmpty()) {
-            // Downstream returned data but no target item matched — soft empty outcome
             return storeAs != null
                     ? StepResult.stored(storeAs, response)
                     : StepResult.empty(PartSkipReason.DOWNSTREAM_EMPTY);
         }
 
-        JsonPatchDocument patch = buildPatch(matches, writeRule, rootSnapshot);
+        JsonPatchDocument patch = buildPatch(matches, writeRule, source);
 
         if (!patch.isEmpty()) {
             return storeAs != null ? StepResult.applied(patch, storeAs, response) : StepResult.applied(patch);
         }
 
-        // Matches existed but yielded no patch ops (e.g. all owners skipped due to index mismatch)
         return storeAs != null
                 ? StepResult.stored(storeAs, response)
                 : StepResult.empty(PartSkipReason.DOWNSTREAM_EMPTY);
     }
 
-    private JsonPatchDocument buildPatch(List<MatchedTarget> matches, WriteRule writeRule, ObjectNode rootSnapshot) {
+    private JsonPatchDocument buildPatch(List<MatchedTarget> matches, WriteRule writeRule, JsonNode source) {
         PathExpression itemPath = Objects.requireNonNull(targetItemPath, "targetItemPath");
 
-        // Map each target-item ObjectNode to its index in the write-target array by identity so we
-        // can build the JSON Pointer without re-parsing keys.
-        List<JsonNode> writeTargetItems = itemPath.select(rootSnapshot);
+        // Build identity index: owner ObjectNode → index within the same source document so that
+        // the JSON Pointer paths are consistent for application to the working document.
+        List<JsonNode> writeTargetItems = itemPath.select(source);
         IdentityHashMap<ObjectNode, Integer> ownerToIndex = new IdentityHashMap<>();
         for (int i = 0; i < writeTargetItems.size(); i++) {
             if (writeTargetItems.get(i) instanceof ObjectNode obj) {
@@ -170,15 +164,11 @@ public final class KeyedBindingStep implements WorkflowStep {
         }
 
         JsonPatchBuilder patchBuilder = JsonPatchBuilder.create();
-        // Tracks owners for which an array-creation op has already been emitted in this build pass,
-        // so that multiple matches against the same owner emit only one create op.
         Set<ObjectNode> arrayCreatedForOwner = Collections.newSetFromMap(new IdentityHashMap<>());
 
         for (MatchedTarget match : matches) {
             Integer idx = ownerToIndex.get(match.owner());
             if (idx == null) {
-                // Owner not found in write-target path — source and target paths differ.
-                // Silently skipped for Phase 7/8; Phase 11 will address multi-target writes.
                 continue;
             }
             String basePointer = itemPath.toItemPointerAt(idx);
@@ -214,17 +204,31 @@ public final class KeyedBindingStep implements WorkflowStep {
                 String fieldPointer = basePointer + "/" + escapeToken(aa.fieldName());
                 JsonNode existing = owner.get(aa.fieldName());
                 if (existing != null && !existing.isArray()) {
-                    throw OrchestrationException.mergeFailed(new JsonPatchException("AppendToArray: field '"
-                            + aa.fieldName() + "' exists but is not an array" + " in target item"));
+                    throw OrchestrationException.mergeFailed(new JsonPatchException(
+                            "AppendToArray: field '" + aa.fieldName() + "' exists but is not an array in target item"));
                 }
                 if (existing == null && !arrayCreatedForOwner.contains(owner)) {
-                    // First match for this owner — emit a create-array op then track it.
                     builder.add(fieldPointer, JsonNodeFactory.instance.arrayNode());
                     arrayCreatedForOwner.add(owner);
                 }
                 builder.add(fieldPointer + "/-", responseEntry);
             }
         }
+    }
+
+    private static JsonNode resolveSource(KeySource source, @Nullable String stepResultName, WorkflowContext context) {
+        return switch (source) {
+            case ROOT_SNAPSHOT -> context.rootSnapshot();
+            case CURRENT_ROOT -> context.currentRoot();
+            case STEP_RESULT ->
+                context.variables()
+                        .get(Objects.requireNonNull(stepResultName, "stepResultName"))
+                        .orElseThrow(() -> OrchestrationException.invariantViolated(new IllegalStateException(
+                                "STEP_RESULT '" + stepResultName + "' not found in workflow variables; "
+                                        + "the producing step must have run and stored a value before this step")));
+            case TRAVERSAL_STATE ->
+                throw new IllegalStateException("TRAVERSAL_STATE is not supported in KeyedBindingStep");
+        };
     }
 
     private static Set<String> deduplicateKeys(List<ExtractedTarget> targets) {
@@ -235,11 +239,16 @@ public final class KeyedBindingStep implements WorkflowStep {
         return keys;
     }
 
-    private static void requireRootSnapshotSource(DownstreamBinding binding) {
+    private static void requireSupportedSource(DownstreamBinding binding) {
         KeySource source = binding.keyExtraction().source();
-        if (source != KeySource.ROOT_SNAPSHOT) {
+        if (source == KeySource.TRAVERSAL_STATE) {
             throw new IllegalArgumentException(
-                    "KeyedBindingStep supports only ROOT_SNAPSHOT in this phase; got: " + source);
+                    "KeyedBindingStep does not support TRAVERSAL_STATE; use RecursiveFetchStep (Phase 14)");
+        }
+        if (source == KeySource.STEP_RESULT && binding.writeRule() != null) {
+            throw new IllegalArgumentException(
+                    "KeyedBindingStep with source=STEP_RESULT must be fetch-only (writeRule must be null); "
+                            + "writes from a step-result document do not map to global root paths");
         }
     }
 

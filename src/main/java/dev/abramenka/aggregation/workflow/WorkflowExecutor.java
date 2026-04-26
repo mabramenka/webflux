@@ -1,7 +1,10 @@
 package dev.abramenka.aggregation.workflow;
 
+import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
+import dev.abramenka.aggregation.patch.JsonPatchApplicator;
 import dev.abramenka.aggregation.patch.JsonPatchDocument;
+import dev.abramenka.aggregation.patch.JsonPatchException;
 import dev.abramenka.aggregation.patch.JsonPatchOperation;
 import java.util.ArrayList;
 import java.util.List;
@@ -10,24 +13,37 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 /**
- * Executes the steps of an {@link AggregationWorkflow} sequentially against an {@link
- * AggregationContext}. The first step that returns a soft outcome short-circuits the workflow with
- * that outcome; otherwise the executor combines every applied patch into a single {@link
- * JsonPatchDocument} in declaration order.
+ * Executes the steps of an {@link AggregationWorkflow} sequentially.
  *
- * <p>Emits an {@code aggregation.binding.requests} counter via {@link WorkflowBindingMetrics} after
- * each step resolves, with {@code part}/{@code binding}/{@code outcome} tags. Errors are recorded
- * as {@code failed} before being re-propagated.
+ * <p>After each successful patch-producing step:
+ *
+ * <ol>
+ *   <li>Each operation is conflict-checked by {@link WorkflowPatchConflictDetector} — rejects same
+ *       path with different value/type across steps.
+ *   <li>The step patch is applied to {@link WorkflowContext#currentRoot()} so later steps with
+ *       {@link dev.abramenka.aggregation.workflow.binding.KeySource#CURRENT_ROOT} see accumulated
+ *       writes.
+ *   <li>The same operations are accumulated into the final combined {@link JsonPatchDocument}.
+ * </ol>
+ *
+ * <p>The combined patch is returned as {@link WorkflowResult}. It is applied to the global root
+ * exactly once by the existing {@link dev.abramenka.aggregation.part.AggregationPartResultApplicator}
+ * flow — this executor never touches the global root.
+ *
+ * <p>Emits {@code aggregation.binding.requests} metrics per step via {@link WorkflowBindingMetrics}.
  */
 @Component
 @RequiredArgsConstructor
 public class WorkflowExecutor {
 
+    private static final JsonPatchApplicator PATCH_APPLICATOR = new JsonPatchApplicator();
+
     private final WorkflowBindingMetrics bindingMetrics;
 
     public Mono<WorkflowResult> execute(AggregationWorkflow workflow, AggregationContext context) {
         WorkflowContext workflowContext = new WorkflowContext(context, context.accountGroupResponse());
-        return runSteps(workflow.steps(), workflowContext, 0, new ArrayList<>(), workflow.name());
+        WorkflowPatchConflictDetector conflictDetector = new WorkflowPatchConflictDetector();
+        return runSteps(workflow.steps(), workflowContext, 0, new ArrayList<>(), workflow.name(), conflictDetector);
     }
 
     private Mono<WorkflowResult> runSteps(
@@ -35,7 +51,8 @@ public class WorkflowExecutor {
             WorkflowContext context,
             int index,
             List<JsonPatchOperation> accumulated,
-            String workflowName) {
+            String workflowName,
+            WorkflowPatchConflictDetector conflictDetector) {
         if (index == steps.size()) {
             return Mono.just(WorkflowResult.applied(new JsonPatchDocument(accumulated)));
         }
@@ -50,13 +67,35 @@ public class WorkflowExecutor {
                             context.variables().put(applied.storeAs(), applied.storedValue());
                         }
                         if (applied.patch() != null) {
-                            accumulated.addAll(applied.patch().operations());
+                            applyAndAccumulate(applied.patch(), context, accumulated, conflictDetector);
                         }
-                        yield runSteps(steps, context, index + 1, accumulated, workflowName);
+                        yield runSteps(steps, context, index + 1, accumulated, workflowName, conflictDetector);
                     }
                     case StepResult.Skipped skipped -> Mono.just(WorkflowResult.skipped(skipped.reason()));
                     case StepResult.Empty empty -> Mono.just(WorkflowResult.empty(empty.reason()));
                 });
+    }
+
+    /**
+     * Conflict-checks each operation in {@code patch}, then applies the patch to
+     * {@code context.currentRoot()}, then appends the operations to the combined patch list.
+     * {@link JsonPatchException} from either the conflict detector or the applicator is wrapped as
+     * {@code ORCH-MERGE-FAILED}.
+     */
+    private static void applyAndAccumulate(
+            JsonPatchDocument patch,
+            WorkflowContext context,
+            List<JsonPatchOperation> accumulated,
+            WorkflowPatchConflictDetector conflictDetector) {
+        try {
+            for (JsonPatchOperation op : patch.operations()) {
+                conflictDetector.check(op);
+            }
+            PATCH_APPLICATOR.apply(patch, context.currentRoot());
+        } catch (JsonPatchException ex) {
+            throw OrchestrationException.mergeFailed(ex);
+        }
+        accumulated.addAll(patch.operations());
     }
 
     private static String outcomeTag(StepResult result) {

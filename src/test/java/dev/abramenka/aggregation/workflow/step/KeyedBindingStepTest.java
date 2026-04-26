@@ -337,7 +337,8 @@ class KeyedBindingStepTest {
     // -------------------------------------------------------------------------
 
     @Test
-    void unsupportedKeySource_currentRoot_failsAtConstruction() {
+    void currentRootSource_isAcceptedAtConstruction() {
+        // Phase 11: CURRENT_ROOT is now a supported source.
         KeyExtractionRule rule = new KeyExtractionRule(KeySource.CURRENT_ROOT, null, "$.data[*]", List.of("id"));
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
@@ -345,13 +346,25 @@ class KeyedBindingStepTest {
         DownstreamBinding binding = new DownstreamBinding(
                 new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, null, writeRule);
 
-        assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("ROOT_SNAPSHOT");
+        // Must not throw.
+        new KeyedBindingStep("step", binding);
     }
 
     @Test
-    void unsupportedKeySource_stepResult_failsAtConstruction() {
+    void stepResultSource_withNoWriteRule_isAcceptedAtConstruction() {
+        // Phase 11: STEP_RESULT is now supported for fetch-only bindings (storeAs, no writeRule).
+        KeyExtractionRule rule = new KeyExtractionRule(KeySource.STEP_RESULT, "prev", "$.data[*]", List.of("id"));
+        ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
+        DownstreamBinding binding = new DownstreamBinding(
+                new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, "stored", null);
+
+        // Must not throw.
+        new KeyedBindingStep("step", binding);
+    }
+
+    @Test
+    void stepResultSource_withWriteRule_failsAtConstruction() {
+        // STEP_RESULT + writeRule is rejected: writes from a step-result doc don't map to root paths.
         KeyExtractionRule rule = new KeyExtractionRule(KeySource.STEP_RESULT, "prev", "$.data[*]", List.of("id"));
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
@@ -361,11 +374,12 @@ class KeyedBindingStepTest {
 
         assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("ROOT_SNAPSHOT");
+                .hasMessageContaining("fetch-only");
     }
 
     @Test
-    void unsupportedKeySource_traversalState_failsAtConstruction() {
+    void traversalStateSource_failsAtConstruction() {
+        // TRAVERSAL_STATE is still unsupported — recursive traversal is Phase 14.
         KeyExtractionRule rule = new KeyExtractionRule(KeySource.TRAVERSAL_STATE, null, "$.data[*]", List.of("id"));
         ResponseIndexingRule indexRule = new ResponseIndexingRule("$.items[*]", List.of("id"));
         WriteRule writeRule = new WriteRule(
@@ -375,7 +389,7 @@ class KeyedBindingStepTest {
 
         assertThatThrownBy(() -> new KeyedBindingStep("step", binding))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("ROOT_SNAPSHOT");
+                .hasMessageContaining("TRAVERSAL_STATE");
     }
 
     // -------------------------------------------------------------------------
