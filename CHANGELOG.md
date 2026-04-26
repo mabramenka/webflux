@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/mabramenka/webflux/compare/v0.12.0...v0.12.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* **workflow:** declare write ownership for account and owners ([6ddf804](https://github.com/mabramenka/webflux/commit/6ddf804f3ec3d5d2ca79cd3bd28a76cdfe888776))
+
 ## [0.12.0](https://github.com/mabramenka/webflux/compare/v0.11.0...v0.12.0) (2026-04-26)
 
 
