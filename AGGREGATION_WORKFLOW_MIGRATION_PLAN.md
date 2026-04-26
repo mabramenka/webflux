@@ -778,7 +778,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 7  — Keyed binding step
 [x] Phase 8  — Migrate account
 [x] Phase 9  — Binding metrics and diagnostics
-[ ] Phase 10 — Migrate owners
+[x] Phase 10 — Migrate owners
 [ ] Phase 11 — Multi-binding workflow
 [ ] Phase 12 — Compute step
 [ ] Phase 13 — Harden patch conflict detection and write ownership
@@ -1703,7 +1703,19 @@ CI is allowed to run the broader suite.
 
 ## Phase 10 — Migrate Second Simple Enrichment
 
-**Status:** Not started.
+**Status:** Completed.
+
+### Handoff note
+
+- **Completed:** Phase 10 — migrate owners enrichment to WorkflowAggregationPart
+- **Files changed (production):** `OwnersEnrichment.java` (rewritten — extends WorkflowAggregationPart; KeyExtractionRule with two fallback key paths; ResponseIndexingRule with two fallback response key paths; AppendToArray to owners1)
+- **Files changed (test):** `OwnersEnrichmentTestFactory.java` (removed objectMapper, reuses `AccountEnrichmentTestFactory.noopWorkflowExecutor()`), `AggregateServiceTestSupport.java` (updated call site), `AggregateServiceDependencyTest.java` (updated call site)
+- **Files added (test):** `OwnersEnrichmentWorkflowTest.java` (9 focused scenarios: fallback source key paths, fallback response key paths, owners1 write, auto-create, soft outcomes, binding metric)
+- **Exact legacy behavior preserved:** two-fallback key extraction, two-fallback response indexing, AppendToArray owners1, optional-body downstream, @Order(LOWEST_PRECEDENCE - 1)
+- **WriteRule.MatchBy note:** uses primary paths (basicDetails.owners[*].id / individual.number) for documentation; algorithmic matching is through TargetMatcher via ExtractedTarget.key as before
+- **Intentionally not done:** beneficialOwners not migrated; multi-binding not introduced; objectMapper dependency removed (uses JsonNodeFactory directly)
+- **Local checks run:** focused owners + account + workflow tests green; `./gradlew test` green; spotlessJavaCheck verifyBoot4Classpath jacocoTestCoverageVerification green — Phase 9+10 checkpoint complete locally
+- **Next phase:** Phase 11 — multi-binding workflow
 
 ### Preconditions
 

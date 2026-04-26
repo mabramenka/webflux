@@ -53,7 +53,7 @@ abstract class AggregateServiceTestSupport {
                 accountGroupClient,
                 partPlanner(List.of(
                         AccountEnrichmentTestFactory.accountEnrichment(accountClient),
-                        OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient, objectMapper))),
+                        OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient))),
                 partExecutor(),
                 ObservationRegistry.create(),
                 objectMapper);
