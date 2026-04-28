@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 13 are completed on `main`. The post-Phase-13 safety update is also present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. Phase 13.5 — beneficialOwners legacy contract lock — is the next implementation phase. Phase 14 should start only after this contract is documented and, where needed, characterized by focused tests.
+> **Current status:** Phase 1 through Phase 14C are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), and recursive traversal skeleton work is completed (Phase 14A/14B/14C). Phase 15 — traversal reducer and write-back bridge — is the next implementation phase.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -782,10 +782,10 @@ Use this plan as a strict sequential runbook:
 [x] Phase 11 — Multi-binding workflow
 [x] Phase 12 — Compute step
 [x] Phase 13 — Harden patch conflict detection and write ownership
-[ ] Phase 13.5 — BeneficialOwners legacy contract lock
-[ ] Phase 14A — Recursive traversal data model
-[ ] Phase 14B — Recursive traversal engine
-[ ] Phase 14C — RecursiveFetchStep workflow adapter
+[x] Phase 13.5 — BeneficialOwners legacy contract lock
+[x] Phase 14A — Recursive traversal data model
+[x] Phase 14B — Recursive traversal engine
+[x] Phase 14C — RecursiveFetchStep workflow adapter
 [ ] Phase 15 — Traversal reducer and write-back bridge
 [ ] Phase 16 — Migrate beneficial owners
 [ ] Phase 17 — Optional root role abstraction
@@ -2277,7 +2277,7 @@ Declared write ownership is checked against obviously conflicting workflow defin
 
 ## Phase 13.5 — BeneficialOwners Legacy Contract Lock
 
-**Status:** Not started.
+**Status:** Completed.
 
 ### Goal
 
@@ -2490,7 +2490,7 @@ After completion:
 
 ## Phase 14 — Recursive Traversal Skeleton
 
-**Status:** Not started.
+**Status:** Completed (14A/14B/14C).
 
 ### Phase 14 structure
 
@@ -2504,11 +2504,14 @@ Phase 14C — RecursiveFetchStep workflow adapter
 
 These substeps may be committed separately or as a small commit group, but they must remain infrastructure-only.
 
-### Current handoff into Phase 14
+### Phase 14 completion handoff
 
 ```text
-- Phase 1 through Phase 13 are completed on main.
+- Phase 1 through Phase 14C are completed on main.
 - Phase 13.5 locked the legacy beneficialOwners contract.
+- Phase 14A added the minimal immutable traversal data model.
+- Phase 14B added the reusable level-by-level recursive traversal engine.
+- Phase 14C added RecursiveFetchStep that stores traversal output as STEP_RESULT JsonNode (no patch/root writes).
 - Account and owners are workflow-based enrichments.
 - Account declares WriteOwnership.of("account1").
 - Owners declares WriteOwnership.of("owners1").
@@ -2516,6 +2519,7 @@ These substeps may be committed separately or as a small commit group, but they 
 - ROOT_SNAPSHOT, CURRENT_ROOT, and STEP_RESULT are supported workflow input sources.
 - TRAVERSAL_STATE remains unsupported as a general workflow KeySource. Phase 14 should keep traversal state internal and store traversal outputs through existing STEP_RESULT variables unless later phases prove a new source is necessary.
 - beneficialOwners is still legacy and must remain unchanged until Phase 16.
+- Phase 15 is the next coding phase.
 ```
 
 Phase 14 must be infrastructure-only. It should introduce recursive traversal state/mechanics and produce a traversal result, but it must not write to the root, add a business reducer, or migrate `beneficialOwners`.
