@@ -7,6 +7,7 @@ import dev.abramenka.aggregation.workflow.WorkflowAggregationPart;
 import dev.abramenka.aggregation.workflow.WorkflowExecutor;
 import dev.abramenka.aggregation.workflow.ownership.WriteOwnership;
 import dev.abramenka.aggregation.workflow.recursive.TraversalReducerStep;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
@@ -22,7 +23,8 @@ class BeneficialOwnersEnrichment extends WorkflowAggregationPart {
             Owners ownersClient,
             RootEntityTargets rootEntityTargets,
             ObjectMapper objectMapper,
-            WorkflowExecutor executor) {
+            WorkflowExecutor executor,
+            MeterRegistry meterRegistry) {
         super(
                 new AggregationWorkflow(
                         NAME,
@@ -38,7 +40,8 @@ class BeneficialOwnersEnrichment extends WorkflowAggregationPart {
                                         TRAVERSAL_RESULT_VAR,
                                         ownersClient,
                                         objectMapper,
-                                        rootEntityTargets),
+                                        rootEntityTargets,
+                                        meterRegistry),
                                 new TraversalReducerStep(
                                         "reduceTraversal",
                                         TRAVERSAL_RESULT_VAR,

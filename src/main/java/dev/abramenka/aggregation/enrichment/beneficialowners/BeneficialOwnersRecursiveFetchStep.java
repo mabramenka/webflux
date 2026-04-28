@@ -9,18 +9,20 @@ import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.workflow.StepResult;
 import dev.abramenka.aggregation.workflow.WorkflowContext;
 import dev.abramenka.aggregation.workflow.WorkflowStep;
-import dev.abramenka.aggregation.workflow.binding.KeySource;
 import dev.abramenka.aggregation.workflow.recursive.CyclePolicy;
-import dev.abramenka.aggregation.workflow.recursive.RecursiveFetchStep;
 import dev.abramenka.aggregation.workflow.recursive.RecursiveTraversalEngine;
+import dev.abramenka.aggregation.workflow.recursive.TraversalGroupResult;
 import dev.abramenka.aggregation.workflow.recursive.TraversalPolicy;
+import dev.abramenka.aggregation.workflow.recursive.TraversalResult;
 import dev.abramenka.aggregation.workflow.recursive.TraversalSeedGroup;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -35,12 +37,16 @@ import tools.jackson.databind.node.ObjectNode;
 final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
 
     private static final String CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.OWNERS);
+    private static final String TREE_METRIC = "aggregation.beneficial_owners.tree";
+    private static final String SUCCESS = "success";
+    private static final String FAILURE = "failure";
 
     private final String name;
     private final String storeAs;
     private final Owners ownersClient;
     private final ObjectMapper objectMapper;
     private final RootEntityTargets rootEntityTargets;
+    private final MeterRegistry meterRegistry;
     private final RecursiveTraversalEngine traversalEngine = new RecursiveTraversalEngine();
     private final TraversalPolicy policy =
             new TraversalPolicy(OwnershipResolver.MAX_DEPTH, CyclePolicy.SKIP_VISITED, true);
@@ -50,7 +56,8 @@ final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
             String storeAs,
             Owners ownersClient,
             ObjectMapper objectMapper,
-            RootEntityTargets rootEntityTargets) {
+            RootEntityTargets rootEntityTargets,
+            MeterRegistry meterRegistry) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("BeneficialOwnersRecursiveFetchStep name must not be blank");
         }
@@ -62,6 +69,7 @@ final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
         this.ownersClient = Objects.requireNonNull(ownersClient, "ownersClient");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
         this.rootEntityTargets = Objects.requireNonNull(rootEntityTargets, "rootEntityTargets");
+        this.meterRegistry = Objects.requireNonNull(meterRegistry, "meterRegistry");
     }
 
     @Override
@@ -71,17 +79,33 @@ final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
 
     @Override
     public Mono<StepResult> execute(WorkflowContext context) {
-        RecursiveFetchStep delegate = new RecursiveFetchStep(
-                name + ".delegate",
-                storeAs,
-                KeySource.ROOT_SNAPSHOT,
-                this::extractSeedGroups,
-                policy,
-                traversalEngine,
-                keys -> fetchBatch(keys, context.aggregationContext()),
-                EntityNumbersExtractor::childNumbers,
-                EntityNumbersExtractor::isIndividual);
-        return delegate.execute(context).onErrorMap(this::mapLegacyEquivalentError);
+        List<TraversalSeedGroup> seedGroups = extractSeedGroups(context.rootSnapshot());
+        return traverseGroups(seedGroups, context.aggregationContext())
+                .map(result -> StepResult.stored(storeAs, result.toJsonNode(JsonNodeFactory.instance)))
+                .onErrorMap(this::mapLegacyEquivalentError);
+    }
+
+    private Mono<TraversalResult> traverseGroups(List<TraversalSeedGroup> seedGroups, AggregationContext context) {
+        if (seedGroups.isEmpty()) {
+            return Mono.just(new TraversalResult(List.of()));
+        }
+        return Flux.fromIterable(seedGroups)
+                .concatMap(seedGroup -> traverseSingleGroup(seedGroup, context))
+                .collectList()
+                .map(TraversalResult::new);
+    }
+
+    private Mono<TraversalGroupResult> traverseSingleGroup(TraversalSeedGroup seedGroup, AggregationContext context) {
+        return traversalEngine
+                .traverse(
+                        List.of(seedGroup),
+                        policy,
+                        keys -> fetchBatch(keys, context),
+                        EntityNumbersExtractor::childNumbers,
+                        EntityNumbersExtractor::isIndividual)
+                .map(result -> result.groups().get(0))
+                .doOnSuccess(group -> recordTree(SUCCESS))
+                .doOnError(error -> recordTree(FAILURE));
     }
 
     private Throwable mapLegacyEquivalentError(Throwable error) {
@@ -136,5 +160,9 @@ final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
             }
         }
         return out;
+    }
+
+    private void recordTree(String outcome) {
+        meterRegistry.counter(TREE_METRIC, "outcome", outcome).increment();
     }
 }

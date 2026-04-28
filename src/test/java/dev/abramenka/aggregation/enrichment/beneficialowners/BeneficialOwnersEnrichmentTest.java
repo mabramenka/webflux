@@ -53,13 +53,15 @@ class BeneficialOwnersEnrichmentTest {
     @Mock
     private Owners ownersClient;
 
+    private SimpleMeterRegistry meterRegistry;
     private BeneficialOwnersEnrichment beneficialOwners;
 
     @BeforeEach
     void setUp() {
-        WorkflowExecutor executor = new WorkflowExecutor(new WorkflowBindingMetrics(new SimpleMeterRegistry()));
-        beneficialOwners =
-                new BeneficialOwnersEnrichment(ownersClient, new RootEntityTargets(), objectMapper, executor);
+        meterRegistry = new SimpleMeterRegistry();
+        WorkflowExecutor executor = new WorkflowExecutor(new WorkflowBindingMetrics(meterRegistry));
+        beneficialOwners = new BeneficialOwnersEnrichment(
+                ownersClient, new RootEntityTargets(), objectMapper, executor, meterRegistry);
     }
 
     @Test
@@ -97,6 +99,8 @@ class BeneficialOwnersEnrichmentTest {
                 .verifyComplete();
 
         verify(ownersClient, times(0)).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
+        assertTreeMetricMissing("success");
+        assertTreeMetricMissing("failure");
     }
 
     @Test
@@ -130,6 +134,8 @@ class BeneficialOwnersEnrichmentTest {
         JsonNode owners = root.path("data").path(0).path("owners1");
         assertThat(owners.path(0).has("beneficialOwnersDetails")).isFalse();
         assertThat(owners.path(1).path("beneficialOwnersDetails")).hasSize(2);
+        assertTreeMetric("success", 1);
+        assertTreeMetricMissing("failure");
     }
 
     @Test
@@ -222,6 +228,8 @@ class BeneficialOwnersEnrichmentTest {
                 .hasSize(1);
         assertThat(root.path("data").path(0).path("owners1").path(1).path("beneficialOwnersDetails"))
                 .hasSize(1);
+        assertTreeMetric("success", 2);
+        assertTreeMetricMissing("failure");
     }
 
     @Test
@@ -461,6 +469,8 @@ class BeneficialOwnersEnrichmentTest {
         StepVerifier.create(beneficialOwners.execute(context(root)))
                 .expectErrorSatisfies(error -> assertThat(error).isSameAs(downstreamFailure))
                 .verify();
+        assertTreeMetricMissing("success");
+        assertTreeMetric("failure", 1);
     }
 
     private Mono<AggregationPartResult> executeAndApply(ObjectNode root) {
@@ -530,5 +540,22 @@ class BeneficialOwnersEnrichmentTest {
     private AggregationContext context(ObjectNode root) {
         return new AggregationContext(
                 root, new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty()));
+    }
+
+    private void assertTreeMetric(String outcome, double count) {
+        assertThat(meterRegistry
+                        .get("aggregation.beneficial_owners.tree")
+                        .tag("outcome", outcome)
+                        .counter()
+                        .count())
+                .isEqualTo(count);
+    }
+
+    private void assertTreeMetricMissing(String outcome) {
+        assertThat(meterRegistry
+                        .find("aggregation.beneficial_owners.tree")
+                        .tag("outcome", outcome)
+                        .counter())
+                .isNull();
     }
 }
