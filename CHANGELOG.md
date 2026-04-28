@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/mabramenka/webflux/compare/v0.14.0...v0.14.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* **workflow:** preserve beneficial owners empty traversal parity ([36a3ec0](https://github.com/mabramenka/webflux/commit/36a3ec07babbc2138127bd245ef9a9cf4145e839))
+
 ## [0.14.0](https://github.com/mabramenka/webflux/compare/v0.13.0...v0.14.0) (2026-04-28)
 
 
