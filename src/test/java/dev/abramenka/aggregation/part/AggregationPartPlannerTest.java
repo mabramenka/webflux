@@ -18,60 +18,77 @@ import reactor.core.publisher.Mono;
 class AggregationPartPlannerTest {
 
     @Test
-    void plan_expandsDependenciesAcrossAggregationParts() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(
-                enrichment("account"),
-                enrichment("auditTrail", "account"),
-                enrichment("beneficialOwners", "auditTrail")));
-
-        AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
-
-        assertThat(plan.requestedSelection().names()).containsExactly("beneficialOwners");
-        assertThat(plan.effectiveSelection().names())
-                .containsExactlyInAnyOrder("beneficialOwners", "auditTrail", "account");
-        assertThat(plan.selectedLevels())
-                .extracting(AggregationPartPlannerTest::partNames)
-                .containsExactly(List.of("account"), List.of("auditTrail"), List.of("beneficialOwners"));
-    }
-
-    @Test
-    void plan_ordersSelectedEnrichmentsByDependencies() {
+    void plan_includeEmpty_selectsOnlyBasePart() {
         AggregationPartPlanner planner =
-                new AggregationPartPlanner(List.of(enrichment("auditTrail", "account"), enrichment("account")));
+                new AggregationPartPlanner(List.of(basePart(), enrichment("account", "accountGroup")));
 
-        AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
+        AggregationPartPlan plan = planner.plan(List.of());
 
         assertThat(plan.selectedLevels())
                 .extracting(AggregationPartPlannerTest::partNames)
-                .containsExactly(List.of("account"), List.of("auditTrail"));
+                .containsExactly(List.of("accountGroup"));
     }
 
     @Test
-    void plan_ordersSelectedEnrichmentsByTransitiveDependencies() {
+    void plan_includeNull_selectsBaseAndAllPublicParts() {
+        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(
+                basePart(),
+                enrichment("beneficialOwners", "owners"),
+                enrichment("account", "accountGroup"),
+                enrichment("owners", "accountGroup")));
+
+        AggregationPartPlan plan = planner.plan(null);
+
+        List<List<String>> levels = plan.selectedLevels().stream()
+                .map(AggregationPartPlannerTest::partNames)
+                .toList();
+        assertThat(levels).hasSize(3);
+        assertThat(levels.get(0)).containsExactly("accountGroup");
+        assertThat(levels.get(1)).containsExactlyInAnyOrder("account", "owners");
+        assertThat(levels.get(2)).containsExactly("beneficialOwners");
+    }
+
+    @Test
+    void plan_includeAccount_selectsBaseAndAccount() {
         AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(enrichment("summary", "beneficialOwners"), enrichment("beneficialOwners")));
+                List.of(basePart(), enrichment("account", "accountGroup"), enrichment("owners", "accountGroup")));
 
-        AggregationPartPlan plan = planner.plan(List.of("summary"));
+        AggregationPartPlan plan = planner.plan(List.of("account"));
 
         assertThat(plan.selectedLevels())
                 .extracting(AggregationPartPlannerTest::partNames)
-                .containsExactly(List.of("beneficialOwners"), List.of("summary"));
+                .containsExactly(List.of("accountGroup"), List.of("account"));
     }
 
     @Test
-    void plan_keepsSelectedPartsForRuntimeSupportCheck() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(unsupportedEnrichment("beneficialOwners")));
+    void plan_includeBeneficialOwners_expandsOwnersDependency() {
+        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(
+                basePart(),
+                enrichment("beneficialOwners", "owners"),
+                enrichment("owners", "accountGroup"),
+                enrichment("account", "accountGroup")));
 
         AggregationPartPlan plan = planner.plan(List.of("beneficialOwners"));
 
         assertThat(plan.selectedLevels())
                 .extracting(AggregationPartPlannerTest::partNames)
-                .containsExactly(List.of("beneficialOwners"));
+                .containsExactly(List.of("accountGroup"), List.of("owners"), List.of("beneficialOwners"));
+    }
+
+    @Test
+    void plan_rejectsNonPublicPartInInclude() {
+        AggregationPartPlanner planner =
+                new AggregationPartPlanner(List.of(basePart(), enrichment("account", "accountGroup")));
+
+        assertThatThrownBy(() -> planner.plan(List.of("accountGroup")))
+                .isInstanceOf(UnsupportedAggregationPartException.class)
+                .hasMessage("One or more request fields failed validation.");
     }
 
     @Test
     void plan_rejectsUnknownRequestedPart() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(List.of(enrichment("account")));
+        AggregationPartPlanner planner =
+                new AggregationPartPlanner(List.of(basePart(), enrichment("account", "accountGroup")));
 
         assertThatThrownBy(() -> planner.plan(List.of("missing")))
                 .isInstanceOf(UnsupportedAggregationPartException.class)
@@ -79,15 +96,38 @@ class AggregationPartPlannerTest {
     }
 
     @Test
+    void constructor_rejectsMissingBasePart() {
+        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Exactly one base aggregation part is required");
+    }
+
+    @Test
+    void constructor_rejectsMultipleBaseParts() {
+        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(basePart(), secondBasePart())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Exactly one base aggregation part is required");
+    }
+
+    @Test
+    void constructor_rejectsBaseDependencies() {
+        assertThatThrownBy(() ->
+                        new AggregationPartPlanner(List.of(basePart("owners"), enrichment("owners", "accountGroup"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must not declare dependencies");
+    }
+
+    @Test
     void constructor_rejectsDuplicatePartNames() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account"), enrichment("account"))))
+        assertThatThrownBy(() ->
+                        new AggregationPartPlanner(List.of(basePart(), enrichment("account"), enrichment("account"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate aggregation component name: account");
     }
 
     @Test
     void constructor_rejectsUnknownDependencies() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account", "missing"))))
+        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(basePart(), enrichment("account", "missing"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unknown aggregation component dependency for account: missing");
     }
@@ -95,26 +135,14 @@ class AggregationPartPlannerTest {
     @Test
     void constructor_rejectsCyclicDependencies() {
         assertThatThrownBy(() -> new AggregationPartPlanner(
-                        List.of(enrichment("account", "owners"), enrichment("owners", "account"))))
+                        List.of(basePart(), enrichment("account", "owners"), enrichment("owners", "account"))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Cyclic aggregation component dependency");
     }
 
     @Test
-    void constructor_allowsDependenciesAcrossSelectedParts() {
-        AggregationPartPlanner planner = new AggregationPartPlanner(
-                List.of(enrichment("auditTrail", "beneficialOwners"), enrichment("beneficialOwners")));
-
-        AggregationPartPlan plan = planner.plan(List.of("auditTrail"));
-
-        assertThat(plan.selectedLevels())
-                .extracting(AggregationPartPlannerTest::partNames)
-                .containsExactly(List.of("beneficialOwners"), List.of("auditTrail"));
-    }
-
-    @Test
     void plan_defensivelyCopiesSelectedLevels() {
-        AggregationPart part = enrichment("account");
+        AggregationPart part = basePart();
         List<AggregationPart> level = new ArrayList<>(List.of(part));
         List<List<AggregationPart>> levels = new ArrayList<>(List.of(level));
 
@@ -125,11 +153,64 @@ class AggregationPartPlannerTest {
 
         assertThat(plan.selectedLevels())
                 .extracting(AggregationPartPlannerTest::partNames)
-                .containsExactly(List.of("account"));
+                .containsExactly(List.of("accountGroup"));
         assertThatThrownBy(() -> plan.selectedLevels().add(List.of(part)))
                 .isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> plan.selectedLevels().getFirst().add(part))
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    private static AggregationPart basePart(String... dependencies) {
+        return new AggregationPart() {
+            @Override
+            public String name() {
+                return "accountGroup";
+            }
+
+            @Override
+            public boolean base() {
+                return true;
+            }
+
+            @Override
+            public boolean publicSelectable() {
+                return false;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of(dependencies);
+            }
+
+            @Override
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.replacement(name(), context.accountGroupResponse()));
+            }
+        };
+    }
+
+    private static AggregationPart secondBasePart() {
+        return new AggregationPart() {
+            @Override
+            public String name() {
+                return "anotherBase";
+            }
+
+            @Override
+            public boolean base() {
+                return true;
+            }
+
+            @Override
+            public boolean publicSelectable() {
+                return false;
+            }
+
+            @Override
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.replacement(name(), context.accountGroupResponse()));
+            }
+        };
     }
 
     private static AggregationPart enrichment(String name, String... dependencies) {
@@ -142,28 +223,6 @@ class AggregationPartPlannerTest {
             @Override
             public Set<String> dependencies() {
                 return Set.of(dependencies);
-            }
-
-            @Override
-            public Mono<AggregationPartResult> execute(AggregationContext context) {
-                return Mono.just(AggregationPartResult.patch(
-                        name(),
-                        context.accountGroupResponse(),
-                        context.accountGroupResponse().deepCopy()));
-            }
-        };
-    }
-
-    private static AggregationPart unsupportedEnrichment(String name) {
-        return new AggregationPart() {
-            @Override
-            public String name() {
-                return name;
-            }
-
-            @Override
-            public boolean supports(AggregationContext context) {
-                return false;
             }
 
             @Override

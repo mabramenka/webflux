@@ -2,6 +2,7 @@ package dev.abramenka.aggregation.part;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
 import dev.abramenka.aggregation.model.AggregationPart;
@@ -44,7 +45,6 @@ class AggregationPartExecutorTest {
         executor = new AggregationPartExecutor(
                 new AggregationPartRunner(ObservationRegistry.NOOP),
                 new AggregationPartFailurePolicy(),
-                new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),
                 metrics);
     }
@@ -178,7 +178,11 @@ class AggregationPartExecutorTest {
                 List.of(List.of(dependency), List.of(dependent)));
         ClientRequestContext clientRequestContext =
                 new ClientRequestContext(ForwardedHeaders.builder().build(), null, Projections.empty());
-        return executor.execute("Account group", root, clientRequestContext, plan);
+        return executor.execute(root, clientRequestContext, request(), plan);
+    }
+
+    private static AggregateRequest request() {
+        return new AggregateRequest(List.of("AB123456789"), null);
     }
 
     private static AggregationPart flagPart(String name, String flag, String... dependencies) {

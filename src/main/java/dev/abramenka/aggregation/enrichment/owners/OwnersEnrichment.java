@@ -34,7 +34,7 @@ class OwnersEnrichment extends WorkflowAggregationPart {
         super(
                 new AggregationWorkflow(
                         "owners",
-                        Set.of(),
+                        Set.of("accountGroup"),
                         PartCriticality.REQUIRED,
                         List.of(new KeyedBindingStep(
                                 "fetch",

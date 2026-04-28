@@ -17,6 +17,7 @@ import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.Projections;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.codec.DecodingException;
@@ -159,6 +160,20 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
     }
 
     @Test
+    void aggregate_rejectsInternalPartSelectionBeforeCallingAccountGroup() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of("accountGroup"));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(UnsupportedAggregationPartException.class)
+                        .hasMessage("One or more request fields failed validation."))
+                .verify();
+
+        verify(accountGroupClient, never())
+                .fetchAccountGroup(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
+    }
+
+    @Test
     void aggregate_rejectsBlankPartSelectionBeforeCallingAccountGroup() {
         AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of(" "));
 
@@ -248,6 +263,53 @@ class AggregateServiceSelectionTest extends AggregateServiceTestSupport {
                                         .getBody()
                                         .getType())
                                 .isEqualTo(ProblemCatalog.MAIN_CONTRACT_VIOLATION.type())))
+                .verify();
+    }
+
+    @Test
+    void aggregate_mapsAccountGroupAuthFailureToMainAuthFailed() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of());
+        DownstreamClientException unauthorized = DownstreamClientException.upstreamStatus(
+                HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT_GROUP), HttpStatus.UNAUTHORIZED);
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(unauthorized));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex).catalog())
+                                .isEqualTo(ProblemCatalog.MAIN_AUTH_FAILED)))
+                .verify();
+    }
+
+    @Test
+    void aggregate_mapsAccountGroupTimeoutToMainTimeout() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of());
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new TimeoutException("timed out")));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex).catalog())
+                                .isEqualTo(ProblemCatalog.MAIN_TIMEOUT)))
+                .verify();
+    }
+
+    @Test
+    void aggregate_mapsAccountGroupInvalidPayloadToMainInvalidPayload() {
+        AggregateRequest request = new AggregateRequest(List.of("AB123456789"), List.of());
+
+        when(accountGroupClient.fetchAccountGroup(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
+                .thenReturn(Mono.error(new DecodingException("bad json")));
+
+        StepVerifier.create(aggregateService.aggregate(request, clientRequestContext()))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(DownstreamClientException.class)
+                        .satisfies(ex -> assertThat(((DownstreamClientException) ex).catalog())
+                                .isEqualTo(ProblemCatalog.MAIN_INVALID_PAYLOAD)))
                 .verify();
     }
 

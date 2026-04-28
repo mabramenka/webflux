@@ -16,6 +16,7 @@ import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -235,6 +236,11 @@ class AggregateServiceDependencyTest extends AggregateServiceTestSupport {
             @Override
             public String name() {
                 return name;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of("accountGroup");
             }
 
             @Override
