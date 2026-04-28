@@ -3,6 +3,7 @@ package dev.abramenka.aggregation.workflow.recursive;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.abramenka.aggregation.enrichment.beneficialowners.BeneficialOwnersTraversalReducer;
 import dev.abramenka.aggregation.error.EnrichmentDependencyException;
 import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.patch.JsonPatchApplicator;
@@ -44,7 +45,7 @@ class BeneficialOwnersTraversalReducerTest {
                 }
                 """);
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
 
         assertThat(patch.operations()).singleElement().satisfies(op -> {
             assertThat(op.path()).isEqualTo("/data/0/owners1/0/beneficialOwnersDetails");
@@ -81,7 +82,7 @@ class BeneficialOwnersTraversalReducerTest {
                 }
                 """);
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
 
         assertThat(patch.operations())
                 .extracting(JsonPatchOperation::path)
@@ -117,7 +118,7 @@ class BeneficialOwnersTraversalReducerTest {
                 }
                 """);
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
         JsonNode value = operationValue(patch.operations().getFirst());
 
         assertThat(value.path(0).path("individual").path("number").asString()).isEqualTo("I-1");
@@ -151,7 +152,7 @@ class BeneficialOwnersTraversalReducerTest {
                 }
                 """);
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
         ((ObjectNode) traversal
                         .path("groups")
                         .path(0)
@@ -193,7 +194,7 @@ class BeneficialOwnersTraversalReducerTest {
                 }
                 """);
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
         JsonNode value = operationValue(patch.operations().getFirst());
 
         assertThat(value.isArray()).isTrue();
@@ -215,7 +216,7 @@ class BeneficialOwnersTraversalReducerTest {
                 """);
         JsonNode traversal = minimalTraversal();
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
 
         assertThat(patch.operations().getFirst()).isInstanceOf(JsonPatchOperation.Add.class);
     }
@@ -238,7 +239,7 @@ class BeneficialOwnersTraversalReducerTest {
                 """);
         JsonNode traversal = minimalTraversal();
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
 
         assertThat(patch.operations().getFirst()).isInstanceOf(JsonPatchOperation.Replace.class);
     }
@@ -258,7 +259,7 @@ class BeneficialOwnersTraversalReducerTest {
                 """);
         JsonNode traversal = minimalTraversal();
 
-        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer(root).reduce(traversal);
+        JsonPatchDocument patch = new BeneficialOwnersTraversalReducer().reduce(traversal, root);
         patchApplicator.apply(patch, root);
 
         assertThat(root.path("data")
@@ -366,7 +367,7 @@ class BeneficialOwnersTraversalReducerTest {
                 """);
         JsonNode traversal = json(traversalJson);
 
-        assertThatThrownBy(() -> new BeneficialOwnersTraversalReducer(root).reduce(traversal))
+        assertThatThrownBy(() -> new BeneficialOwnersTraversalReducer().reduce(traversal, root))
                 .isInstanceOf(EnrichmentDependencyException.class)
                 .extracting(error -> ((EnrichmentDependencyException) error).catalog())
                 .isEqualTo(ProblemCatalog.ENRICH_CONTRACT_VIOLATION);
