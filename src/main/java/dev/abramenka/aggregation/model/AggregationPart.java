@@ -23,5 +23,13 @@ public interface AggregationPart {
         return PartCriticality.REQUIRED;
     }
 
+    default boolean base() {
+        return false;
+    }
+
+    default boolean publicSelectable() {
+        return true;
+    }
+
     Mono<AggregationPartResult> execute(AggregationContext context);
 }

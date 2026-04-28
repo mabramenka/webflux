@@ -6,6 +6,7 @@ import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.client.Accounts;
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
+import dev.abramenka.aggregation.enrichment.accountgroup.AccountGroupEnrichmentTestFactory;
 import dev.abramenka.aggregation.enrichment.owners.OwnersEnrichmentTestFactory;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
@@ -20,6 +21,7 @@ import dev.abramenka.aggregation.part.AggregationPartExecutorFactory;
 import dev.abramenka.aggregation.part.AggregationPartPlanner;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +54,6 @@ abstract class AggregateServiceTestSupport {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         aggregateService = new AggregateService(
-                accountGroupClient,
                 partPlanner(List.of(
                         AccountEnrichmentTestFactory.accountEnrichment(accountClient),
                         OwnersEnrichmentTestFactory.ownersEnrichment(ownersClient))),
@@ -78,12 +79,14 @@ abstract class AggregateServiceTestSupport {
     }
 
     protected AggregateService aggregateServiceWith(List<AggregationPart> parts) {
-        return new AggregateService(
-                accountGroupClient, partPlanner(parts), partExecutor(), ObservationRegistry.create(), objectMapper);
+        return new AggregateService(partPlanner(parts), partExecutor(), ObservationRegistry.create(), objectMapper);
     }
 
     protected AggregationPartPlanner partPlanner(List<AggregationPart> parts) {
-        return new AggregationPartPlanner(parts);
+        List<AggregationPart> withBase = new ArrayList<>(parts.size() + 1);
+        withBase.add(AccountGroupEnrichmentTestFactory.accountGroupEnrichment(accountGroupClient, objectMapper));
+        withBase.addAll(parts);
+        return new AggregationPartPlanner(withBase);
     }
 
     protected AggregationPartExecutor partExecutor() {
@@ -127,7 +130,7 @@ abstract class AggregateServiceTestSupport {
 
             @Override
             public Set<String> dependencies() {
-                return Set.of(dependency);
+                return Set.of("accountGroup", dependency);
             }
 
             @Override
@@ -153,6 +156,11 @@ abstract class AggregateServiceTestSupport {
                 working.put(flag, true);
                 return Mono.just(AggregationPartResult.patch(name(), context.accountGroupResponse(), working));
             }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of("accountGroup");
+            }
         };
     }
 
@@ -166,7 +174,7 @@ abstract class AggregateServiceTestSupport {
 
             @Override
             public Set<String> dependencies() {
-                return Set.of(dependency);
+                return Set.of("accountGroup", dependency);
             }
 
             @Override
@@ -194,6 +202,11 @@ abstract class AggregateServiceTestSupport {
             public Mono<AggregationPartResult> execute(AggregationContext context) {
                 return Mono.error(new IllegalStateException("enrichment down"));
             }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of("accountGroup");
+            }
         };
     }
 
@@ -207,6 +220,11 @@ abstract class AggregateServiceTestSupport {
             @Override
             public boolean supports(AggregationContext context) {
                 return false;
+            }
+
+            @Override
+            public Set<String> dependencies() {
+                return Set.of("accountGroup");
             }
 
             @Override

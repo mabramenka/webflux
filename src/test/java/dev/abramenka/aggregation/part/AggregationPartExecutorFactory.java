@@ -12,7 +12,6 @@ public final class AggregationPartExecutorFactory {
         return new AggregationPartExecutor(
                 new AggregationPartRunner(ObservationRegistry.NOOP),
                 new AggregationPartFailurePolicy(),
-                new AggregationRootFactory(),
                 new AggregationPartResultApplicator(),
                 metrics);
     }

@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.part;
 
+import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.error.FacadeException;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
@@ -23,7 +24,6 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 @Component
@@ -33,20 +33,19 @@ public class AggregationPartExecutor {
 
     private final AggregationPartRunner partRunner;
     private final AggregationPartFailurePolicy failurePolicy;
-    private final AggregationRootFactory rootFactory;
     private final AggregationPartResultApplicator resultApplicator;
     private final AggregationPartMetrics metrics;
 
     public Mono<AggregationResult> execute(
-            String rootClientName,
-            JsonNode accountGroupResponse,
+            ObjectNode root,
             ClientRequestContext clientRequestContext,
+            AggregateRequest aggregateRequest,
             AggregationPartPlan partPlan) {
-        ObjectNode root = rootFactory.mutableRoot(rootClientName, accountGroupResponse);
         AggregationPartExecutionState executionState = new AggregationPartExecutionState();
         Map<String, PartOutcome> outcomes = new LinkedHashMap<>();
         return Flux.fromIterable(partPlan.selectedLevels())
-                .concatMap(level -> runLevel(level, root, clientRequestContext, executionState, outcomes))
+                .concatMap(level ->
+                        runLevel(level, root, clientRequestContext, aggregateRequest, executionState, outcomes))
                 .then(Mono.fromSupplier(() -> new AggregationResult(root, outcomes)));
     }
 
@@ -54,10 +53,11 @@ public class AggregationPartExecutor {
             List<AggregationPart> level,
             ObjectNode root,
             ClientRequestContext clientRequestContext,
+            AggregateRequest aggregateRequest,
             AggregationPartExecutionState executionState,
             Map<String, PartOutcome> outcomes) {
         ObjectNode rootSnapshot = root.deepCopy();
-        AggregationContext levelContext = new AggregationContext(rootSnapshot, clientRequestContext);
+        AggregationContext levelContext = new AggregationContext(rootSnapshot, clientRequestContext, aggregateRequest);
 
         List<AggregationPart> toRun = new ArrayList<>(level.size());
         for (AggregationPart part : level) {
@@ -153,13 +153,13 @@ public class AggregationPartExecutor {
             }
             metrics.record(part.name(), "success");
             executionState.markApplied(part);
-            outcomes.put(part.name(), PartOutcome.applied(part.criticality()));
+            putOutcome(part, PartOutcome.applied(part.criticality()), outcomes);
         }
     }
 
     private void recordSkip(AggregationPart part, PartSkipReason reason, Map<String, PartOutcome> outcomes) {
         metrics.record(part.name(), "skipped");
-        outcomes.put(part.name(), PartOutcome.skipped(part.criticality(), reason));
+        putOutcome(part, PartOutcome.skipped(part.criticality(), reason), outcomes);
     }
 
     private void recordNoOp(AggregationPart part, AggregationPartResult.NoOp noOp, Map<String, PartOutcome> outcomes) {
@@ -167,13 +167,19 @@ public class AggregationPartExecutor {
                 ? PartOutcome.empty(part.criticality(), noOp.reason())
                 : PartOutcome.skipped(part.criticality(), noOp.reason());
         metrics.record(part.name(), noOp.status() == PartOutcomeStatus.EMPTY ? "empty" : "skipped");
-        outcomes.put(part.name(), outcome);
+        putOutcome(part, outcome, outcomes);
     }
 
     private void recordFailure(
             AggregationPart part, PartOutcomeReason reason, String errorCode, Map<String, PartOutcome> outcomes) {
         metrics.record(part.name(), "failed");
-        outcomes.put(part.name(), PartOutcome.failed(part.criticality(), reason, errorCode));
+        putOutcome(part, PartOutcome.failed(part.criticality(), reason, errorCode), outcomes);
+    }
+
+    private static void putOutcome(AggregationPart part, PartOutcome outcome, Map<String, PartOutcome> outcomes) {
+        if (part.publicSelectable()) {
+            outcomes.put(part.name(), outcome);
+        }
     }
 
     private void requireOneResultPerPart(List<AggregationPart> level, Map<String, PartExecutionResult> resultsByName) {

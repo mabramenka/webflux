@@ -20,7 +20,11 @@ public class AggregationPartPlanner {
     public AggregationPartPlan plan(@Nullable List<String> include) {
         AggregationPartSelection requestedSelection = AggregationPartSelection.from(include);
         validateSelection(requestedSelection);
-        AggregationPartSelection effectiveSelection = partGraph.expandDependencies(requestedSelection);
+        AggregationPartSelection requestedPublicSelection = requestedSelection.all()
+                ? AggregationPartSelection.subset(partGraph.publicPartNames())
+                : requestedSelection;
+        AggregationPartSelection effectiveSelection =
+                partGraph.includeBase(partGraph.expandDependencies(requestedPublicSelection));
         return new AggregationPartPlan(
                 requestedSelection, effectiveSelection, partGraph.selectedLevels(effectiveSelection));
     }
@@ -30,7 +34,9 @@ public class AggregationPartPlanner {
             return;
         }
 
-        List<String> unknownParts = partGraph.unknownNames(partSelection.names());
+        List<String> unknownParts = partSelection.names().stream()
+                .filter(name -> !partGraph.publicPartNames().contains(name))
+                .toList();
 
         if (!unknownParts.isEmpty()) {
             throw new UnsupportedAggregationPartException(unknownParts);
