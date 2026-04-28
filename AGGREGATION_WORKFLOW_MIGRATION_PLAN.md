@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17/18 are the next implementation phases, depending on scope.
+> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 remains next.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -788,8 +788,8 @@ Use this plan as a strict sequential runbook:
 [x] Phase 14C — RecursiveFetchStep workflow adapter
 [x] Phase 15 — Traversal reducer and write-back bridge
 [x] Phase 16 — Migrate beneficial owners
-[ ] Phase 17 — Optional root role abstraction
-[ ] Phase 18 — Documentation, test kit, and examples
+[ ] Phase 17 — Optional root role abstraction (deferred/skipped intentionally)
+[x] Phase 18 — Documentation, test kit, and examples
 [ ] Phase 19 — Retire legacy enrichment authoring
 ```
 
@@ -3203,7 +3203,7 @@ Because Phase 14 through Phase 16 are a risky batch checkpoint, run or explicitl
 
 ## Phase 17 — Optional Root Role Abstraction
 
-**Status:** Not started.
+**Status:** Deferred (intentionally skipped for now).
 
 ### Goal
 
@@ -3247,7 +3247,7 @@ Tests updated only where names/types changed.
 
 ## Phase 18 — Documentation, Test Kit, and Examples
 
-**Status:** Not started.
+**Status:** Completed.
 
 ### Goal
 
@@ -3295,6 +3295,21 @@ Examples compile or are clearly marked as documentation-only pseudocode.
 Tests demonstrate recommended patterns.
 No public API behavior changed.
 ```
+
+### Phase 18 handoff note (completed on `main`)
+
+- Phase 17 intentionally skipped/deferred; no root-role abstraction added.
+- Added `docs/workflow-enrichment-guide.md` with:
+  - workflow part authoring model (`WorkflowAggregationPart` + `AggregationWorkflow`)
+  - source selection guidance (`ROOT_SNAPSHOT`, `CURRENT_ROOT`, `STEP_RESULT`)
+  - step usage guidance (`KeyedBindingStep`, `ComputeStep`, `RecursiveFetchStep`, `TraversalReducerStep`)
+  - write ownership rules and error/outcome boundaries
+  - examples for keyed (`account`), fallback/multi-key (`owners`), and recursive (`beneficialOwners`) parts
+  - test authoring patterns and fff-first navigation guidance
+- Intentionally not added in this phase: broad test-suite refactor or large test-helper framework.
+- No production behavior changes.
+- No shared workflow runtime changes.
+- Phase 19 remains next and must be handled separately.
 
 ---
 
