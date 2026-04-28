@@ -95,6 +95,7 @@ spotless {
 
     format("misc") {
         target("*.md", ".gitignore", "gradle/**/*.toml")
+        targetExclude("AGENTS.md", "CLAUDE.md", "docs/project-review.md")
         trimTrailingWhitespace()
         endWithNewline()
     }
