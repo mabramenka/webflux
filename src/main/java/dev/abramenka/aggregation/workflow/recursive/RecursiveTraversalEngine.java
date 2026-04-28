@@ -3,6 +3,7 @@ package dev.abramenka.aggregation.workflow.recursive;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -27,27 +28,37 @@ public final class RecursiveTraversalEngine {
     }
 
     public Mono<TraversalResult> traverse(
-            Iterable<String> initialKeys,
+            List<TraversalSeedGroup> seedGroups,
             TraversalPolicy policy,
             BatchFetcher batchFetcher,
             ChildKeyExtractor childKeyExtractor,
             Predicate<JsonNode> isTerminalNode) {
-        return traverse(initialKeys, policy, batchFetcher, childKeyExtractor, isTerminalNode, null);
-    }
-
-    public Mono<TraversalResult> traverse(
-            Iterable<String> initialKeys,
-            TraversalPolicy policy,
-            BatchFetcher batchFetcher,
-            ChildKeyExtractor childKeyExtractor,
-            Predicate<JsonNode> isTerminalNode,
-            @Nullable JsonNode targetMetadata) {
-        Objects.requireNonNull(initialKeys, "initialKeys");
+        Objects.requireNonNull(seedGroups, "seedGroups");
         Objects.requireNonNull(policy, "policy");
         Objects.requireNonNull(batchFetcher, "batchFetcher");
         Objects.requireNonNull(childKeyExtractor, "childKeyExtractor");
         Objects.requireNonNull(isTerminalNode, "isTerminalNode");
-        Set<String> frontier = normalizeKeys(initialKeys);
+        if (seedGroups.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("seedGroups must not contain null items");
+        }
+        List<TraversalSeedGroup> groups = List.copyOf(seedGroups);
+        return traverseGroups(groups, 0, new ArrayList<>(), policy, batchFetcher, childKeyExtractor, isTerminalNode)
+                .map(TraversalResult::new);
+    }
+
+    private Mono<List<TraversalGroupResult>> traverseGroups(
+            List<TraversalSeedGroup> seedGroups,
+            int index,
+            List<TraversalGroupResult> out,
+            TraversalPolicy policy,
+            BatchFetcher batchFetcher,
+            ChildKeyExtractor childKeyExtractor,
+            Predicate<JsonNode> isTerminalNode) {
+        if (index == seedGroups.size()) {
+            return Mono.just(out);
+        }
+        TraversalSeedGroup group = seedGroups.get(index);
+        Set<String> frontier = normalizeKeys(group.initialKeys());
         return traverseLevel(
                         frontier,
                         new LinkedHashSet<>(),
@@ -57,7 +68,11 @@ public final class RecursiveTraversalEngine {
                         batchFetcher,
                         childKeyExtractor,
                         isTerminalNode)
-                .map(terminalNodes -> new TraversalResult(new ArrayList<>(terminalNodes.values()), targetMetadata));
+                .flatMap(terminalNodes -> {
+                    out.add(new TraversalGroupResult(group.targetMetadata(), new ArrayList<>(terminalNodes.values())));
+                    return traverseGroups(
+                            seedGroups, index + 1, out, policy, batchFetcher, childKeyExtractor, isTerminalNode);
+                });
     }
 
     private Mono<Map<String, TraversalNode>> traverseLevel(

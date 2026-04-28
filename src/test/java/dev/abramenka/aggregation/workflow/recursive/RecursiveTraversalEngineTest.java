@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -32,12 +33,16 @@ class RecursiveTraversalEngineTest {
         List<List<String>> calls = new ArrayList<>();
 
         StepVerifier.create(engine.traverse(
-                        List.of("A"), policy(6), fetcher(nodesByKey, calls), this::childKeys, this::isIndividual))
+                        List.of(group(List.of("A"), metadata("g-1"))),
+                        policy(6),
+                        fetcher(nodesByKey, calls),
+                        this::childKeys,
+                        this::isIndividual))
                 .assertNext(result -> {
-                    assertThat(result.resolvedNodes())
+                    assertThat(singleGroup(result).resolvedNodes())
                             .extracting(TraversalNode::number)
                             .containsExactly("C", "D");
-                    assertThat(result.resolvedNodes())
+                    assertThat(singleGroup(result).resolvedNodes())
                             .extracting(TraversalNode::depth)
                             .containsExactly(2, 3);
                 })
@@ -54,12 +59,12 @@ class RecursiveTraversalEngineTest {
         nodesByKey.put("C", individual("C"));
 
         StepVerifier.create(engine.traverse(
-                        List.of("A"),
+                        List.of(group(List.of("A"), metadata("g-1"))),
                         policy(3),
                         fetcher(nodesByKey, new ArrayList<>()),
                         this::childKeys,
                         this::isIndividual))
-                .assertNext(result -> assertThat(result.resolvedNodes())
+                .assertNext(result -> assertThat(singleGroup(result).resolvedNodes())
                         .singleElement()
                         .satisfies(node -> {
                             assertThat(node.number()).isEqualTo("C");
@@ -77,7 +82,11 @@ class RecursiveTraversalEngineTest {
         List<List<String>> calls = new ArrayList<>();
 
         StepVerifier.create(engine.traverse(
-                        List.of("A"), policy(2), fetcher(nodesByKey, calls), this::childKeys, this::isIndividual))
+                        List.of(group(List.of("A"), metadata("g-1"))),
+                        policy(2),
+                        fetcher(nodesByKey, calls),
+                        this::childKeys,
+                        this::isIndividual))
                 .expectErrorSatisfies(error -> {
                     assertThat(error).isInstanceOf(RecursiveTraversalEngine.TraversalException.class);
                     assertThat(((RecursiveTraversalEngine.TraversalException) error).reason())
@@ -96,8 +105,13 @@ class RecursiveTraversalEngineTest {
         List<List<String>> calls = new ArrayList<>();
 
         StepVerifier.create(engine.traverse(
-                        List.of("A"), policy(6), fetcher(nodesByKey, calls), this::childKeys, this::isIndividual))
-                .assertNext(result -> assertThat(result.resolvedNodes()).isEmpty())
+                        List.of(group(List.of("A"), metadata("g-1"))),
+                        policy(6),
+                        fetcher(nodesByKey, calls),
+                        this::childKeys,
+                        this::isIndividual))
+                .assertNext(result ->
+                        assertThat(singleGroup(result).resolvedNodes()).isEmpty())
                 .verifyComplete();
 
         assertThat(calls).containsExactly(List.of("A"), List.of("B"));
@@ -112,8 +126,12 @@ class RecursiveTraversalEngineTest {
         List<List<String>> calls = new ArrayList<>();
 
         StepVerifier.create(engine.traverse(
-                        List.of("A"), policy(6), fetcher(nodesByKey, calls), this::childKeys, this::isIndividual))
-                .assertNext(result -> assertThat(result.resolvedNodes())
+                        List.of(group(List.of("A"), metadata("g-1"))),
+                        policy(6),
+                        fetcher(nodesByKey, calls),
+                        this::childKeys,
+                        this::isIndividual))
+                .assertNext(result -> assertThat(singleGroup(result).resolvedNodes())
                         .extracting(TraversalNode::number)
                         .containsExactly("B"))
                 .verifyComplete();
@@ -130,12 +148,12 @@ class RecursiveTraversalEngineTest {
         List<List<String>> calls = new ArrayList<>();
 
         StepVerifier.create(engine.traverse(
-                        List.of("X", "A", "X", "B"),
+                        List.of(group(List.of("X", "A", "X", "B"), metadata("g-1"))),
                         policy(2),
                         fetcher(nodesByKey, calls),
                         this::childKeys,
                         this::isIndividual))
-                .assertNext(result -> assertThat(result.resolvedNodes())
+                .assertNext(result -> assertThat(singleGroup(result).resolvedNodes())
                         .extracting(TraversalNode::number)
                         .containsExactly("X", "A", "B"))
                 .verifyComplete();
@@ -150,7 +168,11 @@ class RecursiveTraversalEngineTest {
         List<List<String>> calls = new ArrayList<>();
 
         StepVerifier.create(engine.traverse(
-                        List.of("A", "B"), policy(2), fetcher(nodesByKey, calls), this::childKeys, this::isIndividual))
+                        List.of(group(List.of("A", "B"), metadata("g-1"))),
+                        policy(2),
+                        fetcher(nodesByKey, calls),
+                        this::childKeys,
+                        this::isIndividual))
                 .expectErrorSatisfies(error -> {
                     assertThat(error).isInstanceOf(RecursiveTraversalEngine.TraversalException.class);
                     assertThat(((RecursiveTraversalEngine.TraversalException) error).reason())
@@ -167,32 +189,75 @@ class RecursiveTraversalEngineTest {
             return Mono.just(Map.of());
         };
 
-        StepVerifier.create(engine.traverse(List.of(), policy(3), fetcher, this::childKeys, this::isIndividual))
-                .assertNext(result -> assertThat(result.resolvedNodes()).isEmpty())
+        StepVerifier.create(engine.traverse(
+                        List.of(group(List.of(), metadata("g-1"))),
+                        policy(3),
+                        fetcher,
+                        this::childKeys,
+                        this::isIndividual))
+                .assertNext(result -> {
+                    assertThat(result.groups()).hasSize(1);
+                    assertThat(singleGroup(result).resolvedNodes()).isEmpty();
+                })
                 .verifyComplete();
 
         assertThat(callCount.get()).isZero();
     }
 
     @Test
-    void traverse_preservesTargetMetadataInResult() {
-        ObjectNode targetMetadata = JsonNodeFactory.instance.objectNode();
-        targetMetadata.put("groupId", "g-1");
-        targetMetadata.put("ownerIndex", 2);
-
+    void traverse_preservesPerGroupTargetMetadata() {
         StepVerifier.create(engine.traverse(
-                        List.of(),
+                        List.of(group(List.of(), metadata("g-1")), group(List.of(), metadata("g-2"))),
                         policy(2),
                         keys -> Mono.just(Map.of()),
                         this::childKeys,
-                        this::isIndividual,
-                        targetMetadata))
+                        this::isIndividual))
                 .assertNext(result -> {
-                    assertThat(result.targetMetadata()).isNotNull();
-                    JsonNode metadata = Objects.requireNonNull(result.targetMetadata(), "targetMetadata");
-                    assertThat(metadata.path("groupId").asString()).isEqualTo("g-1");
-                    assertThat(metadata.path("ownerIndex").asInt()).isEqualTo(2);
+                    assertThat(result.groups()).extracting(this::groupId).containsExactly("g-1", "g-2");
                 })
+                .verifyComplete();
+    }
+
+    @Test
+    void traverse_sameSeedInDifferentGroups_isResolvedIndependentlyPerGroup() {
+        Map<String, JsonNode> nodesByKey = new LinkedHashMap<>();
+        nodesByKey.put("A", individual("A"));
+        List<List<String>> calls = new ArrayList<>();
+
+        StepVerifier.create(engine.traverse(
+                        List.of(group(List.of("A"), metadata("g-1")), group(List.of("A"), metadata("g-2"))),
+                        policy(3),
+                        fetcher(nodesByKey, calls),
+                        this::childKeys,
+                        this::isIndividual))
+                .assertNext(result -> {
+                    assertThat(result.groups()).hasSize(2);
+                    assertThat(result.groups().get(0).resolvedNodes())
+                            .extracting(TraversalNode::number)
+                            .containsExactly("A");
+                    assertThat(result.groups().get(1).resolvedNodes())
+                            .extracting(TraversalNode::number)
+                            .containsExactly("A");
+                })
+                .verifyComplete();
+
+        assertThat(calls).containsExactly(List.of("A"), List.of("A"));
+    }
+
+    @Test
+    void traverse_preservesGroupOrder() {
+        Map<String, JsonNode> nodesByKey = new LinkedHashMap<>();
+        nodesByKey.put("A", individual("A"));
+        nodesByKey.put("B", individual("B"));
+
+        StepVerifier.create(engine.traverse(
+                        List.of(group(List.of("B"), metadata("second")), group(List.of("A"), metadata("first"))),
+                        policy(2),
+                        fetcher(nodesByKey, new ArrayList<>()),
+                        this::childKeys,
+                        this::isIndividual))
+                .assertNext(result ->
+                        assertThat(result.groups()).extracting(this::groupId).containsExactly("second", "first"))
                 .verifyComplete();
     }
 
@@ -215,6 +280,27 @@ class RecursiveTraversalEngineTest {
 
     private TraversalPolicy policy(int maxDepth) {
         return new TraversalPolicy(maxDepth, CyclePolicy.SKIP_VISITED, true);
+    }
+
+    private TraversalSeedGroup group(List<String> initialKeys, @Nullable JsonNode metadata) {
+        return new TraversalSeedGroup(metadata, initialKeys);
+    }
+
+    private TraversalGroupResult singleGroup(TraversalResult result) {
+        assertThat(result.groups()).hasSize(1);
+        return result.groups().getFirst();
+    }
+
+    private ObjectNode metadata(String groupId) {
+        ObjectNode metadata = JsonNodeFactory.instance.objectNode();
+        metadata.put("groupId", groupId);
+        return metadata;
+    }
+
+    private String groupId(TraversalGroupResult group) {
+        return Objects.requireNonNull(group.targetMetadata(), "targetMetadata")
+                .path("groupId")
+                .asString();
     }
 
     private RecursiveTraversalEngine.BatchFetcher fetcher(Map<String, JsonNode> nodesByKey, List<List<String>> calls) {
