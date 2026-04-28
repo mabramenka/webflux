@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 is in progress: 19A audit, 19B-1 legacy keyed-cluster removal, 19B-2 beneficialOwners legacy-helper cleanup, and 19B-3 `AggregationEnrichment` retirement are completed.
+> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 is completed (19A audit, 19B-1 legacy keyed-cluster removal, 19B-2 beneficialOwners legacy-helper cleanup, 19B-3 `AggregationEnrichment` retirement).
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -790,7 +790,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 16 — Migrate beneficial owners
 [ ] Phase 17 — Optional root role abstraction (deferred/skipped intentionally)
 [x] Phase 18 — Documentation, test kit, and examples
-[ ] Phase 19 — Retire legacy enrichment authoring
+[x] Phase 19 — Retire legacy enrichment authoring
 ```
 
 Every phase must include:
@@ -3315,7 +3315,7 @@ No public API behavior changed.
 
 ## Phase 19 — Retire Legacy Enrichment Authoring
 
-**Status:** In progress (Phase 19A audit completed; Phase 19B-1/19B-2/19B-3 completed).
+**Status:** Completed.
 
 ### Goal
 
@@ -3403,6 +3403,16 @@ Migration plan is updated with final status.
   - `docs/workflow-enrichment-guide.md`
 - No production workflow runtime changes.
 - No public API behavior changes.
+
+### Final Phase 19 handoff note
+
+- Phase 19 completed in three sub-steps:
+  - 19B-1 removed legacy keyed authoring cluster
+  - 19B-2 removed legacy beneficialOwners helper cluster
+  - 19B-3 retired the `AggregationEnrichment` adapter after test-fixture migration
+- `PathExpression` and `KeyPathGroups` are intentionally retained because workflow runtime still uses them.
+- Phase 17 remains intentionally deferred/skipped and was not implemented.
+- Workflow runtime behavior and public API contracts remained unchanged during cleanup.
 
 ---
 
