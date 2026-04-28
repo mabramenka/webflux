@@ -31,11 +31,14 @@ class TraversalReducerStepTest {
         JsonNode traversal = json("""
                 {"groups":[]}
                 """);
+        JsonNode currentRoot = context.currentRoot();
         context.variables().put("traversal", traversal);
         AtomicReference<JsonNode> seenTraversal = new AtomicReference<>();
+        AtomicReference<JsonNode> seenRoot = new AtomicReference<>();
 
-        TraversalReducerStep step = new TraversalReducerStep("reduce", "traversal", input -> {
+        TraversalReducerStep step = new TraversalReducerStep("reduce", "traversal", (input, rootForWriteDecision) -> {
             seenTraversal.set(input);
+            seenRoot.set(rootForWriteDecision);
             return JsonPatchBuilder.create().build();
         });
 
@@ -44,6 +47,7 @@ class TraversalReducerStepTest {
                 .verifyComplete();
 
         assertThat(seenTraversal.get()).isSameAs(traversal);
+        assertThat(seenRoot.get()).isSameAs(currentRoot);
     }
 
     @Test
@@ -54,9 +58,10 @@ class TraversalReducerStepTest {
         context.variables().put("traversal", json("""
                 {"groups":[]}
                 """));
-        TraversalReducerStep step = new TraversalReducerStep("reduce", "traversal", input -> JsonPatchBuilder.create()
-                .add("/data/0/owners1/0/beneficialOwnersDetails", mapper.createArrayNode())
-                .build());
+        TraversalReducerStep step = new TraversalReducerStep(
+                "reduce", "traversal", (input, rootForWriteDecision) -> JsonPatchBuilder.create()
+                        .add("/data/0/owners1/0/beneficialOwnersDetails", mapper.createArrayNode())
+                        .build());
 
         StepVerifier.create(step.execute(context))
                 .assertNext(result -> {
@@ -75,8 +80,8 @@ class TraversalReducerStepTest {
         WorkflowContext context = context("""
                 {"data":[]}
                 """);
-        TraversalReducerStep step =
-                new TraversalReducerStep("reduce", "missingTraversal", traversalResult -> JsonPatchBuilder.create()
+        TraversalReducerStep step = new TraversalReducerStep(
+                "reduce", "missingTraversal", (traversalResult, rootForWriteDecision) -> JsonPatchBuilder.create()
                         .build());
 
         StepVerifier.create(step.execute(context))
@@ -98,8 +103,8 @@ class TraversalReducerStepTest {
                 """));
         String beforeSnapshot = context.rootSnapshot().toString();
         String beforeCurrent = context.currentRoot().toString();
-        TraversalReducerStep step =
-                new TraversalReducerStep("reduce", "traversal", traversalResult -> JsonPatchBuilder.create()
+        TraversalReducerStep step = new TraversalReducerStep(
+                "reduce", "traversal", (traversalResult, rootForWriteDecision) -> JsonPatchBuilder.create()
                         .build());
 
         StepVerifier.create(step.execute(context)).expectNextCount(1).verifyComplete();

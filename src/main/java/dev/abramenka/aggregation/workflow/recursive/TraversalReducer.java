@@ -7,5 +7,5 @@ import tools.jackson.databind.JsonNode;
 @FunctionalInterface
 public interface TraversalReducer {
 
-    JsonPatchDocument reduce(JsonNode traversalResult);
+    JsonPatchDocument reduce(JsonNode traversalResult, JsonNode rootForWriteDecision);
 }

@@ -1,9 +1,10 @@
-package dev.abramenka.aggregation.workflow.recursive;
+package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import dev.abramenka.aggregation.error.EnrichmentDependencyException;
 import dev.abramenka.aggregation.patch.JsonPatchBuilder;
 import dev.abramenka.aggregation.patch.JsonPatchDocument;
 import dev.abramenka.aggregation.patch.JsonPointerBuilder;
+import dev.abramenka.aggregation.workflow.recursive.TraversalReducer;
 import java.util.Objects;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -35,15 +36,10 @@ public final class BeneficialOwnersTraversalReducer implements TraversalReducer 
 
     private static final String REDUCER_PART_NAME = "beneficialOwners";
 
-    private final JsonNode rootForWriteDecision;
-
-    public BeneficialOwnersTraversalReducer(JsonNode rootForWriteDecision) {
-        this.rootForWriteDecision = Objects.requireNonNull(rootForWriteDecision, "rootForWriteDecision");
-    }
-
     @Override
-    public JsonPatchDocument reduce(JsonNode traversalResult) {
+    public JsonPatchDocument reduce(JsonNode traversalResult, JsonNode rootForWriteDecision) {
         Objects.requireNonNull(traversalResult, "traversalResult");
+        Objects.requireNonNull(rootForWriteDecision, "rootForWriteDecision");
 
         JsonNode groupsNode = traversalResult.get("groups");
         if (!(groupsNode instanceof ArrayNode groups)) {

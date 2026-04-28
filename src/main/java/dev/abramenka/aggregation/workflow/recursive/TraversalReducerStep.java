@@ -42,8 +42,8 @@ public final class TraversalReducerStep implements WorkflowStep {
                             .orElseThrow(() -> OrchestrationException.invariantViolated(new IllegalStateException(
                                     "STEP_RESULT '" + traversalResultName + "' not found in workflow variables; "
                                             + "the producing step must have run and stored a value before this step")));
-                    JsonPatchDocument patch =
-                            Objects.requireNonNull(reducer.reduce(traversalResult), "reducer returned null patch");
+                    JsonPatchDocument patch = Objects.requireNonNull(
+                            reducer.reduce(traversalResult, context.currentRoot()), "reducer returned null patch");
                     return StepResult.applied(patch);
                 })
                 .onErrorMap(ex -> !(ex instanceof FacadeException), OrchestrationException::invariantViolated);
