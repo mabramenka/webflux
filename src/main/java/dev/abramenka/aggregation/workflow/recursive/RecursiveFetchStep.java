@@ -3,13 +3,10 @@ package dev.abramenka.aggregation.workflow.recursive;
 import dev.abramenka.aggregation.workflow.StepResult;
 import dev.abramenka.aggregation.workflow.WorkflowContext;
 import dev.abramenka.aggregation.workflow.WorkflowStep;
-import dev.abramenka.aggregation.workflow.binding.KeyExtractionRule;
 import dev.abramenka.aggregation.workflow.binding.KeySource;
-import dev.abramenka.aggregation.workflow.binding.support.KeyExtractor;
+import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Predicate;
-import org.jspecify.annotations.Nullable;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.JsonNodeFactory;
@@ -19,65 +16,40 @@ import tools.jackson.databind.node.JsonNodeFactory;
  */
 public final class RecursiveFetchStep implements WorkflowStep {
 
-    private static final KeyExtractor KEY_EXTRACTOR = new KeyExtractor();
-
     @FunctionalInterface
-    public interface TargetMetadataExtractor {
-        @Nullable
-        JsonNode extract(JsonNode source);
+    public interface TraversalSeedGroupExtractor {
+        List<TraversalSeedGroup> extract(JsonNode source);
     }
 
     private final String name;
     private final String storeAs;
-    private final KeyExtractionRule seedExtraction;
+    private final KeySource seedSource;
+    private final TraversalSeedGroupExtractor seedGroupExtractor;
     private final TraversalPolicy traversalPolicy;
     private final RecursiveTraversalEngine traversalEngine;
     private final RecursiveTraversalEngine.BatchFetcher batchFetcher;
     private final RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor;
     private final Predicate<JsonNode> isTerminalNode;
 
-    @Nullable
-    private final TargetMetadataExtractor targetMetadataExtractor;
-
     public RecursiveFetchStep(
             String name,
             String storeAs,
-            KeyExtractionRule seedExtraction,
+            KeySource seedSource,
+            TraversalSeedGroupExtractor seedGroupExtractor,
             TraversalPolicy traversalPolicy,
             RecursiveTraversalEngine traversalEngine,
             RecursiveTraversalEngine.BatchFetcher batchFetcher,
             RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor,
             Predicate<JsonNode> isTerminalNode) {
-        this(
-                name,
-                storeAs,
-                seedExtraction,
-                traversalPolicy,
-                traversalEngine,
-                batchFetcher,
-                childKeyExtractor,
-                isTerminalNode,
-                null);
-    }
-
-    public RecursiveFetchStep(
-            String name,
-            String storeAs,
-            KeyExtractionRule seedExtraction,
-            TraversalPolicy traversalPolicy,
-            RecursiveTraversalEngine traversalEngine,
-            RecursiveTraversalEngine.BatchFetcher batchFetcher,
-            RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor,
-            Predicate<JsonNode> isTerminalNode,
-            @Nullable TargetMetadataExtractor targetMetadataExtractor) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("RecursiveFetchStep name must not be blank");
         }
         if (storeAs == null || storeAs.isBlank()) {
             throw new IllegalArgumentException("RecursiveFetchStep storeAs must not be blank");
         }
-        Objects.requireNonNull(seedExtraction, "seedExtraction");
-        requireSupportedSource(seedExtraction.source());
+        Objects.requireNonNull(seedSource, "seedSource");
+        requireSupportedSource(seedSource);
+        Objects.requireNonNull(seedGroupExtractor, "seedGroupExtractor");
         Objects.requireNonNull(traversalPolicy, "traversalPolicy");
         Objects.requireNonNull(traversalEngine, "traversalEngine");
         Objects.requireNonNull(batchFetcher, "batchFetcher");
@@ -86,13 +58,13 @@ public final class RecursiveFetchStep implements WorkflowStep {
 
         this.name = name;
         this.storeAs = storeAs;
-        this.seedExtraction = seedExtraction;
+        this.seedSource = seedSource;
+        this.seedGroupExtractor = seedGroupExtractor;
         this.traversalPolicy = traversalPolicy;
         this.traversalEngine = traversalEngine;
         this.batchFetcher = batchFetcher;
         this.childKeyExtractor = childKeyExtractor;
         this.isTerminalNode = isTerminalNode;
-        this.targetMetadataExtractor = targetMetadataExtractor;
     }
 
     @Override
@@ -106,13 +78,11 @@ public final class RecursiveFetchStep implements WorkflowStep {
 
     @Override
     public Mono<StepResult> execute(WorkflowContext context) {
-        JsonNode source = resolveSource(context, seedExtraction.source());
-        Set<String> initialSeeds = KEY_EXTRACTOR.distinctKeys(seedExtraction, source);
-        JsonNode targetMetadata = targetMetadataExtractor == null ? null : targetMetadataExtractor.extract(source);
+        JsonNode source = resolveSource(context, seedSource);
+        List<TraversalSeedGroup> seedGroups = Objects.requireNonNull(seedGroupExtractor.extract(source), "seedGroups");
 
         return traversalEngine
-                .traverse(
-                        initialSeeds, traversalPolicy, batchFetcher, childKeyExtractor, isTerminalNode, targetMetadata)
+                .traverse(seedGroups, traversalPolicy, batchFetcher, childKeyExtractor, isTerminalNode)
                 .map(result -> StepResult.stored(storeAs, result.toJsonNode(JsonNodeFactory.instance)));
     }
 

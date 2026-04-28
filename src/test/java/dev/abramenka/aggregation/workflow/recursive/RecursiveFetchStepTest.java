@@ -8,7 +8,6 @@ import dev.abramenka.aggregation.model.ForwardedHeaders;
 import dev.abramenka.aggregation.model.Projections;
 import dev.abramenka.aggregation.workflow.StepResult;
 import dev.abramenka.aggregation.workflow.WorkflowContext;
-import dev.abramenka.aggregation.workflow.binding.KeyExtractionRule;
 import dev.abramenka.aggregation.workflow.binding.KeySource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -17,7 +16,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -31,7 +29,7 @@ class RecursiveFetchStepTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
 
     @Test
-    void execute_readsSeedsFromRootSnapshot() {
+    void execute_readsSeedGroupsFromRootSnapshot() {
         WorkflowContext context = context("""
                 {"data":[{"id":"root-1"}]}
                 """);
@@ -43,14 +41,16 @@ class RecursiveFetchStepTest {
 
         RecursiveFetchStep step = step(
                 KeySource.ROOT_SNAPSHOT,
+                this::groupsFromDataIds,
                 fetcher(fetchCalls),
                 this::noChildren,
                 this::isIndividual,
-                this::noMetadata,
                 "result");
 
         StepVerifier.create(step.execute(context))
                 .assertNext(result -> assertThat(storedValue(result)
+                                .path("groups")
+                                .path(0)
                                 .path("resolvedNodes")
                                 .path(0)
                                 .path("number")
@@ -62,7 +62,7 @@ class RecursiveFetchStepTest {
     }
 
     @Test
-    void execute_readsSeedsFromCurrentRoot() {
+    void execute_readsSeedGroupsFromCurrentRoot() {
         WorkflowContext context = context("""
                 {"data":[{"id":"root-1"}]}
                 """);
@@ -74,14 +74,16 @@ class RecursiveFetchStepTest {
 
         RecursiveFetchStep step = step(
                 KeySource.CURRENT_ROOT,
+                this::groupsFromDataIds,
                 fetcher(fetchCalls),
                 this::noChildren,
                 this::isIndividual,
-                this::noMetadata,
                 "result");
 
         StepVerifier.create(step.execute(context))
                 .assertNext(result -> assertThat(storedValue(result)
+                                .path("groups")
+                                .path(0)
                                 .path("resolvedNodes")
                                 .path(0)
                                 .path("number")
@@ -104,7 +106,12 @@ class RecursiveFetchStepTest {
         };
 
         RecursiveFetchStep step = step(
-                KeySource.ROOT_SNAPSHOT, fetcher, this::noChildren, this::isIndividual, this::noMetadata, "result");
+                KeySource.ROOT_SNAPSHOT,
+                this::groupsFromDataIds,
+                fetcher,
+                this::noChildren,
+                this::isIndividual,
+                "result");
 
         StepVerifier.create(step.execute(context)).expectNextCount(1).verifyComplete();
 
@@ -112,16 +119,16 @@ class RecursiveFetchStepTest {
     }
 
     @Test
-    void execute_storesTraversalJsonUnderConfiguredStoreAs_withoutPatchOrVariableWrites() {
+    void execute_storesTraversalJsonWithGroups_underConfiguredStoreAs_withoutPatchOrVariableWrites() {
         WorkflowContext context = context("""
                 {"data":[{"id":"a"}]}
                 """);
         RecursiveFetchStep step = step(
                 KeySource.ROOT_SNAPSHOT,
+                this::groupsFromDataIds,
                 fetcher(new ArrayList<>()),
                 this::noChildren,
                 this::isIndividual,
-                this::noMetadata,
                 "traversal");
 
         StepVerifier.create(step.execute(context))
@@ -131,10 +138,7 @@ class RecursiveFetchStepTest {
                     assertThat(applied.patch()).isNull();
                     assertThat(applied.storeAs()).isEqualTo("traversal");
                     assertThat(applied.storedValue()).isNotNull();
-                    assertThat(storedValue(result).path("resolvedNodes").isArray())
-                            .isTrue();
-                    assertThat(storedValue(result).path("targetMetadata").isNull())
-                            .isTrue();
+                    assertThat(storedValue(result).path("groups").isArray()).isTrue();
                 })
                 .verifyComplete();
 
@@ -142,38 +146,40 @@ class RecursiveFetchStepTest {
     }
 
     @Test
-    void execute_preservesTargetMetadataAndResolvedNodeOrderInStoredJson() {
+    void execute_preservesPerGroupMetadataAndGroupOrderInStoredJson() {
         WorkflowContext context = context("""
                 {"data":[{"id":"b"},{"id":"a"}]}
                 """);
-        RecursiveFetchStep.TargetMetadataExtractor metadataExtractor = source -> {
-            ObjectNode metadata = JsonNodeFactory.instance.objectNode();
-            metadata.put("dataIndex", 3);
-            metadata.put("ownerIndex", 1);
-            return metadata;
-        };
         RecursiveFetchStep step = step(
                 KeySource.ROOT_SNAPSHOT,
+                this::groupsWithMetadataPerOwner,
                 fetcher(new ArrayList<>()),
                 this::noChildren,
                 this::isIndividual,
-                metadataExtractor,
                 "result");
 
         StepVerifier.create(step.execute(context))
                 .assertNext(result -> {
-                    JsonNode stored = storedValue(result);
-                    assertThat(stored.path("targetMetadata").path("dataIndex").asInt())
-                            .isEqualTo(3);
-                    assertThat(stored.path("targetMetadata").path("ownerIndex").asInt())
+                    JsonNode groups = storedValue(result).path("groups");
+                    assertThat(groups.path(0)
+                                    .path("targetMetadata")
+                                    .path("ownerIndex")
+                                    .asInt())
+                            .isEqualTo(0);
+                    assertThat(groups.path(1)
+                                    .path("targetMetadata")
+                                    .path("ownerIndex")
+                                    .asInt())
                             .isEqualTo(1);
-                    assertThat(stored.path("resolvedNodes")
+                    assertThat(groups.path(0)
+                                    .path("resolvedNodes")
                                     .path(0)
                                     .path("number")
                                     .asString())
                             .isEqualTo("b");
-                    assertThat(stored.path("resolvedNodes")
-                                    .path(1)
+                    assertThat(groups.path(1)
+                                    .path("resolvedNodes")
+                                    .path(0)
                                     .path("number")
                                     .asString())
                             .isEqualTo("a");
@@ -182,7 +188,7 @@ class RecursiveFetchStepTest {
     }
 
     @Test
-    void execute_emptySeeds_storesEmptyTraversalResultAndSkipsFetch() {
+    void execute_emptySeedGroups_storesEmptyTraversalResultAndSkipsFetch() {
         WorkflowContext context = context("""
                 {"data":[]}
                 """);
@@ -192,11 +198,11 @@ class RecursiveFetchStepTest {
             return Mono.just(responseForKeys(keys));
         };
         RecursiveFetchStep step = step(
-                KeySource.ROOT_SNAPSHOT, fetcher, this::noChildren, this::isIndividual, this::noMetadata, "result");
+                KeySource.ROOT_SNAPSHOT, source -> List.of(), fetcher, this::noChildren, this::isIndividual, "result");
 
         StepVerifier.create(step.execute(context))
-                .assertNext(result ->
-                        assertThat(storedValue(result).path("resolvedNodes")).isEmpty())
+                .assertNext(
+                        result -> assertThat(storedValue(result).path("groups")).isEmpty())
                 .verifyComplete();
 
         assertThat(fetchCount.get()).isZero();
@@ -211,10 +217,10 @@ class RecursiveFetchStepTest {
         String beforeCurrentRoot = context.currentRoot().toString();
         RecursiveFetchStep step = step(
                 KeySource.ROOT_SNAPSHOT,
+                this::groupsFromDataIds,
                 fetcher(new ArrayList<>()),
                 this::noChildren,
                 this::isIndividual,
-                this::noMetadata,
                 "result");
 
         StepVerifier.create(step.execute(context)).expectNextCount(1).verifyComplete();
@@ -225,23 +231,22 @@ class RecursiveFetchStepTest {
 
     private RecursiveFetchStep step(
             KeySource source,
+            RecursiveFetchStep.TraversalSeedGroupExtractor seedGroupExtractor,
             RecursiveTraversalEngine.BatchFetcher fetcher,
             RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor,
             java.util.function.Predicate<JsonNode> isTerminalNode,
-            RecursiveFetchStep.TargetMetadataExtractor metadataExtractor,
             String storeAs) {
-        KeyExtractionRule seeds = new KeyExtractionRule(source, null, "$.data[*]", List.of("id"));
         TraversalPolicy policy = new TraversalPolicy(6, CyclePolicy.SKIP_VISITED, true);
         return new RecursiveFetchStep(
                 "recursiveFetch",
                 storeAs,
-                seeds,
+                source,
+                seedGroupExtractor,
                 policy,
                 new RecursiveTraversalEngine(),
                 fetcher,
                 childKeyExtractor,
-                isTerminalNode,
-                metadataExtractor);
+                isTerminalNode);
     }
 
     private RecursiveTraversalEngine.BatchFetcher fetcher(List<List<String>> fetchCalls) {
@@ -259,16 +264,37 @@ class RecursiveFetchStepTest {
         return out;
     }
 
+    private List<TraversalSeedGroup> groupsFromDataIds(JsonNode source) {
+        JsonNode data = source.path("data");
+        if (!data.isArray()) {
+            return List.of();
+        }
+        List<String> keys = new ArrayList<>();
+        data.values().forEach(item -> keys.add(item.path("id").asString("")));
+        return List.of(new TraversalSeedGroup(null, keys));
+    }
+
+    private List<TraversalSeedGroup> groupsWithMetadataPerOwner(JsonNode source) {
+        JsonNode data = source.path("data");
+        if (!data.isArray()) {
+            return List.of();
+        }
+        List<TraversalSeedGroup> out = new ArrayList<>();
+        for (int i = 0; i < data.size(); i++) {
+            JsonNode item = data.path(i);
+            ObjectNode metadata = JsonNodeFactory.instance.objectNode();
+            metadata.put("ownerIndex", i);
+            out.add(new TraversalSeedGroup(metadata, List.of(item.path("id").asString(""))));
+        }
+        return out;
+    }
+
     private Iterable<String> noChildren(JsonNode node) {
         return List.of();
     }
 
     private boolean isIndividual(JsonNode node) {
         return "individual".equals(node.path("kind").asString());
-    }
-
-    private @Nullable JsonNode noMetadata(JsonNode source) {
-        return null;
     }
 
     private JsonNode individual(String number) {

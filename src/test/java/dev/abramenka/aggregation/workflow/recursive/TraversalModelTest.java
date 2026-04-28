@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.node.ObjectNode;
@@ -24,30 +25,57 @@ class TraversalModelTest {
 
     @Test
     void traversalResult_preservesResolvedNodeInsertionOrder() {
-        TraversalNode first = new TraversalNode("A", owner("A"), 1);
-        TraversalNode second = new TraversalNode("B", owner("B"), 2);
+        TraversalGroupResult first =
+                new TraversalGroupResult(groupMetadata("g-1"), List.of(new TraversalNode("A", owner("A"), 1)));
+        TraversalGroupResult second =
+                new TraversalGroupResult(groupMetadata("g-2"), List.of(new TraversalNode("B", owner("B"), 2)));
         TraversalResult result = new TraversalResult(List.of(first, second));
 
-        assertThat(result.resolvedNodes()).extracting(TraversalNode::number).containsExactly("A", "B");
+        assertThat(result.groups()).extracting(this::groupId).containsExactly("g-1", "g-2");
     }
 
     @Test
     void traversalResult_representsGenericTargetMetadataForLaterReducerUse() {
-        ObjectNode targetMetadata = JsonNodeFactory.instance.objectNode();
-        targetMetadata.put("dataIndex", 3);
-        targetMetadata.put("ownerIndex", 1);
-        TraversalResult result = new TraversalResult(List.of(), targetMetadata);
+        TraversalGroupResult group =
+                new TraversalGroupResult(groupMetadata("g-1"), List.of(new TraversalNode("P-1", owner("P-1"), 2)));
+        TraversalResult result = new TraversalResult(List.of(group));
 
         assertThat(result.toJsonNode(JsonNodeFactory.instance)
+                        .path("groups")
+                        .path(0)
                         .path("targetMetadata")
                         .path("dataIndex")
                         .asInt())
                 .isEqualTo(3);
         assertThat(result.toJsonNode(JsonNodeFactory.instance)
+                        .path("groups")
+                        .path(0)
                         .path("targetMetadata")
                         .path("ownerIndex")
                         .asInt())
                 .isEqualTo(1);
+        assertThat(result.toJsonNode(JsonNodeFactory.instance)
+                        .path("groups")
+                        .path(0)
+                        .path("resolvedNodes")
+                        .path(0)
+                        .path("number")
+                        .asString())
+                .isEqualTo("P-1");
+    }
+
+    private ObjectNode groupMetadata(String groupId) {
+        ObjectNode metadata = JsonNodeFactory.instance.objectNode();
+        metadata.put("groupId", groupId);
+        metadata.put("dataIndex", 3);
+        metadata.put("ownerIndex", 1);
+        return metadata;
+    }
+
+    private String groupId(TraversalGroupResult group) {
+        return Objects.requireNonNull(group.targetMetadata(), "targetMetadata")
+                .path("groupId")
+                .asString();
     }
 
     private ObjectNode owner(String number) {
