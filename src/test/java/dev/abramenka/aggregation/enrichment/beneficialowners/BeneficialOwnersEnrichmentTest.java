@@ -100,6 +100,35 @@ class BeneficialOwnersEnrichmentTest {
     }
 
     @Test
+    void execute_rootEntityOwnerWithNoChildSeeds_writesEmptyDetailsAndDoesNotCallOwners() {
+        ObjectNode root = json("""
+                {
+                  "data": [
+                    {
+                      "owners1": [
+                        {
+                          "entity": {
+                            "number": "E-1"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        StepVerifier.create(executeAndApply(root))
+                .assertNext(result -> assertThat(result).isInstanceOf(AggregationPartResult.JsonPatch.class))
+                .verifyComplete();
+
+        verify(ownersClient, times(0)).fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class));
+        JsonNode owner = root.path("data").path(0).path("owners1").path(0);
+        assertThat(owner.has("beneficialOwnersDetails")).isTrue();
+        assertThat(owner.path("beneficialOwnersDetails").isArray()).isTrue();
+        assertThat(owner.path("beneficialOwnersDetails")).isEmpty();
+    }
+
+    @Test
     void execute_rootEntityOwnerGetsDetails_individualOwnerDoesNot() {
         ObjectNode root = json("""
                 {
