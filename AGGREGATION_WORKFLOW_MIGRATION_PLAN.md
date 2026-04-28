@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 15 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), and the traversal reducer/write-back bridge is completed (Phase 15). Phase 16 — migrate beneficial owners — is the next implementation phase.
+> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17/18 are the next implementation phases, depending on scope.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -787,7 +787,7 @@ Use this plan as a strict sequential runbook:
 [x] Phase 14B — Recursive traversal engine
 [x] Phase 14C — RecursiveFetchStep workflow adapter
 [x] Phase 15 — Traversal reducer and write-back bridge
-[ ] Phase 16 — Migrate beneficial owners
+[x] Phase 16 — Migrate beneficial owners
 [ ] Phase 17 — Optional root role abstraction
 [ ] Phase 18 — Documentation, test kit, and examples
 [ ] Phase 19 — Retire legacy enrichment authoring
@@ -3021,7 +3021,7 @@ Patch/write failure:
 
 ## Phase 16 — Migrate Beneficial Owners
 
-**Status:** Not started.
+**Status:** Completed.
 
 ### Goal
 
