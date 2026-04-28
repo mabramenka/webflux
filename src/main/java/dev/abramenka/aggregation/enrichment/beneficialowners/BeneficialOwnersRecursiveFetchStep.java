@@ -35,6 +35,7 @@ import tools.jackson.databind.node.ObjectNode;
 final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
 
     private static final String CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.OWNERS);
+    private static final int MAX_DEPTH = 6;
 
     private final String name;
     private final String storeAs;
@@ -42,8 +43,7 @@ final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
     private final ObjectMapper objectMapper;
     private final RootEntityTargets rootEntityTargets;
     private final RecursiveTraversalEngine traversalEngine = new RecursiveTraversalEngine();
-    private final TraversalPolicy policy =
-            new TraversalPolicy(OwnershipResolver.MAX_DEPTH, CyclePolicy.SKIP_VISITED, true);
+    private final TraversalPolicy policy = new TraversalPolicy(MAX_DEPTH, CyclePolicy.SKIP_VISITED, true);
 
     BeneficialOwnersRecursiveFetchStep(
             String name,

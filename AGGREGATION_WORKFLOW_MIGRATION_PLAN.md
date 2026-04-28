@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 is in progress: 19A audit and 19B-1 legacy keyed-cluster removal are completed.
+> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 is in progress: 19A audit, 19B-1 legacy keyed-cluster removal, and 19B-2 beneficialOwners legacy-helper cleanup are completed.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -3315,7 +3315,7 @@ No public API behavior changed.
 
 ## Phase 19 — Retire Legacy Enrichment Authoring
 
-**Status:** In progress (Phase 19A audit completed; Phase 19B-1 completed).
+**Status:** In progress (Phase 19A audit completed; Phase 19B-1/19B-2 completed).
 
 ### Goal
 
@@ -3374,6 +3374,22 @@ Migration plan is updated with final status.
 - Updated docs to reflect workflow-based authoring as default (`README` + `docs/workflow-enrichment-guide.md`).
 - No workflow runtime behavior changes.
 - Next step: Phase 19B-2 beneficialOwners legacy helper cleanup.
+
+### Phase 19B-2 handoff note (completed on `main`)
+
+- Removed legacy beneficialOwners helper classes:
+  - `enrichment/beneficialowners/OwnershipResolver`
+  - `enrichment/beneficialowners/BeneficialOwnersResolutionException`
+  - `enrichment/beneficialowners/BeneficialOwnersDetailsPayload`
+  - `enrichment/beneficialowners/ResolvedEntity`
+- Decoupled workflow production code from legacy helper constants by adding local `MAX_DEPTH = 6` to `BeneficialOwnersRecursiveFetchStep`.
+- Removed legacy-only tests for deleted helpers:
+  - `OwnershipResolverTest`
+  - `BeneficialOwnersDetailsPayloadTest`
+- Kept `EntityNumbersExtractor` and `RootEntityTargets` because workflow production code still uses them.
+- Kept `AggregationEnrichment` for a later dedicated cleanup.
+- No shared workflow runtime changes.
+- Next step: Phase 19B-3 broader legacy authoring cleanup.
 
 ---
 
