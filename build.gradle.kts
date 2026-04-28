@@ -66,9 +66,11 @@ tasks.withType<JavaCompile>().configureEach {
 tasks.withType<JavaCompile>().configureEach {
     options.errorprone {
         error("NullAway")
-        option("NullAway:AnnotatedPackages", "dev.abramenka.aggregation")
+        option("NullAway:AnnotatedPackages", "dev.abramenka")
         option("NullAway:JSpecifyMode", "true")
         option("NullAway:AcknowledgeRestrictiveAnnotations", "true")
+        option("NullAway:ExhaustiveOverride", "true")
+        option("NullAway:CheckOptionalEmptiness", "true")
     }
 }
 
