@@ -1,434 +1,365 @@
-# Aggregation Facade — Error Handling Architecture
+# Error Handling Design
 
 **Stack:** Spring Boot 4 / Spring Framework 7
-**External error contract:** RFC 9457 (Problem Details for HTTP APIs)
-**Document type:** Architecture specification (intended as input for code generation)
+**External error contract:** RFC 9457 Problem Details for HTTP APIs
+**Status:** Current source of truth for request-level errors and success-side part outcomes.
 
----
+## Purpose and Scope
 
-## 1. Formal Problem Statement
+This service is an aggregation facade. For every aggregate request it validates the caller input, runs a mandatory base part that calls the account-group downstream, executes selected public enrichment parts by dependency level, and merges successful part results into one JSON response.
 
-This service is a Domain Facade that exposes an aggregated view over several backend systems. For every incoming request it performs one call to a main upstream endpoint, extracts identifiers from the main response, invokes one or more optional enrichment endpoints using those identifiers, and returns a single merged representation to the client. The facade owns its external contract and does not act as a transparent proxy.
+This document defines:
 
-Error handling follows a **soft / fatal split**. Data absence is soft — per-part skip, not an error. Infrastructure failure is fatal — the whole request aborts with an RFC 9457 problem document. Specifically:
+- how successful part execution is reported in `meta.parts`;
+- when a failure aborts the whole request with RFC 9457 `ProblemDetail`;
+- the public problem fields, categories, error codes, and retryability contract;
+- the boundary between main dependency failures, enrichment dependency failures, orchestration errors, and platform errors;
+- information-hiding rules for all public responses.
 
-- **Fatal (aborts the request):** failures on the *main* call (empty/unreadable body, non-success status, transport error, timeout); auth failures (`401`/`403`) on *any* downstream; enricher transport failures, timeouts, `5xx`, or decoding errors; merge exceptions; internal invariant violations.
-- **Soft (part is recorded as `EMPTY` or `SKIPPED`, request succeeds):** main payload missing the keys a part needs (`NO_KEYS_IN_MAIN`); `supports(context)` returned `false` (`UNSUPPORTED_CONTEXT`); enricher body empty (`DOWNSTREAM_EMPTY`); enricher returned `404` (`DOWNSTREAM_NOT_FOUND`); a required dependency applied nothing (`DEPENDENCY_EMPTY`).
+This document does not define business validation rules beyond the public request contract, retry/circuit-breaker tuning, authentication mechanisms, timeout values, or observability backend configuration.
 
-Success responses carry a `meta.parts` object that names each requested or transitively-enabled part with its `status` (`APPLIED` / `EMPTY` / `SKIPPED`) and, for non-`APPLIED` parts, a machine-readable `reason`. Error responses conform to RFC 9457 using Spring Framework 7 `ProblemDetail` / `ErrorResponse` constructs and a stable, facade-owned vocabulary of problem types, error codes, and categories. No downstream internals — hostnames, raw bodies, stack traces, bean names — are ever exposed to the client.
+## What Was Outdated
 
----
+The previous version documented only `APPLIED`, `EMPTY`, and `SKIPPED` as success-side outcomes. Current README, model enums, executor code, and tests also support `FAILED` for non-fatal optional enrichment dependency failures.
 
-## 2. Scope and Context
+The previous version also treated all enrichment infrastructure failures as request-fatal. Current behavior is more precise: downstream dependency failures are fatal for `REQUIRED` parts, but an `OPTIONAL` part may continue the request when the thrown failure is a `DownstreamClientException`. That failure is recorded in `meta.parts.<part>` as `FAILED` with `criticality`, `reason`, and `errorCode`.
 
-### 2.1 What this document defines
+The previous document also did not consistently describe `REQUIRED` versus `OPTIONAL` criticality and did not state that orchestration, merge, patch, workflow-definition, and invariant failures remain fatal even for optional parts.
 
-- The error classification model for the facade.
-- The decision rules for mapping internal failures to outward-facing responses.
-- The RFC 9457 contract: type URIs, titles, details, instances, and extension fields.
-- The concrete mapping between failure scenarios and HTTP status / problem type.
-- The boundary between internal diagnostic data and client-visible data.
+## Core Principles
 
-### 2.2 What this document does not define
+1. **The main dependency is mandatory.** The base `accountGroup` part is not public-selectable and must succeed before any enrichment can produce useful output. Main timeout, auth failure, 5xx, invalid payload, empty body, non-object body, transport failure, and raw unexpected status are request-level failures.
+2. **Success-side part outcomes are not request errors.** `APPLIED`, `EMPTY`, `SKIPPED`, and `FAILED` appear only in successful responses under `meta.parts`. They are not RFC 9457 problems.
+3. **Criticality only changes downstream dependency failure handling.** `REQUIRED` enrichment dependency failures abort the request. `OPTIONAL` enrichment dependency failures caused by `DownstreamClientException` are recorded as `FAILED` and the request continues.
+4. **Criticality does not make orchestration unsafe states safe.** Merge failures, patch failures, invariant violations, workflow-definition errors, invalid internal state, wrong part results, empty part publishers, and unclassified internal exceptions abort the request regardless of `REQUIRED` or `OPTIONAL`.
+5. **Soft data absence is not a technical failure.** Missing keys, unsupported context, empty dependency results, downstream 404 where handled by the enrichment step, and empty enrichment responses where semantically allowed produce `SKIPPED` or `EMPTY`.
+6. **Error responses contain no partial aggregate.** If the request fails, the response body is only a `ProblemDetail`. No partial root JSON and no partial `meta.parts` are returned.
+7. **Partial part metadata exists only on success.** Successful responses may include `meta.parts` entries that disclose applied, empty, skipped, or failed optional enrichment state.
+8. **The facade owns the external contract.** Downstream problem bodies, hostnames, raw bodies, headers, exception names, stack traces, and implementation details are never proxied to clients.
+9. **Retryability is explicit.** Clients use the `retryable` extension, not only the HTTP status, to decide whether retrying is appropriate.
 
-- Business-level validation rules.
-- Concrete Spring bean wiring, retry, circuit breaker, or timeout values.
-- Authentication mechanism details.
-- Observability backend configuration (logging, tracing exporters).
+## Success-Side Part Outcomes
 
-### 2.3 Spring Framework 7 building blocks assumed
+`meta.parts` is attached by `AggregateService` only when there are public-selectable effective parts with outcomes. The base `accountGroup` part participates in execution but is not public-selectable, so it is not emitted in `meta.parts`.
 
-- `org.springframework.http.ProblemDetail` — body representation.
-- `org.springframework.web.ErrorResponse` / `ErrorResponseException` — throwable carriers of problem details.
-- `@RestControllerAdvice` with `ResponseEntityExceptionHandler` as base — central exception mapping.
-- Spring HTTP service clients backed by `WebClient` with a shared error filter / response normalizer — translates downstream failures into facade exceptions before they escape the gateway layer.
+Expected shape:
 
----
+```json
+{
+  "meta": {
+    "parts": {
+      "account": {
+        "status": "FAILED",
+        "criticality": "OPTIONAL",
+        "reason": "TIMEOUT",
+        "errorCode": "ENRICH-TIMEOUT"
+      }
+    }
+  }
+}
+```
 
-## 3. Design Principles
+Each part entry has:
 
-1. **Soft / fatal split.** Data absence is a per-part signal, not an error. Infrastructure failure is a request-level failure. A response is either fully successful (with `meta.parts` reporting any EMPTY/SKIPPED parts) or entirely replaced by a `ProblemDetail`. A success response never contains a `ProblemDetail`, and an error response never contains partial data.
-2. **Main is strict; enrichers are optional.** A failed or empty main call aborts the whole request. A failed enrichment infrastructure call (auth, `5xx`, timeout, transport, decoding) also aborts the whole request. Enricher *data absence* (empty body, `404`, main payload missing keys, unsupported context) is soft and reported in `meta.parts`.
-3. **Stable external contract.** Clients integrate against facade-owned `type` URIs and `errorCode` values for errors, and against `meta.parts.<name>.{status, reason}` for soft per-part outcomes. Downstream changes must not change either contract.
-4. **Information hiding by default.** Everything is internal unless explicitly promoted to the external contract.
-5. **Named failure modes.** Every failure has a stable identity: a `type` URI, a title, a category, and an `errorCode`. Every soft skip has a stable `PartOutcomeStatus` and `PartSkipReason`. No anonymous 500s; no silently-omitted parts.
-6. **Traceability before narrative.** Error responses always carry a `traceId` and an `instance`. Detailed forensics live in logs, not in the body.
-7. **Retryability is explicit.** Clients do not infer retry policy from status codes; the `retryable` extension states it.
-8. **Downstream opacity.** Clients cannot tell which specific backend failed by reading a hostname, URL, or body fragment. At most they see a logical dependency name from a fixed enum.
+| Field | Required | Values | Notes |
+| --- | --- | --- | --- |
+| `status` | Always | `APPLIED`, `EMPTY`, `SKIPPED`, `FAILED` | From `PartOutcomeStatus`. |
+| `criticality` | Always | `REQUIRED`, `OPTIONAL` | From the part or workflow definition. Default is `REQUIRED`. |
+| `reason` | Non-`APPLIED` only | `PartOutcomeReason` | Required for `EMPTY`, `SKIPPED`, and `FAILED`; absent for `APPLIED`. |
+| `errorCode` | `FAILED` only | `ENRICH-*` catalog code | Present only for optional downstream dependency failures that were converted to `FAILED`. |
 
----
+### APPLIED
 
-## 4. Error Classification
+Used when the part produced a replacement document, merge patch, or JSON patch and the result was successfully applied to the root document.
 
-The facade recognises five top-level categories. Every thrown or caught error must map to exactly one.
+- Technical failure: no.
+- Can appear for `REQUIRED`: yes.
+- Can appear for `OPTIONAL`: yes.
+- Fields: `status`, `criticality`.
+- Must not include `reason` or `errorCode`.
 
-| Category                    | Meaning                                                                                             | Typical HTTP band | Client fault? |
-| --------------------------- | --------------------------------------------------------------------------------------------------- | ----------------- | ------------- |
-| `CLIENT_REQUEST`            | The request is malformed, unauthenticated, forbidden, or targets a non-existent domain resource.    | 4xx               | Yes           |
-| `MAIN_DEPENDENCY`           | The main upstream endpoint is unreachable, slow, returned an invalid or contract-violating payload. | 502 / 504         | No            |
-| `ENRICHMENT_DEPENDENCY`     | A selected enrichment path failed with a fatal dependency-level error.                              | 502 / 504         | No            |
-| `ORCHESTRATION`             | A failure inside facade logic: merge error, invariant violation, misconfiguration, mapping bug.     | 500               | No            |
-| `PLATFORM`                  | Runtime or infrastructure problem: OOM, thread starvation, unhandled exception, bean init failure.  | 500 / 503         | No            |
+Example:
 
-### 4.1 Sub-classification (for `errorCode` and diagnostics)
+```json
+{
+  "status": "APPLIED",
+  "criticality": "REQUIRED"
+}
+```
 
-Each category has a closed set of sub-types. This set is the authoritative catalog for `errorCode` values.
+### EMPTY
 
-**CLIENT_REQUEST**
-- `CLIENT-VALIDATION` — request shape / field validation failed.
-- `CLIENT-UNAUTHENTICATED` — no or invalid credentials.
-- `CLIENT-FORBIDDEN` — authenticated but not authorised.
-- `CLIENT-NOT-FOUND` — the requested domain resource does not exist.
-- `CLIENT-METHOD-NOT-ALLOWED` — HTTP method is not supported for the addressed route.
-- `CLIENT-NOT-ACCEPTABLE` — `Accept` negotiation cannot be honoured.
-- `CLIENT-UNSUPPORTED-MEDIA` — request content media type is not supported.
-- `CLIENT-RATE-LIMITED` — quota exceeded.
+Used when the part ran but semantically produced no enrichment data. This is data absence, not a technical failure.
 
-**MAIN_DEPENDENCY**
-- `MAIN-TIMEOUT` — response not received within budget.
-- `MAIN-UNAVAILABLE` — connection refused, DNS failure, `503`, circuit open.
-- `MAIN-BAD-RESPONSE` — non-success status outside a whitelisted domain-meaningful set.
-- `MAIN-INVALID-PAYLOAD` — response is not valid JSON or fails schema.
-- `MAIN-CONTRACT-VIOLATION` — response is empty or violates the root payload contract (for example, a non-object root document).
-- `MAIN-AUTH-FAILED` — facade cannot authenticate to main (credential / token problem).
+Current reasons:
 
-**ENRICHMENT_DEPENDENCY** (only for fatal enricher failures — data absence is soft, see §4.3)
+- `DOWNSTREAM_EMPTY`: downstream returned no body or the response could not produce any matched data where empty is allowed.
+- `DOWNSTREAM_NOT_FOUND`: downstream returned 404 and the enrichment step explicitly treats that as "no data for these keys."
+
+- Technical failure: no.
+- Can appear for `REQUIRED`: yes.
+- Can appear for `OPTIONAL`: yes.
+- Fields: `status`, `criticality`, `reason`.
+- Must not include `errorCode`.
+
+Example:
+
+```json
+{
+  "status": "EMPTY",
+  "criticality": "REQUIRED",
+  "reason": "DOWNSTREAM_NOT_FOUND"
+}
+```
+
+### SKIPPED
+
+Used when the part did not call its downstream or did not run because prerequisites were not satisfied.
+
+Current reasons:
+
+- `NO_KEYS_IN_MAIN`: the selected key paths yielded no keys from the root/source document.
+- `UNSUPPORTED_CONTEXT`: `supports(context)` returned false.
+- `DEPENDENCY_EMPTY`: at least one declared dependency did not apply successfully, so the dependent part is not runnable.
+
+- Technical failure: no.
+- Can appear for `REQUIRED`: yes.
+- Can appear for `OPTIONAL`: yes.
+- Fields: `status`, `criticality`, `reason`.
+- Must not include `errorCode`.
+
+Example:
+
+```json
+{
+  "status": "SKIPPED",
+  "criticality": "REQUIRED",
+  "reason": "NO_KEYS_IN_MAIN"
+}
+```
+
+### FAILED
+
+Used only when an `OPTIONAL` public enrichment part throws a `DownstreamClientException` and the failure policy chooses to continue the request. It records a real downstream dependency failure without converting the whole response to an error.
+
+Current failure reasons are derived from the enrichment catalog entry:
+
+- `TIMEOUT` from `ENRICH-TIMEOUT`
+- `UNAVAILABLE` from `ENRICH-UNAVAILABLE`
+- `BAD_RESPONSE` from `ENRICH-BAD-RESPONSE`
+- `INVALID_PAYLOAD` from `ENRICH-INVALID-PAYLOAD`
+- `AUTH_FAILED` from `ENRICH-AUTH-FAILED`
+- `CONTRACT_VIOLATION` from `ENRICH-CONTRACT-VIOLATION` when represented as `DownstreamClientException`
+- `INTERNAL` for any unexpected catalog mapping
+
+- Technical failure: yes, but non-fatal because the part is `OPTIONAL`.
+- Can appear for `REQUIRED`: no. The same downstream failure is fatal for a required part.
+- Can appear for `OPTIONAL`: yes.
+- Fields: `status`, `criticality`, `reason`, `errorCode`.
+
+Example:
+
+```json
+{
+  "status": "FAILED",
+  "criticality": "OPTIONAL",
+  "reason": "TIMEOUT",
+  "errorCode": "ENRICH-TIMEOUT"
+}
+```
+
+## Part Criticality
+
+### REQUIRED
+
+`REQUIRED` is the default for `AggregationPart` and `AggregationWorkflow`.
+
+For required public enrichment parts:
+
+- `APPLIED`, `EMPTY`, and `SKIPPED` can appear in successful responses.
+- Downstream dependency failures abort the request with `ENRICHMENT_DEPENDENCY` `ProblemDetail`.
+- Orchestration, merge, patch, invariant, workflow-definition, and internal consistency failures abort the request.
+
+The base main part is also effectively required, but it is not emitted in `meta.parts`.
+
+### OPTIONAL
+
+`OPTIONAL` is opt-in per part or workflow.
+
+For optional public enrichment parts:
+
+- `APPLIED`, `EMPTY`, `SKIPPED`, and `FAILED` can appear in successful responses.
+- `DownstreamClientException` failures are converted to `FAILED` outcomes.
+- Non-downstream failures still abort the request.
+
+Criticality is not a general "best effort" switch. It only controls selected downstream dependency failures. It does not suppress broken merge logic, invalid workflow definitions, patch conflicts, invariant violations, or platform failures.
+
+## Decision Matrix
+
+| Scenario | Request result | Part outcome | Category | errorCode | Retryable | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Invalid client request body, field, path, or query | ProblemDetail | n/a | `CLIENT_REQUEST` | `CLIENT-INVALID-BODY` or `CLIENT-VALIDATION` | false | Malformed body uses `CLIENT-INVALID-BODY`; validation and unknown include use `CLIENT-VALIDATION`. |
+| Unknown include part | ProblemDetail | n/a | `CLIENT_REQUEST` | `CLIENT-VALIDATION` | false | Fails before the account-group call. |
+| Main timeout | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-TIMEOUT` | true | Includes `dependency: "main"`. |
+| Main auth failure | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-AUTH-FAILED` | false | Downstream 401/403 from main. |
+| Main 5xx or unexpected status | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-BAD-RESPONSE` or `MAIN-UNAVAILABLE` | false for bad response; true for unavailable | Downstream 503 maps to `MAIN-UNAVAILABLE`; other unexpected statuses map to `MAIN-BAD-RESPONSE`. |
+| Main invalid payload | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-INVALID-PAYLOAD` | false | Decode/read failure. |
+| Main empty body | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-CONTRACT-VIOLATION` | false | The base part requires a body. |
+| Main non-object body | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-CONTRACT-VIOLATION` | false | The aggregate root must be an object. |
+| Main domain not found | ProblemDetail | n/a | `CLIENT_REQUEST` | `CLIENT-NOT-FOUND` | false | Only when facade code explicitly classifies the condition as domain not found. A raw downstream 404 from main is not enough. |
+| Raw downstream 404 from main | ProblemDetail | n/a | `MAIN_DEPENDENCY` | `MAIN-BAD-RESPONSE` | false | Main 404 is opaque unless classified as a domain outcome. |
+| No enrichment keys found | 200 | `SKIPPED` | n/a | n/a | n/a | `reason: "NO_KEYS_IN_MAIN"`. |
+| Dependency part is empty, skipped, or failed optional | 200 | `SKIPPED` for dependent | n/a | n/a | n/a | `reason: "DEPENDENCY_EMPTY"`; dependent downstream is not called. |
+| Enrichment 404 where step handles it | 200 | `EMPTY` | n/a | n/a | n/a | `reason: "DOWNSTREAM_NOT_FOUND"`. |
+| Enrichment empty body where allowed | 200 | `EMPTY` | n/a | n/a | n/a | `reason: "DOWNSTREAM_EMPTY"`. |
+| Required enrichment timeout | ProblemDetail | n/a | `ENRICHMENT_DEPENDENCY` | `ENRICH-TIMEOUT` | true | Includes logical `dependency` and part metadata. |
+| Optional enrichment timeout | 200 | `FAILED` | n/a | `ENRICH-TIMEOUT` in `meta.parts` | n/a | `reason: "TIMEOUT"`; no `ProblemDetail`. |
+| Required enrichment auth failure | ProblemDetail | n/a | `ENRICHMENT_DEPENDENCY` | `ENRICH-AUTH-FAILED` | false | Downstream 401/403. |
+| Optional enrichment auth failure | 200 | `FAILED` | n/a | `ENRICH-AUTH-FAILED` in `meta.parts` | n/a | `reason: "AUTH_FAILED"`. |
+| Required enrichment 5xx or unexpected status | ProblemDetail | n/a | `ENRICHMENT_DEPENDENCY` | `ENRICH-BAD-RESPONSE` or `ENRICH-UNAVAILABLE` | false for bad response; true for unavailable | Downstream 503 maps to unavailable. |
+| Optional enrichment 5xx or unexpected status | 200 | `FAILED` | n/a | `ENRICH-BAD-RESPONSE` or `ENRICH-UNAVAILABLE` in `meta.parts` | n/a | `reason: "BAD_RESPONSE"` or `UNAVAILABLE`. |
+| Required enrichment invalid payload | ProblemDetail | n/a | `ENRICHMENT_DEPENDENCY` | `ENRICH-INVALID-PAYLOAD` | false | Decode/read failure. |
+| Optional enrichment invalid payload | 200 | `FAILED` | n/a | `ENRICH-INVALID-PAYLOAD` in `meta.parts` | n/a | `reason: "INVALID_PAYLOAD"`. |
+| Enrichment contract violation represented as `EnrichmentDependencyException` | ProblemDetail | n/a | `ENRICHMENT_DEPENDENCY` | `ENRICH-CONTRACT-VIOLATION` | false | Fatal even if caused inside an optional part because it is not a `DownstreamClientException`. |
+| Optional enrichment contract violation represented as `DownstreamClientException` | 200 | `FAILED` | n/a | `ENRICH-CONTRACT-VIOLATION` in `meta.parts` | n/a | Applies only to downstream-client contract failures handled by the failure policy. |
+| Patch build failure | ProblemDetail | n/a | `ORCHESTRATION` | `ORCH-MERGE-FAILED` or `ORCH-INVARIANT-VIOLATED` | false | Fatal for all parts. |
+| Merge conflict or invariant violation | ProblemDetail | n/a | `ORCHESTRATION` | `ORCH-MERGE-FAILED` or `ORCH-INVARIANT-VIOLATED` | false | Fatal for all parts. |
+| Invalid workflow definition detected after startup | ProblemDetail | n/a | `ORCHESTRATION` | `ORCH-CONFIG-INVALID` or `ORCH-INVARIANT-VIOLATED` | false | Bean-creation failures may prevent startup before an HTTP response exists. |
+| Unexpected platform/internal exception | ProblemDetail | n/a | `PLATFORM` | `PLATFORM-INTERNAL` | false | Last-resort handler. |
+| Load shedding or rejected execution | ProblemDetail | n/a | `PLATFORM` | `PLATFORM-OVERLOADED` | true | Current handler emits `Retry-After: 1`. |
+
+## Request-Level ProblemDetail Contract
+
+All request-level failures return `application/problem+json` and use RFC 9457 `ProblemDetail` with facade-owned extensions.
+
+Core fields:
+
+| Field | Public | Meaning |
+| --- | --- | --- |
+| `type` | Yes | Stable relative URI from `ProblemCatalog`, for example `/problems/main/timeout`. |
+| `title` | Yes | Stable human-readable title from `ProblemCatalog`. |
+| `status` | Yes | HTTP status code and body status. |
+| `detail` | Yes | Stable generic detail from `ProblemCatalog.defaultDetail()`. |
+| `instance` | Yes | Relative request instance URI, currently `/requests/{traceId-or-request-id}`. |
+
+Extension fields:
+
+| Field | Public | When present | Meaning |
+| --- | --- | --- | --- |
+| `errorCode` | Yes | Always | Stable machine-readable code. |
+| `category` | Yes | Always | One of the problem categories. |
+| `traceId` | Yes | Always | Trace id used for support lookup. |
+| `retryable` | Yes | Always | Whether the same request can reasonably be retried. |
+| `timestamp` | Yes | Always | UTC timestamp when the facade emits the response. |
+| `dependency` | Yes | Main/enrichment dependency errors | Logical dependency only, such as `main`, `enricher:account`, or `enricher:owners`. |
+| `violations` | Yes | Validation errors | Array of `{ "pointer": "...", "message": "..." }`. |
+| `part` | Yes | Part-level fatal failures | Public part name when failure policy enriches the problem. |
+| `criticality` | Yes | Part-level fatal failures | `REQUIRED` or `OPTIONAL` for the failing part. |
+
+The following details are not public and must not appear in responses: raw downstream body, downstream URL, hostname, IP, port, raw headers, tokens, cookies, stack trace, exception class name, Spring bean name, internal class name, internal configuration key, or implementation-specific exception message.
+
+Every success and error response should carry a valid W3C `traceparent` header. Valid inbound `traceparent` is echoed; otherwise the service generates one.
+
+## Problem Catalog
+
+Categories:
+
+- `CLIENT_REQUEST`: malformed request, validation failure, authentication/authorization framework status, content negotiation failure, rate limit, or explicitly classified domain not-found.
+- `MAIN_DEPENDENCY`: mandatory account-group dependency failure.
+- `ENRICHMENT_DEPENDENCY`: required enrichment dependency failure or fatal enrichment contract violation.
+- `ORCHESTRATION`: facade logic failure, merge failure, mapping failure, invariant violation, or runtime configuration failure.
+- `PLATFORM`: unclassified internal exception or overload/load shedding.
+
+Catalog entries aligned with `ProblemCatalog`:
+
+| errorCode | type | title | HTTP | category | retryable |
+| --- | --- | --- | --- | --- | --- |
+| `CLIENT-INVALID-BODY` | `/problems/invalid-request-body` | Request body is invalid | 400 | `CLIENT_REQUEST` | false |
+| `CLIENT-VALIDATION` | `/problems/validation` | Request validation failed | 400 | `CLIENT_REQUEST` | false |
+| `CLIENT-UNAUTHENTICATED` | `/problems/unauthenticated` | Authentication required | 401 | `CLIENT_REQUEST` | false |
+| `CLIENT-FORBIDDEN` | `/problems/forbidden` | Access denied | 403 | `CLIENT_REQUEST` | false |
+| `CLIENT-NOT-FOUND` | `/problems/not-found` | Resource not found | 404 | `CLIENT_REQUEST` | false |
+| `CLIENT-METHOD-NOT-ALLOWED` | `/problems/method-not-allowed` | Method not allowed | 405 | `CLIENT_REQUEST` | false |
+| `CLIENT-NOT-ACCEPTABLE` | `/problems/not-acceptable` | Not acceptable | 406 | `CLIENT_REQUEST` | false |
+| `CLIENT-UNSUPPORTED-MEDIA` | `/problems/unsupported-media` | Unsupported media type | 415 | `CLIENT_REQUEST` | false |
+| `CLIENT-RATE-LIMITED` | `/problems/rate-limited` | Rate limit exceeded | 429 | `CLIENT_REQUEST` | true |
+| `MAIN-TIMEOUT` | `/problems/main/timeout` | Main dependency timed out | 504 | `MAIN_DEPENDENCY` | true |
+| `MAIN-UNAVAILABLE` | `/problems/main/unavailable` | Main dependency unavailable | 504 | `MAIN_DEPENDENCY` | true |
+| `MAIN-BAD-RESPONSE` | `/problems/main/bad-response` | Main dependency returned an unexpected status | 502 | `MAIN_DEPENDENCY` | false |
+| `MAIN-INVALID-PAYLOAD` | `/problems/main/invalid-payload` | Main dependency returned an invalid payload | 502 | `MAIN_DEPENDENCY` | false |
+| `MAIN-CONTRACT-VIOLATION` | `/problems/main/contract-violation` | Main dependency payload violates contract | 502 | `MAIN_DEPENDENCY` | false |
+| `MAIN-AUTH-FAILED` | `/problems/main/auth-failed` | Main dependency refused authentication | 502 | `MAIN_DEPENDENCY` | false |
+| `ENRICH-TIMEOUT` | `/problems/enrichment/timeout` | Enrichment dependency timed out | 504 | `ENRICHMENT_DEPENDENCY` | true |
+| `ENRICH-UNAVAILABLE` | `/problems/enrichment/unavailable` | Enrichment dependency unavailable | 504 | `ENRICHMENT_DEPENDENCY` | true |
+| `ENRICH-BAD-RESPONSE` | `/problems/enrichment/bad-response` | Enrichment dependency returned an unexpected status | 502 | `ENRICHMENT_DEPENDENCY` | false |
+| `ENRICH-INVALID-PAYLOAD` | `/problems/enrichment/invalid-payload` | Enrichment dependency returned an invalid payload | 502 | `ENRICHMENT_DEPENDENCY` | false |
+| `ENRICH-CONTRACT-VIOLATION` | `/problems/enrichment/contract-violation` | Enrichment dependency payload violates contract | 502 | `ENRICHMENT_DEPENDENCY` | false |
+| `ENRICH-AUTH-FAILED` | `/problems/enrichment/auth-failed` | Enrichment dependency refused authentication | 502 | `ENRICHMENT_DEPENDENCY` | false |
+| `ORCH-MERGE-FAILED` | `/problems/orchestration/merge-failed` | Aggregation failed | 500 | `ORCHESTRATION` | false |
+| `ORCH-MAPPING-FAILED` | `/problems/orchestration/mapping-failed` | Response mapping failed | 500 | `ORCHESTRATION` | false |
+| `ORCH-INVARIANT-VIOLATED` | `/problems/orchestration/invariant` | Internal invariant violated | 500 | `ORCHESTRATION` | false |
+| `ORCH-CONFIG-INVALID` | `/problems/orchestration/config` | Internal configuration error | 500 | `ORCHESTRATION` | false |
+| `PLATFORM-INTERNAL` | `/problems/platform/internal` | Internal server error | 500 | `PLATFORM` | false |
+| `PLATFORM-OVERLOADED` | `/problems/platform/overloaded` | Service overloaded | 503 | `PLATFORM` | true |
+
+## Main vs Orchestration Boundary
+
+| Situation | Classification |
+| --- | --- |
+| HTTP call to account-group times out, is unavailable, fails auth, or returns error status | `MAIN_DEPENDENCY` |
+| Account-group response is empty | `MAIN_DEPENDENCY` / `MAIN-CONTRACT-VIOLATION` |
+| Account-group response cannot be decoded | `MAIN_DEPENDENCY` / `MAIN-INVALID-PAYLOAD` |
+| Account-group response decodes but root is not an object | `MAIN_DEPENDENCY` / `MAIN-CONTRACT-VIOLATION` |
+| Raw account-group 404 without facade domain classification | `MAIN_DEPENDENCY` / `MAIN-BAD-RESPONSE` |
+| Facade explicitly classifies requested domain object as not found | `CLIENT_REQUEST` / `CLIENT-NOT-FOUND` |
+| Root object has no keys needed by an enrichment | Success-side `SKIPPED` / `NO_KEYS_IN_MAIN` |
+| Facade mapping, merge, patch, dependency graph, or invariant logic fails | `ORCHESTRATION` |
+
+## Retryability Rules
+
+`retryable = true` is emitted only for known transient conditions:
+
+- `MAIN-TIMEOUT`
+- `MAIN-UNAVAILABLE`
 - `ENRICH-TIMEOUT`
 - `ENRICH-UNAVAILABLE`
-- `ENRICH-BAD-RESPONSE` — non-success, non-`404` status outside the auth band.
-- `ENRICH-INVALID-PAYLOAD`
-- `ENRICH-CONTRACT-VIOLATION` — reserved for nested batch calls that must succeed in full (e.g. the beneficial-owners tree resolver); a top-level enricher `404` is *not* a contract violation, it is a soft `DOWNSTREAM_NOT_FOUND`.
-- `ENRICH-AUTH-FAILED`
-
-**ORCHESTRATION**
-- `ORCH-MERGE-FAILED` — aggregation step threw.
-- `ORCH-INVARIANT-VIOLATED` — internal invariant broken (e.g. enricher returned an object for the wrong key).
-- `ORCH-MAPPING-FAILED` — response DTO assembly failed.
-- `ORCH-CONFIG-INVALID` — required runtime configuration missing or malformed after the application has started. Configuration errors detected during bean creation may fail startup before an HTTP response exists.
-
-**PLATFORM**
-- `PLATFORM-INTERNAL` — unclassified unchecked exception, last-resort bucket.
-- `PLATFORM-OVERLOADED` — thread pool exhausted, backpressure, shedding.
-
-### 4.3 Soft outcomes (per-part, reported in `meta.parts`, not errors)
-
-Soft outcomes never produce an HTTP error response. They are recorded on `AggregationPartResult.NoOp` and surfaced in the success body under `meta.parts.<partName>`.
-
-| `PartOutcomeStatus` | `PartSkipReason`          | Trigger                                                                                       |
-| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------- |
-| `APPLIED`           | *(none)*                  | Part produced a replacement or merge patch that was applied to the root.                      |
-| `EMPTY`             | `DOWNSTREAM_EMPTY`        | Enricher returned an empty body (no JSON).                                                     |
-| `EMPTY`             | `DOWNSTREAM_NOT_FOUND`    | Enricher returned `404`. The facade treats this as "no data for these keys," not an error.   |
-| `SKIPPED`           | `NO_KEYS_IN_MAIN`         | Main payload did not yield any keys for the part to fetch (e.g. missing `accounts[*].id`).   |
-| `SKIPPED`           | `UNSUPPORTED_CONTEXT`     | Part's `supports(context)` returned `false`.                                                  |
-| `SKIPPED`           | `DEPENDENCY_EMPTY`        | A dependency the part declared did not apply (returned `NoOp` or was itself skipped).         |
-
-### 4.4 Exception hierarchy (conceptual)
-
-The implementation should define a single sealed hierarchy rooted at a facade-specific base that extends `ErrorResponseException`. Suggested shape:
-
-- `FacadeException` *(base; extends `ErrorResponseException`)*
-  - `ClientRequestException`
-  - `MainDependencyException`
-  - `EnrichmentDependencyException`
-  - `OrchestrationException`
-  - `PlatformException`
-
-Each concrete sub-type corresponds to one `errorCode` in the catalog above. This keeps the mapping from exception → `ProblemDetail` purely mechanical and testable.
-
----
-
-## 5. Decision Rules
-
-For every failure the following questions are answered in order.
-
-### 5.1 Does it break the whole request?
-
-**Fatal → yes.** Any `FacadeException` (the five categories in §4) aborts the request with a `ProblemDetail`. No partial data is emitted alongside the error.
-
-**Soft → no.** A part that returns `AggregationPartResult.NoOp` (EMPTY or SKIPPED) is recorded in `meta.parts` and the request proceeds. Dependents of a skipped/empty part are themselves marked `SKIPPED / DEPENDENCY_EMPTY`. The response body is a normal success body — no `ProblemDetail`.
-
-The soft/fatal decision is made inside the part's `execute(rootSnapshot, context)` via the sealed `AggregationPartResult` hierarchy: `ReplaceDocument` or `MergePatch` → applied; `NoOp` → recorded; thrown `FacadeException` → fatal. Any other exception thrown by a part is considered an internal invariant violation and mapped to `ORCH-INVARIANT-VIOLATED`.
-
-### 5.2 What HTTP status does it produce?
-
-| Category                | Status rule                                                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `CLIENT_REQUEST`        | The specific 4xx (400, 401, 403, 404, 405, 406, 415, 429).                                                           |
-| `MAIN_DEPENDENCY`       | `504` for timeout / unavailability; `502` for bad status, invalid payload, or contract violation.                    |
-| `ENRICHMENT_DEPENDENCY` | Same rule as main: `504` for timeout / unavailability; `502` for bad status, invalid payload, contract violation.    |
-| `ORCHESTRATION`         | `500` — always. The cause is internal logic.                                                                         |
-| `PLATFORM`              | `500` for uncaught; `503` only for explicit load shedding with `Retry-After`.                                        |
-
-### 5.3 Which `problem type` is selected?
-
-The `type` URI is derived deterministically from the sub-code (see §4.1 and §8 for the full catalog). `type` is relative, slugified, and grouped by category, for example `/problems/main/timeout` or `/problems/enrichment/contract-violation`.
-
-### 5.4 When is a failure classified as `MAIN_DEPENDENCY` vs `ORCHESTRATION`?
-
-This is the ambiguous boundary and must be decided by the following rule set:
-
-| Situation                                                                                               | Classification      |
-| ------------------------------------------------------------------------------------------------------- | ------------------- |
-| The HTTP call to main did not complete successfully (timeout, connection refused, 5xx, DNS).            | `MAIN_DEPENDENCY`   |
-| Main returned an empty body or a non-object payload.                                                     | `MAIN_DEPENDENCY` (contract violation) |
-| Main returned a payload that our client code fails to deserialise.                                       | `MAIN_DEPENDENCY` (invalid payload)     |
-| Main returned a payload that deserialises, but our mapping code threw while transforming it.            | `ORCHESTRATION` (mapping failed)        |
-| Main failure is explicitly classified as a domain not-found outcome — the requested resource genuinely does not exist. | `CLIENT_REQUEST` (not found) |
-| Main returned a raw downstream `404` without domain-not-found classification.                           | `MAIN_DEPENDENCY` (bad response)        |
-| Facade failed to pick a required runtime configuration value after startup.                              | `ORCHESTRATION` (config invalid)        |
-| Merge of main + enrichments threw or produced an invalid DTO.                                           | `ORCHESTRATION` (merge failed)          |
-
-Main payload containing no keys for a given enrichment is *not* a fault; that part is soft-skipped with `NO_KEYS_IN_MAIN` (see §4.3).
-
-**Heuristic:** if the failure can be reproduced by pointing the facade at a known-good fake main that returns a known-good payload, it is `ORCHESTRATION`. Otherwise it is `MAIN_DEPENDENCY`.
-
-### 5.5 Retryability rule
-
-`retryable = true` is emitted only for:
-- `MAIN-TIMEOUT`, `MAIN-UNAVAILABLE`
-- `ENRICH-TIMEOUT`, `ENRICH-UNAVAILABLE`
 - `CLIENT-RATE-LIMITED`
-- `PLATFORM-OVERLOADED` (with `Retry-After`)
+- `PLATFORM-OVERLOADED`
 
-All other codes are `retryable = false`. Contract violations, auth failures, validation errors, and orchestration bugs never advertise as retryable.
+`retryable = false` is emitted for:
 
----
+- validation and malformed request failures;
+- authentication and authorization failures;
+- not found;
+- bad response, invalid payload, and contract violation;
+- orchestration, merge, patch, invariant, mapping, and configuration failures;
+- internal bugs and unclassified platform failures.
 
-## 6. RFC 9457 Error Contract
+For optional enrichment failures recorded as `meta.parts.<part>.status = FAILED`, there is no request-level `retryable` field because the request succeeded. Clients that inspect `meta.parts` may treat `ENRICH-TIMEOUT` and `ENRICH-UNAVAILABLE` as transient part-level failures, but that is separate from the HTTP response contract.
 
-### 6.1 Fields
+## Security and Information Hiding
 
-| Field       | Source                                                                                                | Notes                                                                                               |
-| ----------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `type`      | Relative URI from the catalog, e.g. `/problems/enrichment/timeout`.                                    | Stable. Part of public contract. Relative so the facade is deployable behind any base path.         |
-| `title`     | Fixed, human-readable, constant per `type`. E.g. `"Enrichment dependency timed out"`.                  | No dynamic content. No identifiers, no hostnames.                                                   |
-| `status`    | HTTP status from §5.2.                                                                                 | Matches response line.                                                                              |
-| `detail`    | Short, generic elaboration per `type`. May include high-level cause class but never raw downstream.   | No stack traces, no raw JSON, no PII, no internal identifiers.                                      |
-| `instance`  | Relative URI of the failing request instance, e.g. `/requests/{traceId}`.                              | Always present. Used for support lookup.                                                            |
+Public response bodies must never contain:
 
-### 6.2 Extension fields (always present unless noted)
+- stack traces;
+- exception class names;
+- downstream raw bodies or downstream problem documents;
+- downstream URLs, hostnames, IPs, ports, or raw status lines;
+- downstream headers;
+- internal Spring bean names;
+- internal class names or package names;
+- configuration property names or environment identifiers;
+- SQL, database identifiers, query plans, or storage internals;
+- secrets, tokens, cookies, credentials, or authorization header values;
+- implementation-specific exception messages.
 
-| Extension    | Type     | Meaning                                                                                                             |
-| ------------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| `errorCode`  | string   | Stable machine-readable code from §4.1. Primary integration key for clients.                                        |
-| `category`   | string   | One of `CLIENT_REQUEST`, `MAIN_DEPENDENCY`, `ENRICHMENT_DEPENDENCY`, `ORCHESTRATION`, `PLATFORM`.                    |
-| `traceId`    | string   | Distributed trace id (W3C traceparent) for correlation.                                                              |
-| `retryable`  | boolean  | See §5.5.                                                                                                           |
-| `timestamp`  | string   | RFC 3339 UTC timestamp at the moment the facade emits the response.                                                  |
-| `dependency` | string   | *Only for MAIN / ENRICHMENT categories.* Logical name from a fixed enum (e.g. `"main"`, `"enricher:profile"`). Never a URL, host, or IP. |
-| `violations` | array    | *Only for `CLIENT-VALIDATION`.* Each entry has `pointer` (JSON Pointer to the offending field) and `message` (generic). |
+Allowed public diagnostics are the stable problem fields, logical dependency names, validation pointers/messages, and the optional `part` and `criticality` extensions on part-level fatal failures.
 
-### 6.3 Media type and headers
+Logs, metrics, and traces may carry richer diagnostic context, but only behind internal access controls and with normal PII/secrets scrubbing.
 
-- Content-Type: `application/problem+json` on all error responses.
-- `Retry-After` is included when and only when `retryable = true` and a concrete wait is recommended.
-- A valid `traceparent` header is present on every response (success or error) for correlation. Valid inbound values are echoed; otherwise the facade generates a new W3C trace context.
+## Examples
 
-### 6.4 Invariants
-
-1. `type`, `title`, `errorCode`, `category` are 1-to-1: a given `errorCode` always produces the same three others.
-2. `type` is never built dynamically. It comes from the catalog.
-3. `detail` is a template string with no runtime-interpolated data except sanitized logical dependency names and validation pointers.
-4. `instance` is always unique per request. It is safe to share.
-5. No response ever carries both partial data and a `ProblemDetail`. Error response bodies contain exclusively the problem details.
-
-### 6.5 Success-side `meta.parts` contract
-
-Success responses (`2xx`) carry a `meta.parts` object alongside the aggregated data. One entry per effectively-selected part — explicit selections from `request.include()` plus parts pulled in as dependencies.
-
-| Field      | Type    | Values                                                                                   |
-| ---------- | ------- | ---------------------------------------------------------------------------------------- |
-| `status`   | string  | `APPLIED`, `EMPTY`, `SKIPPED` (from the `PartOutcomeStatus` enum).                       |
-| `reason`   | string  | Present only when `status != APPLIED`. One of the `PartSkipReason` values from §4.3.     |
-
-`meta.parts` entry order is stable: insertion order of the effective selection (explicit selections first, dependencies expanded in graph order). Clients may rely on the enum values but must not parse ordering.
-
----
-
-## 7. Mapping Strategy
-
-### 7.1 Downstream failure mapping
-
-Applies uniformly to the main endpoint and to every enricher. The table differentiates by category in the sub-code prefix (`MAIN-*` vs `ENRICH-*`).
-
-| Failure scenario                                              | HTTP | Category                  | `type` (relative)                              | `errorCode`                  | Retryable |
-| ------------------------------------------------------------- | ---- | ------------------------- | ---------------------------------------------- | ---------------------------- | --------- |
-| Timeout calling main                                          | 504  | `MAIN_DEPENDENCY`         | `/problems/main/timeout`                       | `MAIN-TIMEOUT`               | true      |
-| Timeout calling enricher                                      | 504  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/timeout`                 | `ENRICH-TIMEOUT`             | true      |
-| Main unreachable (conn refused / DNS / 503 / circuit open)    | 504  | `MAIN_DEPENDENCY`         | `/problems/main/unavailable`                   | `MAIN-UNAVAILABLE`           | true      |
-| Enricher unreachable                                          | 504  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/unavailable`             | `ENRICH-UNAVAILABLE`         | true      |
-| Main returns non-success, non-domain status (5xx, unexpected) | 502  | `MAIN_DEPENDENCY`         | `/problems/main/bad-response`                  | `MAIN-BAD-RESPONSE`          | false     |
-| Enricher returns non-success, non-domain status               | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/bad-response`            | `ENRICH-BAD-RESPONSE`        | false     |
-| Main returns invalid JSON / schema failure                    | 502  | `MAIN_DEPENDENCY`         | `/problems/main/invalid-payload`               | `MAIN-INVALID-PAYLOAD`       | false     |
-| Enricher returns invalid JSON / schema failure                | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/invalid-payload`         | `ENRICH-INVALID-PAYLOAD`     | false     |
-| Main returns empty body or a non-object payload               | 502  | `MAIN_DEPENDENCY`         | `/problems/main/contract-violation`            | `MAIN-CONTRACT-VIOLATION`    | false     |
-| Enricher returns `404`                                         | *(soft)* | *n/a — `meta.parts.<name> = { status: EMPTY, reason: DOWNSTREAM_NOT_FOUND }`* | *n/a* | *n/a* | *n/a* |
-| Nested batch call inside an enricher (e.g. beneficial-owners tree) returns `404` or partial data | 502 | `ENRICHMENT_DEPENDENCY` | `/problems/enrichment/contract-violation` | `ENRICH-CONTRACT-VIOLATION` | false |
-| Main returns `401` / `403` to facade                          | 502  | `MAIN_DEPENDENCY`         | `/problems/main/auth-failed`                   | `MAIN-AUTH-FAILED`           | false     |
-| Enricher returns `401` / `403` to facade                      | 502  | `ENRICHMENT_DEPENDENCY`   | `/problems/enrichment/auth-failed`             | `ENRICH-AUTH-FAILED`         | false     |
-| Main returns a raw `404` without domain-not-found classification | 502 | `MAIN_DEPENDENCY`        | `/problems/main/bad-response`                  | `MAIN-BAD-RESPONSE`          | false     |
-| Main failure is explicitly classified as domain not found       | 404  | `CLIENT_REQUEST`          | `/problems/not-found`                          | `CLIENT-NOT-FOUND`           | false     |
-
-### 7.2 Internal failure mapping
-
-| Failure scenario                                              | HTTP | Category           | `type` (relative)                        | `errorCode`                 | Retryable |
-| ------------------------------------------------------------- | ---- | ------------------ | ---------------------------------------- | --------------------------- | --------- |
-| Merge / aggregation code throws                               | 500  | `ORCHESTRATION`    | `/problems/orchestration/merge-failed`   | `ORCH-MERGE-FAILED`         | false     |
-| DTO mapping throws                                            | 500  | `ORCHESTRATION`    | `/problems/orchestration/mapping-failed` | `ORCH-MAPPING-FAILED`       | false     |
-| Internal invariant violation                                  | 500  | `ORCHESTRATION`    | `/problems/orchestration/invariant`      | `ORCH-INVARIANT-VIOLATED`   | false     |
-| Missing / malformed runtime configuration detected after startup | 500 | `ORCHESTRATION`    | `/problems/orchestration/config`         | `ORCH-CONFIG-INVALID`       | false     |
-| Unclassified unchecked exception                              | 500  | `PLATFORM`         | `/problems/platform/internal`            | `PLATFORM-INTERNAL`         | false     |
-| Load shedding / thread pool rejection                         | 503  | `PLATFORM`         | `/problems/platform/overloaded`          | `PLATFORM-OVERLOADED`       | true      |
-
-### 7.3 Client request mapping
-
-| Failure scenario                                   | HTTP | Category         | `type` (relative)               | `errorCode`                | Retryable |
-| -------------------------------------------------- | ---- | ---------------- | ------------------------------- | -------------------------- | --------- |
-| Bean validation / malformed body                   | 400  | `CLIENT_REQUEST` | `/problems/validation`          | `CLIENT-VALIDATION`        | false     |
-| Missing / invalid credentials                      | 401  | `CLIENT_REQUEST` | `/problems/unauthenticated`     | `CLIENT-UNAUTHENTICATED`   | false     |
-| Authenticated but not authorised                   | 403  | `CLIENT_REQUEST` | `/problems/forbidden`           | `CLIENT-FORBIDDEN`         | false     |
-| Domain resource not found                          | 404  | `CLIENT_REQUEST` | `/problems/not-found`           | `CLIENT-NOT-FOUND`         | false     |
-| HTTP method not supported for route                 | 405  | `CLIENT_REQUEST` | `/problems/method-not-allowed` | `CLIENT-METHOD-NOT-ALLOWED` | false     |
-| Accept not honourable                               | 406  | `CLIENT_REQUEST` | `/problems/not-acceptable`     | `CLIENT-NOT-ACCEPTABLE`    | false     |
-| Unsupported media type                              | 415  | `CLIENT_REQUEST` | `/problems/unsupported-media`  | `CLIENT-UNSUPPORTED-MEDIA` | false     |
-| Quota / rate limit exceeded                        | 429  | `CLIENT_REQUEST` | `/problems/rate-limited`        | `CLIENT-RATE-LIMITED`      | true      |
-
-### 7.4 Mapping flow
-
-1. Controller receives request.
-2. Bean validation runs. Failures → `CLIENT-VALIDATION`. Unknown names in `request.include()` are validated up front and rejected with `CLIENT-VALIDATION`.
-3. Service calls main via a Spring HTTP service client backed by `WebClient`. The shared downstream response normalizer classifies HTTP-layer, transport, empty-body, and decoding outcomes into the `MAIN-*` sub-codes. Empty body here is always fatal (`MAIN-CONTRACT-VIOLATION`).
-4. Facade validates main payload against the contract (object-shaped, non-array). Failures → `MAIN-CONTRACT-VIOLATION`.
-5. Facade expands dependencies and fans out to each selected part per dependency level. For each part:
-   - If `supports(context)` returns `false` → `NoOp(SKIPPED, UNSUPPORTED_CONTEXT)`.
-   - If the part cannot derive keys from the main payload → `NoOp(SKIPPED, NO_KEYS_IN_MAIN)`.
-   - Enricher calls use `DownstreamClientResponses.optionalBody` so an empty body flows into `NoOp(EMPTY, DOWNSTREAM_EMPTY)`, and a `404` is caught by `AggregationEnrichment.execute` and turned into `NoOp(EMPTY, DOWNSTREAM_NOT_FOUND)`.
-   - Any other enricher failure (`401`/`403`, `5xx`, timeout, transport, decoding) remains fatal and uses the `ENRICH-*` sub-codes.
-   - A dependent part whose dependency did not apply → `NoOp(SKIPPED, DEPENDENCY_EMPTY)` without calling the downstream.
-6. Applied part results are written to the root in stable graph order before the next dependency level starts.
-7. Merge step inside a part throws → wrapped as `ORCH-MERGE-FAILED`. A part returning a result for the wrong name, or an empty `Mono` → `ORCH-INVARIANT-VIOLATED`.
-8. On success, `AggregateService` attaches `meta.parts.<name> = { status, reason? }` for every effectively-selected part.
-9. Any uncaught exception at controller boundary → `PLATFORM-INTERNAL`.
-10. The global `@RestControllerAdvice` (`AggregationErrorResponseAdvice`) translates the `FacadeException` hierarchy into `ProblemDetail` plus the extensions from §6.2.
-
----
-
-## 8. Problem Type Catalog
-
-A single authoritative list. Every row is the canonical definition. Code generation should materialise this as an enum or equivalent.
-
-| `errorCode`                 | `type`                                          | `title`                                       | HTTP | Category                 | Retryable |
-| --------------------------- | ----------------------------------------------- | --------------------------------------------- | ---- | ------------------------ | --------- |
-| `CLIENT-VALIDATION`         | `/problems/validation`                          | Request validation failed                     | 400  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-UNAUTHENTICATED`    | `/problems/unauthenticated`                     | Authentication required                       | 401  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-FORBIDDEN`          | `/problems/forbidden`                           | Access denied                                  | 403  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-NOT-FOUND`          | `/problems/not-found`                           | Resource not found                             | 404  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-METHOD-NOT-ALLOWED` | `/problems/method-not-allowed`                  | Method not allowed                             | 405  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-NOT-ACCEPTABLE`     | `/problems/not-acceptable`                      | Not acceptable                                 | 406  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-UNSUPPORTED-MEDIA`  | `/problems/unsupported-media`                   | Unsupported media type                         | 415  | `CLIENT_REQUEST`         | false     |
-| `CLIENT-RATE-LIMITED`       | `/problems/rate-limited`                        | Rate limit exceeded                            | 429  | `CLIENT_REQUEST`         | true      |
-| `MAIN-TIMEOUT`              | `/problems/main/timeout`                        | Main dependency timed out                      | 504  | `MAIN_DEPENDENCY`        | true      |
-| `MAIN-UNAVAILABLE`          | `/problems/main/unavailable`                    | Main dependency unavailable                    | 504  | `MAIN_DEPENDENCY`        | true      |
-| `MAIN-BAD-RESPONSE`         | `/problems/main/bad-response`                   | Main dependency returned an unexpected status  | 502  | `MAIN_DEPENDENCY`        | false     |
-| `MAIN-INVALID-PAYLOAD`      | `/problems/main/invalid-payload`                | Main dependency returned an invalid payload    | 502  | `MAIN_DEPENDENCY`        | false     |
-| `MAIN-CONTRACT-VIOLATION`   | `/problems/main/contract-violation`             | Main dependency payload violates contract      | 502  | `MAIN_DEPENDENCY`        | false     |
-| `MAIN-AUTH-FAILED`          | `/problems/main/auth-failed`                    | Main dependency refused authentication         | 502  | `MAIN_DEPENDENCY`        | false     |
-| `ENRICH-TIMEOUT`            | `/problems/enrichment/timeout`                  | Enrichment dependency timed out                | 504  | `ENRICHMENT_DEPENDENCY`  | true      |
-| `ENRICH-UNAVAILABLE`        | `/problems/enrichment/unavailable`              | Enrichment dependency unavailable              | 504  | `ENRICHMENT_DEPENDENCY`  | true      |
-| `ENRICH-BAD-RESPONSE`       | `/problems/enrichment/bad-response`             | Enrichment dependency returned an unexpected status | 502 | `ENRICHMENT_DEPENDENCY` | false |
-| `ENRICH-INVALID-PAYLOAD`    | `/problems/enrichment/invalid-payload`          | Enrichment dependency returned an invalid payload   | 502 | `ENRICHMENT_DEPENDENCY` | false |
-| `ENRICH-CONTRACT-VIOLATION` | `/problems/enrichment/contract-violation`       | Enrichment dependency payload violates contract     | 502 | `ENRICHMENT_DEPENDENCY` | false |
-| `ENRICH-AUTH-FAILED`        | `/problems/enrichment/auth-failed`              | Enrichment dependency refused authentication        | 502 | `ENRICHMENT_DEPENDENCY` | false |
-| `ORCH-MERGE-FAILED`         | `/problems/orchestration/merge-failed`          | Aggregation failed                              | 500 | `ORCHESTRATION`          | false     |
-| `ORCH-MAPPING-FAILED`       | `/problems/orchestration/mapping-failed`        | Response mapping failed                         | 500 | `ORCHESTRATION`          | false     |
-| `ORCH-INVARIANT-VIOLATED`   | `/problems/orchestration/invariant`             | Internal invariant violated                     | 500 | `ORCHESTRATION`          | false     |
-| `ORCH-CONFIG-INVALID`       | `/problems/orchestration/config`                | Internal configuration error                    | 500 | `ORCHESTRATION`          | false     |
-| `PLATFORM-INTERNAL`         | `/problems/platform/internal`                   | Internal server error                           | 500 | `PLATFORM`               | false     |
-| `PLATFORM-OVERLOADED`       | `/problems/platform/overloaded`                 | Service overloaded                              | 503 | `PLATFORM`               | true      |
-
----
-
-## 9. External Contract Boundaries
-
-### 9.1 What MAY appear in the response body
-
-- `type`, `title`, `status`, `detail`, `instance` (RFC 9457 core).
-- `errorCode`, `category`, `traceId`, `timestamp`, `retryable` (always).
-- `dependency` — only the logical name from a fixed enum. Allowed values are maintained alongside the catalog.
-- `violations` — only for `CLIENT-VALIDATION`, only with JSON Pointer + generic message.
-
-### 9.2 What MUST NEVER appear in the response body
-
-- Stack traces or exception class names.
-- Hostnames, IP addresses, ports, URLs of downstream systems.
-- Raw downstream response bodies, headers, or status lines.
-- Database identifiers, SQL, query plans.
-- Authentication material: tokens, cookies, header values.
-- Internal Spring bean names, configuration property names.
-- PII beyond what the client already provided.
-- Environment names, region identifiers, pod names, container ids.
-
-### 9.3 Normalisation rules for downstream errors
-
-1. **Never forward `application/problem+json` bodies from downstream.** If a downstream returns a problem document, it is parsed for diagnostics (logged) and then discarded. The outward-facing problem document is constructed from scratch using the facade's own catalog.
-2. **Never forward downstream status codes directly.** Downstream `5xx` becomes `502` or `504` per §7. Downstream `4xx` to facade is classified as `*-AUTH-FAILED`, `*-BAD-RESPONSE`, or `*-CONTRACT-VIOLATION` and is never passed through. A `CLIENT-NOT-FOUND` response is allowed only when facade code explicitly classifies the condition as a domain not-found outcome; a raw downstream `404` is not sufficient.
-3. **Never forward downstream headers.** `Retry-After` from downstream is not proxied; it may influence internal retry logic but does not reach the client.
-4. **Logical dependency names only.** The `dependency` extension uses names from a maintained enum (e.g. `main`, `enricher:profile`, `enricher:pricing`). Hostnames are never exposed.
-5. **Templated details only.** `detail` strings are chosen from a finite table keyed by `errorCode`. No concatenation with runtime strings except the whitelisted `dependency` value.
-
-### 9.4 Observability split
-
-| Destination       | Contents                                                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Response body     | Sanitised problem document (§6, §9.1).                                                                                         |
-| Structured logs   | Full diagnostic context: `errorCode`, `category`, `traceId`, downstream host, downstream status, downstream body snippet (length-capped, PII-scrubbed), stack trace, request id, user id if available. |
-| Metrics           | Counter per `errorCode`, per `dependency`, per HTTP status.                                                                    |
-| Traces            | Span attributes mirror the log fields. The failing span is marked with `error=true` and carries `errorCode`.                   |
-
-This separation is the single enforcement point for §9.2.
-
----
-
-## 10. Example Responses
-
-### 10.1 Enrichment timeout
-
-```json
-{
-  "type": "/problems/enrichment/timeout",
-  "title": "Enrichment dependency timed out",
-  "status": 504,
-  "detail": "A required enrichment call did not complete within the allowed time.",
-  "instance": "/requests/7c2f4a1e-9a13-4b0a-9d6b-0c8c4b5a3f91",
-  "errorCode": "ENRICH-TIMEOUT",
-  "category": "ENRICHMENT_DEPENDENCY",
-  "dependency": "enricher:profile",
-  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
-  "retryable": true,
-  "timestamp": "2026-04-22T10:15:30Z"
-}
-```
-
-### 10.2 Main contract violation (empty or non-object root payload)
-
-```json
-{
-  "type": "/problems/main/contract-violation",
-  "title": "Main dependency payload violates contract",
-  "status": 502,
-  "detail": "The main dependency payload does not satisfy the required contract.",
-  "instance": "/requests/1d5f6cfc-2c0e-4e2f-9a4d-2f1f4e0c8c4b",
-  "errorCode": "MAIN-CONTRACT-VIOLATION",
-  "category": "MAIN_DEPENDENCY",
-  "dependency": "main",
-  "traceId": "0af7651916cd43dd8448eb211c80319c",
-  "retryable": false,
-  "timestamp": "2026-04-22T10:15:30Z"
-}
-```
-
-### 10.3 Client validation error
+### 1. Invalid client request
 
 ```json
 {
@@ -436,20 +367,125 @@ This separation is the single enforcement point for §9.2.
   "title": "Request validation failed",
   "status": 400,
   "detail": "One or more request fields failed validation.",
-  "instance": "/requests/2a7bde33-45d5-4e6f-bf1b-5c9a8d1e1f2a",
+  "instance": "/requests/fa3c2b1d4e5f6a7b8c9d0e1f2a3b4c5d",
   "errorCode": "CLIENT-VALIDATION",
   "category": "CLIENT_REQUEST",
   "traceId": "fa3c2b1d4e5f6a7b8c9d0e1f2a3b4c5d",
   "retryable": false,
   "timestamp": "2026-04-22T10:15:30Z",
   "violations": [
-    { "pointer": "/customerId", "message": "must not be blank" },
-    { "pointer": "/currency",   "message": "must be a valid ISO 4217 code" }
+    { "pointer": "/ids", "message": "must not be empty" }
   ]
 }
 ```
 
-### 10.4 Orchestration merge failure
+### 2. Main dependency timeout
+
+```json
+{
+  "type": "/problems/main/timeout",
+  "title": "Main dependency timed out",
+  "status": 504,
+  "detail": "The main dependency call did not complete within the allowed time.",
+  "instance": "/requests/0af7651916cd43dd8448eb211c80319c",
+  "errorCode": "MAIN-TIMEOUT",
+  "category": "MAIN_DEPENDENCY",
+  "dependency": "main",
+  "traceId": "0af7651916cd43dd8448eb211c80319c",
+  "retryable": true,
+  "timestamp": "2026-04-22T10:15:30Z"
+}
+```
+
+### 3. REQUIRED enrichment timeout
+
+```json
+{
+  "type": "/problems/enrichment/timeout",
+  "title": "Enrichment dependency timed out",
+  "status": 504,
+  "detail": "A required enrichment call did not complete within the allowed time.",
+  "instance": "/requests/4bf92f3577b34da6a3ce929d0e0e4736",
+  "errorCode": "ENRICH-TIMEOUT",
+  "category": "ENRICHMENT_DEPENDENCY",
+  "dependency": "enricher:owners",
+  "part": "owners",
+  "criticality": "REQUIRED",
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "retryable": true,
+  "timestamp": "2026-04-22T10:15:30Z"
+}
+```
+
+### 4. OPTIONAL enrichment timeout
+
+```json
+{
+  "customerId": "cust-1",
+  "data": [
+    { "id": "group-1" }
+  ],
+  "meta": {
+    "parts": {
+      "owners": {
+        "status": "FAILED",
+        "criticality": "OPTIONAL",
+        "reason": "TIMEOUT",
+        "errorCode": "ENRICH-TIMEOUT"
+      }
+    }
+  }
+}
+```
+
+### 5. No keys for enrichment
+
+```json
+{
+  "customerId": "cust-1",
+  "meta": {
+    "parts": {
+      "account": {
+        "status": "SKIPPED",
+        "criticality": "REQUIRED",
+        "reason": "NO_KEYS_IN_MAIN"
+      }
+    }
+  }
+}
+```
+
+### 6. Enrichment 404 or empty result
+
+```json
+{
+  "customerId": "cust-1",
+  "data": [
+    { "accounts": [{ "id": "acc-a" }] }
+  ],
+  "meta": {
+    "parts": {
+      "account": {
+        "status": "EMPTY",
+        "criticality": "REQUIRED",
+        "reason": "DOWNSTREAM_NOT_FOUND"
+      }
+    }
+  }
+}
+```
+
+For an empty downstream body or no matched response data, the same shape is used with:
+
+```json
+{
+  "status": "EMPTY",
+  "criticality": "REQUIRED",
+  "reason": "DOWNSTREAM_EMPTY"
+}
+```
+
+### 7. Merge failure
 
 ```json
 {
@@ -457,7 +493,7 @@ This separation is the single enforcement point for §9.2.
   "title": "Aggregation failed",
   "status": 500,
   "detail": "The service could not assemble the aggregated response.",
-  "instance": "/requests/6f3b8a1c-7d2e-4a5b-9c0d-1e2f3a4b5c6d",
+  "instance": "/requests/b7ad6b7169203331d2f2e3a6f1c8d9e0",
   "errorCode": "ORCH-MERGE-FAILED",
   "category": "ORCHESTRATION",
   "traceId": "b7ad6b7169203331d2f2e3a6f1c8d9e0",
@@ -466,54 +502,39 @@ This separation is the single enforcement point for §9.2.
 }
 ```
 
----
+## Test Expectations
 
-## 11. Implementation Checklist for Spring Framework 7
+Repository tests or contract tests should validate:
 
-This section is prescriptive for code generation. It states *what* must exist, not *how* to write it.
+- every `ProblemCatalog` entry has stable `type`, `title`, `status`, `detail`, `category`, `errorCode`, and `retryable`;
+- invalid JSON body maps to `CLIENT-INVALID-BODY`;
+- bean validation, invalid path/query values, and unknown include map to `CLIENT-VALIDATION` with `violations`;
+- framework 401, 403, 404, 405, 406, 415, and 429 map to catalog entries;
+- main timeout, unavailable, auth failure, unexpected status, invalid payload, empty body, and non-object body are fatal and contain no aggregate data;
+- raw main 404 maps as `MAIN-BAD-RESPONSE` unless an explicit domain-not-found classifier exists;
+- selected enrichment with no root keys returns 200 with `SKIPPED / NO_KEYS_IN_MAIN`;
+- unsupported context returns 200 with `SKIPPED / UNSUPPORTED_CONTEXT`;
+- empty dependency cascades to dependents as `SKIPPED / DEPENDENCY_EMPTY`;
+- enrichment empty body returns 200 with `EMPTY / DOWNSTREAM_EMPTY`;
+- enrichment 404 where handled by the step returns 200 with `EMPTY / DOWNSTREAM_NOT_FOUND`;
+- required enrichment timeout, auth failure, 5xx/unexpected status, unavailable, invalid payload, and fatal contract violation return `ProblemDetail`;
+- optional enrichment timeout, auth failure, 5xx/unexpected status, unavailable, invalid payload, and downstream-client contract violation return 200 with `FAILED`, `criticality: "OPTIONAL"`, `reason`, and `errorCode`;
+- optional part orchestration, merge, patch, wrong-result-name, empty publisher, workflow-definition, and invariant failures remain fatal;
+- error responses never contain partial aggregate data or `meta.parts`;
+- success responses never contain RFC 9457 problem fields;
+- public response bodies do not leak stack traces, exception class names, raw downstream bodies, internal hostnames, tokens, bean names, class/package names, or implementation exception messages;
+- every response carries a valid `traceparent`, and every problem body contains `traceId`, `timestamp`, and `instance`;
+- `RejectedExecutionException` maps to `PLATFORM-OVERLOADED` with `Retry-After`.
 
-### 11.1 Required components
+## Detected Repository Conflicts
 
-1. **Catalog enum** — one entry per row in §8. Exposes `type` (URI), `title`, `status`, `category`, `retryable`, `defaultDetail`.
-2. **Exception hierarchy** — sealed hierarchy rooted at a `FacadeException` extending `ErrorResponseException`; one concrete class per category (see §4.2). Each concrete exception carries a catalog entry and optional `dependency`.
-3. **Gateway layer** — Spring HTTP service clients backed by `WebClient` for main and enrichers with:
-   - A shared error filter and response normalizer translating HTTP, transport, empty-body, and decode outcomes into `MAIN-*` / `ENRICH-*` exceptions.
-   - Explicit connect / read timeouts per dependency.
-   - Classification of `IOException` / timeout types to `*-TIMEOUT` vs `*-UNAVAILABLE`.
-4. **Main payload validator** — verifies non-empty response and the root-document contract (for example, object-shaped JSON). Emits `MAIN-CONTRACT-VIOLATION` on failure.
-5. **Orchestrator** — fans out to selected parts by dependency level; soft no-op outcomes stay in `meta.parts`, while fatal failures cancel the request and wrap merge/mapping errors into `ORCH-*` exceptions.
-6. **Global exception handler** — `@RestControllerAdvice` extending `ResponseEntityExceptionHandler`:
-   - Handles the `FacadeException` hierarchy.
-   - Handles Spring's built-in exceptions (`MethodArgumentNotValidException`, `HttpMessageNotReadableException`, `HttpMediaTypeNotSupportedException`, etc.) by mapping them to the corresponding `CLIENT-*` catalog entry. If a security filter chain is enabled, its authentication entry point and access-denied handler must delegate to the same problem assembler.
-   - Last-resort `Throwable` handler maps to `PLATFORM-INTERNAL`.
-7. **ProblemDetail assembler / helpers** — a single source of truth that enriches `ProblemDetail` instances with contract fields from §6.2 and maps validation failures to stable pointers. In the current codebase this logic is split between `AggregationErrorResponseAdvice`, `ProblemResponseSupport`, and `ValidationErrorMapper`.
-8. **Sanitisation filter** — assertion / test-time guard that fails the build if any response body leaks fields outside the whitelist in §9.1.
+No README/code/test conflict was found for the main model described here. The current README, enums, executor, failure policy, and tests agree that:
 
-### 11.2 Tests required
+- `FAILED` exists as a success-side part outcome;
+- `REQUIRED` is default criticality and `OPTIONAL` is opt-in;
+- optional downstream failures represented as `DownstreamClientException` are recorded as `FAILED`;
+- required downstream failures are fatal;
+- soft data absence is represented as `EMPTY` or `SKIPPED`;
+- orchestration and merge/invariant failures are fatal.
 
-- One contract test per row in §8 (asserts `type`, `title`, `status`, `category`, `errorCode`, `retryable`).
-- Negative tests per downstream failure scenario (timeout, unreachable, 5xx, invalid JSON, empty main body, 401, raw main 404, and any explicit domain-not-found classifier).
-- Affirmative soft-outcome tests for each row of §4.3: `NO_KEYS_IN_MAIN`, `UNSUPPORTED_CONTEXT`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `DEPENDENCY_EMPTY`. Each asserts the request succeeds and that `meta.parts.<name>` carries the correct `status` / `reason`.
-- Orchestration test: a fatal enrichment failure aborts the whole request; invariant-violation tests for empty `Mono` and wrong-name results.
-- Leak test: no response body contains strings from a configured blocklist (hostnames, `"Exception"`, `"at ..."` stack trace markers, raw downstream body fragments).
-
-### 11.3 Non-goals for this document
-
-- Retry / circuit breaker policies.
-- Timeout values.
-- Specific authentication scheme.
-- Observability backend.
-
-These are separate decisions layered on top of the contract defined here.
-
----
-
-## 12. Glossary
-
-- **Facade** — the service specified by this document.
-- **Main dependency** — the single upstream endpoint called first per request.
-- **Enricher** — a downstream endpoint called using keys extracted from the main response.
-- **Fatal enrichment failure** — a selected enrichment path failed with transport, timeout, auth, invalid-payload, merge, or invariant errors and therefore aborts the whole response.
-- **Contract violation** — a downstream returned a syntactically valid response that does not satisfy the facade's semantic expectations for that boundary (for example, a non-object root payload or malformed nested beneficial-owners resolution data).
-- **Orchestration** — facade-internal logic that coordinates main call, enrichment calls, and merge.
-- **Catalog** — the authoritative table in §8.
+One nuance to keep explicit: not every `ENRICH-CONTRACT-VIOLATION` is optional-safe. Only contract violations represented as `DownstreamClientException` are eligible for optional `FAILED`. Contract violations represented as `EnrichmentDependencyException` are fatal because the failure policy only downgrades `DownstreamClientException` for optional parts.
