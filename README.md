@@ -408,32 +408,19 @@ Traversal is bounded by a maximum depth of 6 levels. Downstream failures, malfor
 
 Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The part name also participates in the unknown-name validation that is applied to the `include` set.
 
-## Enrichment Rules
+## Workflow Binding Paths
 
-Business-specific enrichment parts live under `enrichment.<name>`. Shared keyed-join mechanics live under
-`enrichment.support.keyed`.
+Workflow-based enrichments are authored using `WorkflowAggregationPart` + `AggregationWorkflow` and
+step classes such as `KeyedBindingStep`, `ComputeStep`, `RecursiveFetchStep`, and `TraversalReducerStep`.
 
-Keyed enrichment parts are configured with `EnrichmentRule`:
+For end-to-end authoring guidance and examples, see:
 
-```java
-private static final EnrichmentRule ENRICHMENT_RULE = EnrichmentRule.builder()
-    .mainItems("$.data[*]", "basicDetails.owners[*].id", "basicDetails.owners[*].number")
-    .responseItems("$.data[*]", "individual.number", "id")
-    .requestKeysField("ids")
-    .targetField("owners1")
-    .build();
+```text
+docs/workflow-enrichment-guide.md
 ```
 
-Rule semantics:
-
-- `mainItems` selects the item level in the account group response.
-- main key paths are relative to each selected item.
-- response key paths are relative to each selected response item.
-- key paths are tried in order, so later paths are fallback values.
-- request ids are deduplicated while merge still runs for every matching item.
-- matched response entries are appended as whole JSON elements.
-
-Supported path syntax is intentionally small:
+The path/key dialect used by workflow binding support (`KeyExtractor`, `ResponseIndexer`, `KeyedBindingStep`)
+is intentionally small:
 
 ```text
 $

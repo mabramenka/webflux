@@ -4,7 +4,7 @@
 >
 > **Primary goal:** adding a new enrichment should require only a small set of descriptive classes: part name, dependencies, downstream bindings, endpoint-specific key extraction rules, response indexing rules, write/patch rules, and optional compute/reduce logic. The existing engine should automatically handle planning, execution, errors, metrics, and JSON output mutation.
 >
-> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 remains next.
+> **Current status:** Phase 1 through Phase 16 are completed on `main`. The post-Phase-13 safety update is present: migrated `account` and `owners` workflow parts declare `WriteOwnership`. BeneficialOwners legacy contract lock is completed (Phase 13.5), recursive traversal skeleton work is completed (Phase 14A/14B/14C), the traversal reducer/write-back bridge is completed (Phase 15), and beneficialOwners is migrated to workflow traversal (Phase 16). Phase 17 is intentionally deferred/skipped for now. Phase 18 is completed (workflow authoring documentation + examples). Phase 19 is in progress: 19A audit and 19B-1 legacy keyed-cluster removal are completed.
 >
 > **Current working branch:** migration work is currently being continued directly on `main`. If this changes, update this document before starting the next phase.
 
@@ -3315,7 +3315,7 @@ No public API behavior changed.
 
 ## Phase 19 — Retire Legacy Enrichment Authoring
 
-**Status:** Not started.
+**Status:** In progress (Phase 19A audit completed; Phase 19B-1 completed).
 
 ### Goal
 
@@ -3361,6 +3361,19 @@ Workflow authoring is the documented default.
 Full local/global verification or CI verification is green.
 Migration plan is updated with final status.
 ```
+
+### Phase 19B-1 handoff note (completed on `main`)
+
+- Removed legacy keyed authoring cluster:
+  - `enrichment/support/keyed/KeyedArrayEnrichment`
+  - `enrichment/support/keyed/EnrichmentRule`
+  - `enrichment/support/keyed/ItemKeyExtractor`
+  - `enrichment/support/keyed/EnrichmentTarget`
+- Kept `PathExpression` and `KeyPathGroups` because workflow runtime still depends on them.
+- Kept `AggregationEnrichment` and all beneficialOwners legacy helper classes for later cleanup phase(s).
+- Updated docs to reflect workflow-based authoring as default (`README` + `docs/workflow-enrichment-guide.md`).
+- No workflow runtime behavior changes.
+- Next step: Phase 19B-2 beneficialOwners legacy helper cleanup.
 
 ---
 

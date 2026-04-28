@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -64,24 +62,6 @@ class PathExpressionTest {
 
         assertThat(KeyPathGroups.parse("individual.number", "id").firstKey(entry))
                 .contains("fallback-id");
-    }
-
-    @Test
-    void itemKeyExtractor_keepsFirstResponseEntryWhenKeysAreDuplicated() {
-        JsonNode response = json("""
-            {
-              "data": [
-                {"id": "duplicate", "amount": 10},
-                {"id": "duplicate", "amount": 20}
-              ]
-            }
-            """);
-
-        Map<String, JsonNode> entriesByKey =
-                ItemKeyExtractor.from("$.data[*]", "id").entriesByKey(response);
-
-        JsonNode duplicateEntry = Objects.requireNonNull(entriesByKey.get("duplicate"));
-        assertThat(duplicateEntry.path("amount").intValue()).isEqualTo(10);
     }
 
     private JsonNode json(String raw) {
