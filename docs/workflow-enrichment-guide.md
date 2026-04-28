@@ -8,10 +8,9 @@ This guide documents the workflow-based enrichment style that is now used by:
 
 It is intentionally focused on the current `main` implementation and avoids future/optional abstractions.
 
-## 1) Part Shapes: Legacy vs Workflow
+## 1) Part Shape
 
-- Legacy style: implement `AggregationEnrichment` directly and hand-roll `fetch + merge`.
-- Workflow style: extend `WorkflowAggregationPart` and declare one `AggregationWorkflow`.
+- Current style: extend `WorkflowAggregationPart` and declare one `AggregationWorkflow`.
 
 Minimal workflow part skeleton:
 
