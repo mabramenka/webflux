@@ -74,7 +74,7 @@ public final class KeyedBindingStep implements WorkflowStep {
     private final PathExpression targetItemPath;
 
     public KeyedBindingStep(String name, DownstreamBinding binding) {
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             throw new IllegalArgumentException("KeyedBindingStep name must not be blank");
         }
         Objects.requireNonNull(binding, "binding");
@@ -136,7 +136,11 @@ public final class KeyedBindingStep implements WorkflowStep {
 
         if (writeRule == null) {
             // store-only binding: fetch and persist, no patch produced
-            return StepResult.stored(Objects.requireNonNull(storeAs, "storeAs"), response);
+            if (storeAs == null) {
+                throw OrchestrationException.invariantViolated(
+                        new IllegalStateException("Store-only binding must define storeAs"));
+            }
+            return StepResult.stored(storeAs, response);
         }
 
         if (matches.isEmpty()) {
@@ -226,12 +230,17 @@ public final class KeyedBindingStep implements WorkflowStep {
         return switch (source) {
             case ROOT_SNAPSHOT -> context.rootSnapshot();
             case CURRENT_ROOT -> context.currentRoot();
-            case STEP_RESULT ->
-                context.variables()
-                        .get(Objects.requireNonNull(stepResultName, "stepResultName"))
+            case STEP_RESULT -> {
+                if (stepResultName == null) {
+                    throw OrchestrationException.invariantViolated(
+                            new IllegalStateException("STEP_RESULT source requires stepResultName"));
+                }
+                yield context.variables()
+                        .get(stepResultName)
                         .orElseThrow(() -> OrchestrationException.invariantViolated(new IllegalStateException(
                                 "STEP_RESULT '" + stepResultName + "' not found in workflow variables; "
                                         + "the producing step must have run and stored a value before this step")));
+            }
             case TRAVERSAL_STATE ->
                 throw new IllegalStateException("TRAVERSAL_STATE is not supported in KeyedBindingStep");
         };

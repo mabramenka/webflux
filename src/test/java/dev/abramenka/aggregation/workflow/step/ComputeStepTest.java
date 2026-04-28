@@ -15,7 +15,6 @@ import dev.abramenka.aggregation.workflow.compute.ComputationException;
 import dev.abramenka.aggregation.workflow.compute.ComputationInput;
 import dev.abramenka.aggregation.workflow.compute.WorkflowValues;
 import java.util.List;
-import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 import tools.jackson.databind.JsonNode;
@@ -49,8 +48,7 @@ class ComputeStepTest {
                     assertThat(result).isInstanceOf(StepResult.Applied.class);
                     StepResult.Applied applied = (StepResult.Applied) result;
                     assertThat(applied.storeAs()).isEqualTo("result");
-                    assertThat(Objects.requireNonNull(applied.storedValue()).intValue())
-                            .isEqualTo(52);
+                    assertThat(storedValue(applied).intValue()).isEqualTo(52);
                 })
                 .verifyComplete();
     }
@@ -74,8 +72,7 @@ class ComputeStepTest {
         StepVerifier.create(step.execute(ctx))
                 .assertNext(result -> {
                     StepResult.Applied applied = (StepResult.Applied) result;
-                    assertThat(Objects.requireNonNull(applied.storedValue()).asString())
-                            .isEqualTo("current");
+                    assertThat(storedValue(applied).asString()).isEqualTo("current");
                 })
                 .verifyComplete();
     }
@@ -102,8 +99,7 @@ class ComputeStepTest {
                 .assertNext(result -> {
                     StepResult.Applied applied = (StepResult.Applied) result;
                     assertThat(applied.storeAs()).isEqualTo("product");
-                    assertThat(Objects.requireNonNull(applied.storedValue()).intValue())
-                            .isEqualTo(21);
+                    assertThat(storedValue(applied).intValue()).isEqualTo(21);
                 })
                 .verifyComplete();
     }
@@ -123,10 +119,7 @@ class ComputeStepTest {
                 .assertNext(result -> {
                     // drive the executor side-effect manually (variables stored by the executor)
                     StepResult.Applied applied = (StepResult.Applied) result;
-                    ctx.variables()
-                            .put(
-                                    Objects.requireNonNull(applied.storeAs()),
-                                    Objects.requireNonNull(applied.storedValue()));
+                    ctx.variables().put(storeAs(applied), storedValue(applied));
                 })
                 .verifyComplete();
 
@@ -347,8 +340,7 @@ class ComputeStepTest {
         StepVerifier.create(step.execute(ctx))
                 .assertNext(result -> {
                     StepResult.Applied applied = (StepResult.Applied) result;
-                    assertThat(Objects.requireNonNull(applied.storedValue()).intValue())
-                            .isEqualTo(205);
+                    assertThat(storedValue(applied).intValue()).isEqualTo(205);
                 })
                 .verifyComplete();
     }
@@ -373,5 +365,21 @@ class ComputeStepTest {
         } catch (Exception ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    private static String storeAs(StepResult.Applied applied) {
+        String storeAs = applied.storeAs();
+        if (storeAs == null) {
+            throw new AssertionError("storeAs");
+        }
+        return storeAs;
+    }
+
+    private static JsonNode storedValue(StepResult.Applied applied) {
+        JsonNode storedValue = applied.storedValue();
+        if (storedValue == null) {
+            throw new AssertionError("storedValue");
+        }
+        return storedValue;
     }
 }

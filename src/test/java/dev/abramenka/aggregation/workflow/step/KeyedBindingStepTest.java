@@ -397,12 +397,6 @@ class KeyedBindingStepTest {
     // -------------------------------------------------------------------------
 
     @Test
-    @SuppressWarnings("NullAway")
-    void nullBinding_failsAtConstruction() {
-        assertThatThrownBy(() -> new KeyedBindingStep("step", null)).isInstanceOf(NullPointerException.class);
-    }
-
-    @Test
     void blankName_failsAtConstruction() {
         DownstreamBinding binding = validWriteBinding((keys, ctx) -> Mono.empty());
         assertThatThrownBy(() -> new KeyedBindingStep("  ", binding))

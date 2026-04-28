@@ -110,13 +110,19 @@ public final class ComputeStep implements WorkflowStep {
                     switch (input.source()) {
                         case ROOT_SNAPSHOT -> context.rootSnapshot();
                         case CURRENT_ROOT -> context.currentRoot();
-                        case STEP_RESULT ->
-                            context.variables()
-                                    .get(Objects.requireNonNull(input.stepResultName(), "stepResultName"))
+                        case STEP_RESULT -> {
+                            String stepResultName = input.stepResultName();
+                            if (stepResultName == null) {
+                                throw OrchestrationException.invariantViolated(
+                                        new IllegalStateException("STEP_RESULT source requires stepResultName"));
+                            }
+                            yield context.variables()
+                                    .get(stepResultName)
                                     .orElseThrow(() -> OrchestrationException.invariantViolated(
-                                            new IllegalStateException("STEP_RESULT '" + input.stepResultName()
+                                            new IllegalStateException("STEP_RESULT '" + stepResultName
                                                     + "' not found in workflow variables; the producing step "
                                                     + "must have run and stored a value before this step")));
+                        }
                         case TRAVERSAL_STATE ->
                             throw new IllegalStateException("TRAVERSAL_STATE is not supported in ComputeStep");
                     };

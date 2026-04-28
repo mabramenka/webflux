@@ -84,13 +84,21 @@ public class AggregationPartExecutor {
                 .onErrorResume(error -> {
                     AggregationPartFailurePolicy.FailureDecision decision = failurePolicy.decide(part, error);
                     if (decision.failRequest()) {
+                        Throwable decisionError = decision.error();
+                        if (decisionError == null) {
+                            return Mono.error(OrchestrationException.invariantViolated(new IllegalStateException(
+                                    "FailureDecision with failRequest=true must include error")));
+                        }
                         metrics.record(part.name(), "failure");
-                        return Mono.error(Objects.requireNonNull(decision.error()));
+                        return Mono.error(decisionError);
                     }
-                    return Mono.just(PartExecutionResult.failure(
-                            part.name(),
-                            Objects.requireNonNull(decision.reason()),
-                            Objects.requireNonNull(decision.errorCode())));
+                    PartOutcomeReason reason = decision.reason();
+                    String errorCode = decision.errorCode();
+                    if (reason == null || errorCode == null) {
+                        return Mono.error(OrchestrationException.invariantViolated(new IllegalStateException(
+                                "FailureDecision with failRequest=false must include reason and errorCode")));
+                    }
+                    return Mono.just(PartExecutionResult.failure(part.name(), reason, errorCode));
                 });
     }
 

@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -165,7 +164,7 @@ class RecursiveFetchStepTest {
                                     .path("targetMetadata")
                                     .path("ownerIndex")
                                     .asInt())
-                            .isEqualTo(0);
+                            .isZero();
                     assertThat(groups.path(1)
                                     .path("targetMetadata")
                                     .path("ownerIndex")
@@ -306,7 +305,11 @@ class RecursiveFetchStepTest {
 
     private JsonNode storedValue(StepResult result) {
         StepResult.Applied applied = (StepResult.Applied) result;
-        return Objects.requireNonNull(applied.storedValue(), "storedValue");
+        JsonNode storedValue = applied.storedValue();
+        if (storedValue == null) {
+            throw new AssertionError("storedValue");
+        }
+        return storedValue;
     }
 
     private WorkflowContext context(String rootJson) {

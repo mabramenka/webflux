@@ -27,7 +27,11 @@ public final class WorkflowVariableStore {
     }
 
     public Optional<JsonNode> get(String name) {
-        return Optional.ofNullable(values.get(name));
+        JsonNode value = values.get(name);
+        if (value == null) {
+            return Optional.empty();
+        }
+        return Optional.of(value);
     }
 
     public boolean contains(String name) {

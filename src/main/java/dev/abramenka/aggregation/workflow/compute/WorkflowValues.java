@@ -27,7 +27,11 @@ public final class WorkflowValues {
      * as a {@link ComputationInput} for this step.
      */
     public Optional<JsonNode> get(String name) {
-        return Optional.ofNullable(resolved.get(name));
+        JsonNode value = resolved.get(name);
+        if (value == null) {
+            return Optional.empty();
+        }
+        return Optional.of(value);
     }
 
     /**

@@ -34,6 +34,10 @@ public final class AggregationContext {
     }
 
     public Optional<AggregateRequest> aggregateRequest() {
-        return Optional.ofNullable(aggregateRequest);
+        AggregateRequest request = aggregateRequest;
+        if (request == null) {
+            return Optional.empty();
+        }
+        return Optional.of(request);
     }
 }

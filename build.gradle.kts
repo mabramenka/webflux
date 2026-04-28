@@ -71,6 +71,7 @@ tasks.withType<JavaCompile>().configureEach {
         option("NullAway:AcknowledgeRestrictiveAnnotations", "true")
         option("NullAway:ExhaustiveOverride", "true")
         option("NullAway:CheckOptionalEmptiness", "true")
+        option("NullAway:WarnOnGenericInferenceFailure", "true")
     }
 }
 

@@ -20,7 +20,6 @@ import dev.abramenka.aggregation.model.Projections;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -166,8 +165,11 @@ class AggregationPartExecutorTest {
     }
 
     private static PartOutcome outcome(AggregationResult result, String partName) {
-        return Objects.requireNonNull(
-                result.partOutcomes().get(partName), () -> "missing outcome for part " + partName);
+        PartOutcome outcome = result.partOutcomes().get(partName);
+        if (outcome == null) {
+            throw new AssertionError("missing outcome for part " + partName);
+        }
+        return outcome;
     }
 
     private Mono<AggregationResult> execute(AggregationPart dependency, AggregationPart dependent) {
