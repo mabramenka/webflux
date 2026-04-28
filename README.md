@@ -32,6 +32,16 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 - Spotless, JaCoCo, OWASP Dependency Check, and SonarQube Cloud wiring
 - Renovate-ready dependency maintenance
 
+## Documentation
+
+- [Error handling design](docs/error-handling-design.md)
+- [Workflow enrichment guide](docs/workflow-enrichment-guide.md)
+- [Aggregation workflow migration plan](docs/AGGREGATION_WORKFLOW_MIGRATION_PLAN.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Account group base enrichment prompt](docs/account_group_base_enrichment_prompt_20260428_201354.md)
+- [Codex review notes](docs/codex_review_20260428_193050.md)
+- [GPT review notes](docs/gpt_review_20260428_193136.md)
+
 ## Stack
 
 - Java 21
@@ -151,7 +161,7 @@ Aggregation Gateway is a synchronous domain facade, not an owner of account, acc
 
 ### Error Contract Boundaries
 
-The implemented public error contract follows [error-handling-design.md](error-handling-design.md): every error response is a facade-owned RFC 9457 Problem Detail with stable `type`, `errorCode`, `category`, `retryable`, `traceId`, `timestamp`, and `instance` fields. Validation failures, downstream dependency failures, enrichment contract violations, orchestration failures, framework 4xx errors, overload failures, and unexpected platform failures are all normalized through this catalog.
+The implemented public error contract follows [error-handling-design.md](docs/error-handling-design.md): every error response is a facade-owned RFC 9457 Problem Detail with stable `type`, `errorCode`, `category`, `retryable`, `traceId`, `timestamp`, and `instance` fields. Validation failures, downstream dependency failures, enrichment contract violations, orchestration failures, framework 4xx errors, overload failures, and unexpected platform failures are all normalized through this catalog.
 
 Selected enrichment failures are no longer anonymous internal errors. Missing keys in the main payload, empty enrichment bodies, `404` enrichment responses, unsupported contexts, and empty dependencies are success-side `meta.parts` outcomes; nested beneficial-owners contract violations still map to `/problems/enrichment/contract-violation`; merge failures map to `/problems/orchestration/merge-failed`; unclassified unchecked failures map to `/problems/platform/internal`.
 
@@ -222,7 +232,7 @@ The service forwards selected inbound headers to downstream services:
 
 ## Error Responses
 
-All failures are returned as RFC 9457 `application/problem+json` responses. The public contract is the catalog in [error-handling-design.md](error-handling-design.md); clients should use `errorCode` or `type` as machine-readable identifiers and must not parse `detail`.
+All failures are returned as RFC 9457 `application/problem+json` responses. The public contract is the catalog in [error-handling-design.md](docs/error-handling-design.md); clients should use `errorCode` or `type` as machine-readable identifiers and must not parse `detail`.
 
 Every problem response contains:
 
@@ -413,11 +423,7 @@ Requested via `include: ["beneficialOwners"]` (or by omitting `include`). The pa
 Workflow-based enrichments are authored using `WorkflowAggregationPart` + `AggregationWorkflow` and
 step classes such as `KeyedBindingStep`, `ComputeStep`, `RecursiveFetchStep`, and `TraversalReducerStep`.
 
-For end-to-end authoring guidance and examples, see:
-
-```text
-docs/workflow-enrichment-guide.md
-```
+For end-to-end authoring guidance and examples, see [workflow-enrichment-guide.md](docs/workflow-enrichment-guide.md).
 
 The path/key dialect used by workflow binding support (`KeyExtractor`, `ResponseIndexer`, `KeyedBindingStep`)
 is intentionally small:

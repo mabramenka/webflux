@@ -3299,7 +3299,7 @@ No public API behavior changed.
 ### Phase 18 handoff note (completed on `main`)
 
 - Phase 17 intentionally skipped/deferred; no root-role abstraction added.
-- Added `docs/workflow-enrichment-guide.md` with:
+- Added `workflow-enrichment-guide.md` with:
   - workflow part authoring model (`WorkflowAggregationPart` + `AggregationWorkflow`)
   - source selection guidance (`ROOT_SNAPSHOT`, `CURRENT_ROOT`, `STEP_RESULT`)
   - step usage guidance (`KeyedBindingStep`, `ComputeStep`, `RecursiveFetchStep`, `TraversalReducerStep`)
@@ -3371,7 +3371,7 @@ Migration plan is updated with final status.
   - `enrichment/support/keyed/EnrichmentTarget`
 - Kept `PathExpression` and `KeyPathGroups` because workflow runtime still depends on them.
 - Kept `AggregationEnrichment` and all beneficialOwners legacy helper classes for later cleanup phase(s).
-- Updated docs to reflect workflow-based authoring as default (`README` + `docs/workflow-enrichment-guide.md`).
+- Updated docs to reflect workflow-based authoring as default (`README` + `workflow-enrichment-guide.md`).
 - No workflow runtime behavior changes.
 - Next step: Phase 19B-2 beneficialOwners legacy helper cleanup.
 
@@ -3400,7 +3400,7 @@ Migration plan is updated with final status.
 - Removed `model/AggregationEnrichment`.
 - Updated docs/comments to remove legacy `AggregationEnrichment` authoring guidance:
   - `enrichment/package-info.java`
-  - `docs/workflow-enrichment-guide.md`
+  - `workflow-enrichment-guide.md`
 - No production workflow runtime changes.
 - No public API behavior changes.
 
