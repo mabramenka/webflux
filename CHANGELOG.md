@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/mabramenka/webflux/compare/v0.13.0...v0.14.0) (2026-04-28)
+
+
+### Features
+
+* **workflow:** migrate beneficial owners to recursive workflow ([f811771](https://github.com/mabramenka/webflux/commit/f811771e842caf37cf48994dca7b8b28f4756733))
+
 ## [0.13.0](https://github.com/mabramenka/webflux/compare/v0.12.2...v0.13.0) (2026-04-28)
 
 
