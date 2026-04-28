@@ -5,17 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.AggregationContext;
-import dev.abramenka.aggregation.model.AggregationEnrichment;
 import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartPlan;
+import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.AggregationPartSelection;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.node.ObjectNode;
 
 class AggregationPartPlannerTest {
 
@@ -134,8 +132,8 @@ class AggregationPartPlannerTest {
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 
-    private static AggregationEnrichment enrichment(String name, String... dependencies) {
-        return new AggregationEnrichment() {
+    private static AggregationPart enrichment(String name, String... dependencies) {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
@@ -147,17 +145,17 @@ class AggregationPartPlannerTest {
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.empty();
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.patch(
+                        name(),
+                        context.accountGroupResponse(),
+                        context.accountGroupResponse().deepCopy()));
             }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {}
         };
     }
 
-    private static AggregationEnrichment unsupportedEnrichment(String name) {
-        return new AggregationEnrichment() {
+    private static AggregationPart unsupportedEnrichment(String name) {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
@@ -169,12 +167,12 @@ class AggregationPartPlannerTest {
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.empty();
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.patch(
+                        name(),
+                        context.accountGroupResponse(),
+                        context.accountGroupResponse().deepCopy()));
             }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {}
         };
     }
 

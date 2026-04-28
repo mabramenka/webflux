@@ -7,11 +7,13 @@ import dev.abramenka.aggregation.client.Accounts;
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.enrichment.account.AccountEnrichmentTestFactory;
 import dev.abramenka.aggregation.enrichment.owners.OwnersEnrichmentTestFactory;
+import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
-import dev.abramenka.aggregation.model.AggregationEnrichment;
 import dev.abramenka.aggregation.model.AggregationPart;
+import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.model.Projections;
 import dev.abramenka.aggregation.part.AggregationPartExecutor;
 import dev.abramenka.aggregation.part.AggregationPartExecutorFactory;
@@ -88,49 +90,36 @@ abstract class AggregateServiceTestSupport {
         return AggregationPartExecutorFactory.create(meterRegistry);
     }
 
-    protected AggregationEnrichment emptyEnrichment() {
-        return new AggregationEnrichment() {
+    protected AggregationPart emptyEnrichment() {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return "empty";
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.empty();
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                throw new IllegalStateException("Empty enrichment should not be merged");
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.empty(name(), PartSkipReason.DOWNSTREAM_EMPTY));
             }
         };
     }
 
-    protected AggregationEnrichment failingMergeEnrichment() {
-        return new AggregationEnrichment() {
+    protected AggregationPart failingMergeEnrichment() {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return "mergeFailure";
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                ObjectNode response = objectMapper.createObjectNode();
-                response.put("status", "ok");
-                return Mono.just(response);
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                root.put("failedMergeWasAttempted", true);
-                throw new IllegalStateException("merge failed");
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.error(OrchestrationException.mergeFailed(new IllegalStateException("merge failed")));
             }
         };
     }
 
-    protected AggregationEnrichment dependentNoopEnrichment(String name, String dependency) {
-        return new AggregationEnrichment() {
+    protected AggregationPart dependentNoopEnrichment(String name, String dependency) {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
@@ -142,37 +131,34 @@ abstract class AggregateServiceTestSupport {
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.just(objectMapper.createObjectNode());
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.patch(
+                        name(),
+                        context.accountGroupResponse(),
+                        context.accountGroupResponse().deepCopy()));
             }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {}
         };
     }
 
-    protected AggregationEnrichment rootFlagEnrichment(String name, String flag) {
-        return new AggregationEnrichment() {
+    protected AggregationPart rootFlagEnrichment(String name, String flag) {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.just(objectMapper.createObjectNode());
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                root.put(flag, true);
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                ObjectNode working = context.accountGroupResponse().deepCopy();
+                working.put(flag, true);
+                return Mono.just(AggregationPartResult.patch(name(), context.accountGroupResponse(), working));
             }
         };
     }
 
-    protected AggregationEnrichment dependentSupportEnrichment(
+    protected AggregationPart dependentSupportEnrichment(
             String name, String dependency, String requiredFlag, String targetFlag) {
-        return new AggregationEnrichment() {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
@@ -189,38 +175,30 @@ abstract class AggregateServiceTestSupport {
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.just(objectMapper.createObjectNode());
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                root.put(targetFlag, true);
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                ObjectNode working = context.accountGroupResponse().deepCopy();
+                working.put(targetFlag, true);
+                return Mono.just(AggregationPartResult.patch(name(), context.accountGroupResponse(), working));
             }
         };
     }
 
-    protected AggregationEnrichment failingFetchEnrichment(String name) {
-        return new AggregationEnrichment() {
+    protected AggregationPart failingFetchEnrichment(String name) {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
                 return Mono.error(new IllegalStateException("enrichment down"));
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                root.put("failedEnrichmentMerged", true);
             }
         };
     }
 
-    protected AggregationEnrichment unsupportedEnrichment(String name) {
-        return new AggregationEnrichment() {
+    protected AggregationPart unsupportedEnrichment(String name) {
+        return new AggregationPart() {
             @Override
             public String name() {
                 return name;
@@ -232,13 +210,11 @@ abstract class AggregateServiceTestSupport {
             }
 
             @Override
-            public Mono<JsonNode> fetch(AggregationContext context) {
-                return Mono.just(objectMapper.createObjectNode());
-            }
-
-            @Override
-            public void merge(ObjectNode root, JsonNode enrichmentResponse) {
-                root.put("unsupportedEnrichmentRan", true);
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(AggregationPartResult.patch(
+                        name(),
+                        context.accountGroupResponse(),
+                        context.accountGroupResponse().deepCopy()));
             }
         };
     }
