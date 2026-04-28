@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/mabramenka/webflux/compare/v0.12.2...v0.13.0) (2026-04-28)
+
+
+### Features
+
+* **workflow:** add traversal reducer write-back bridge ([f6651fb](https://github.com/mabramenka/webflux/commit/f6651fb80c8dc465e71e39d70cfd6338f2547cf8))
+* **workflow:** complete recursive traversal skeleton ([be6bf4d](https://github.com/mabramenka/webflux/commit/be6bf4d99d1e8f18b486b28e2c54739d8a3ae0c3))
+
+
+### Bug Fixes
+
+* **workflow:** group traversal results by seed target ([5d428d9](https://github.com/mabramenka/webflux/commit/5d428d92b8c5f9a2aadb9e0fbf36997b2f336547))
+* **workflow:** pass current root into traversal reducer ([67c69cc](https://github.com/mabramenka/webflux/commit/67c69ccc0a999f52aa8599cbd22de2adf746b76f))
+
 ## [0.12.2](https://github.com/mabramenka/webflux/compare/v0.12.1...v0.12.2) (2026-04-26)
 
 
