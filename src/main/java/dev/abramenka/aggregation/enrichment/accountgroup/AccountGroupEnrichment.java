@@ -1,5 +1,6 @@
 package dev.abramenka.aggregation.enrichment.accountgroup;
 
+import dev.abramenka.aggregation.api.AggregateRequest;
 import dev.abramenka.aggregation.client.AccountGroups;
 import dev.abramenka.aggregation.client.DownstreamClientResponses;
 import dev.abramenka.aggregation.client.HttpServiceGroups;
@@ -51,7 +52,7 @@ class AccountGroupEnrichment implements AggregationPart {
     public Mono<AggregationPartResult> execute(AggregationContext context) {
         return Mono.defer(() -> {
             List<String> ids = context.aggregateRequest()
-                    .map(aggregateRequest -> aggregateRequest.ids())
+                    .map(AggregateRequest::ids)
                     .orElseThrow(() -> OrchestrationException.invariantViolated(
                             new IllegalStateException("Aggregate request is required for accountGroup part")));
             ObjectNode request = toAccountGroupRequest(ids);

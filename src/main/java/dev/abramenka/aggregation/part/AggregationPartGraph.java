@@ -13,19 +13,18 @@ import java.util.Set;
 final class AggregationPartGraph {
 
     private final List<AggregationPart> parts;
-    private final Map<String, AggregationPart> partsByName;
     private final String basePartName;
     private final Set<String> publicPartNames;
     private final AggregationPartLevelPlanner levelPlanner;
 
     private AggregationPartGraph(List<AggregationPart> parts) {
         this.parts = List.copyOf(parts);
-        this.partsByName = buildPartsIndex(this.parts);
+        Map<String, AggregationPart> partsByName = buildPartsIndex(this.parts);
         this.basePartName = findAndValidateBasePart(this.parts);
         this.publicPartNames = findPublicPartNames(this.parts);
-        validateDependencies(this.parts, this.partsByName);
-        List<AggregationPart> orderedParts = orderByDependencies(this.parts, this.partsByName);
-        this.levelPlanner = new AggregationPartLevelPlanner(orderedParts, this.partsByName);
+        validateDependencies(this.parts, partsByName);
+        List<AggregationPart> orderedParts = orderByDependencies(this.parts, partsByName);
+        this.levelPlanner = new AggregationPartLevelPlanner(orderedParts, partsByName);
     }
 
     static AggregationPartGraph from(List<AggregationPart> registeredParts) {
@@ -33,16 +32,8 @@ final class AggregationPartGraph {
         return new AggregationPartGraph(parts);
     }
 
-    List<String> unknownNames(Set<String> names) {
-        return names.stream().filter(name -> !partsByName.containsKey(name)).toList();
-    }
-
     Set<String> publicPartNames() {
         return publicPartNames;
-    }
-
-    String basePartName() {
-        return basePartName;
     }
 
     AggregationPartSelection expandDependencies(AggregationPartSelection partSelection) {

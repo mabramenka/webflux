@@ -41,10 +41,10 @@ public final class RecursiveFetchStep implements WorkflowStep {
             RecursiveTraversalEngine.BatchFetcher batchFetcher,
             RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor,
             Predicate<JsonNode> isTerminalNode) {
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             throw new IllegalArgumentException("RecursiveFetchStep name must not be blank");
         }
-        if (storeAs == null || storeAs.isBlank()) {
+        if (storeAs.isBlank()) {
             throw new IllegalArgumentException("RecursiveFetchStep storeAs must not be blank");
         }
         Objects.requireNonNull(seedSource, "seedSource");
@@ -70,10 +70,6 @@ public final class RecursiveFetchStep implements WorkflowStep {
     @Override
     public String name() {
         return name;
-    }
-
-    public String storeAs() {
-        return storeAs;
     }
 
     @Override

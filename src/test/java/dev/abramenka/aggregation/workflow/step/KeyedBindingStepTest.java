@@ -75,7 +75,7 @@ class KeyedBindingStepTest {
         StepVerifier.create(step.execute(contextFor(root))).expectNextCount(1).verifyComplete();
 
         assertThat(capturedCalls).hasSize(1);
-        assertThat(capturedCalls.get(0)).containsExactly("a", "b");
+        assertThat(capturedCalls.getFirst()).containsExactly("a", "b");
     }
 
     // -------------------------------------------------------------------------
@@ -153,8 +153,8 @@ class KeyedBindingStepTest {
                     JsonPatchDocument patch = Objects.requireNonNull(((StepResult.Applied) result).patch(), "patch");
                     assertThat(patch.operations()).hasSize(1);
                     // field already exists → replace operation
-                    assertThat(patch.operations().get(0)).isInstanceOf(JsonPatchOperation.Replace.class);
-                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/enriched");
+                    assertThat(patch.operations().getFirst()).isInstanceOf(JsonPatchOperation.Replace.class);
+                    assertThat(patch.operations().getFirst().path()).isEqualTo("/data/0/enriched");
                 })
                 .verifyComplete();
     }
@@ -184,8 +184,8 @@ class KeyedBindingStepTest {
                     JsonPatchDocument patch = Objects.requireNonNull(((StepResult.Applied) result).patch(), "patch");
                     // array pre-exists → one append op only, no create op
                     assertThat(patch.operations()).hasSize(1);
-                    assertThat(patch.operations().get(0)).isInstanceOf(JsonPatchOperation.Add.class);
-                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/tags/-");
+                    assertThat(patch.operations().getFirst()).isInstanceOf(JsonPatchOperation.Add.class);
+                    assertThat(patch.operations().getFirst().path()).isEqualTo("/data/0/tags/-");
                 })
                 .verifyComplete();
     }
@@ -273,7 +273,7 @@ class KeyedBindingStepTest {
                     JsonPatchDocument patch = Objects.requireNonNull(((StepResult.Applied) result).patch(), "patch");
                     // only the matched item produces a write; the unmatched one is silently dropped
                     assertThat(patch.operations()).hasSize(1);
-                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/enriched");
+                    assertThat(patch.operations().getFirst().path()).isEqualTo("/data/0/enriched");
                 })
                 .verifyComplete();
     }

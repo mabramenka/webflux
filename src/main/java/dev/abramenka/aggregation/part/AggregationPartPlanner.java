@@ -39,7 +39,7 @@ public class AggregationPartPlanner {
                 .toList();
 
         if (!unknownParts.isEmpty()) {
-            throw new UnsupportedAggregationPartException(unknownParts);
+            throw new UnsupportedAggregationPartException();
         }
     }
 }

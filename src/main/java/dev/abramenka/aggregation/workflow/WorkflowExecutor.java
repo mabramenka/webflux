@@ -29,8 +29,7 @@ import tools.jackson.databind.JsonNode;
  * </ol>
  *
  * <p>The combined patch is returned as {@link WorkflowResult}. It is applied to the global root
- * exactly once by the existing {@link dev.abramenka.aggregation.part.AggregationPartResultApplicator}
- * flow — this executor never touches the global root.
+ * exactly once by the existing flow — this executor never touches the global root.
  *
  * <p>Emits {@code aggregation.binding.requests} metrics per step via {@link WorkflowBindingMetrics}.
  */

@@ -40,7 +40,6 @@ public final class ComputationException extends RuntimeException {
         return new ComputationException(message, false, cause);
     }
 
-    /** Returns {@code true} when the error is due to bad/missing input data, not a code bug. */
     public boolean isInputError() {
         return inputError;
     }

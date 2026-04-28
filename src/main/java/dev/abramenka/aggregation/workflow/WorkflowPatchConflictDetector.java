@@ -6,7 +6,6 @@ import dev.abramenka.aggregation.patch.JsonPatchOperation;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import org.jspecify.annotations.Nullable;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -71,7 +70,7 @@ final class WorkflowPatchConflictDetector {
         return a.getClass().equals(b.getClass());
     }
 
-    private static @Nullable JsonNode value(JsonPatchOperation op) {
+    private static JsonNode value(JsonPatchOperation op) {
         return switch (op) {
             case JsonPatchOperation.Add add -> add.value();
             case JsonPatchOperation.Replace replace -> replace.value();

@@ -29,7 +29,6 @@ import tools.jackson.databind.JsonNode;
  *   <li>Resolve each declared {@link ComputationInput} from {@link WorkflowContext}.
  *   <li>Wrap resolved inputs into a {@link WorkflowValues} view.
  *   <li>Call {@link WorkflowComputation#compute(WorkflowValues)} synchronously.
- *   <li>Store the returned {@link JsonNode} under {@link #storeAs()} in the workflow variable store.
  *   <li>Return {@link StepResult#stored(String, JsonNode)}.
  * </ol>
  *
@@ -57,10 +56,10 @@ public final class ComputeStep implements WorkflowStep {
      *     is null, or {@code computation} is null
      */
     public ComputeStep(String name, String storeAs, List<ComputationInput> inputs, WorkflowComputation computation) {
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             throw new IllegalArgumentException("ComputeStep name must not be blank");
         }
-        if (storeAs == null || storeAs.isBlank()) {
+        if (storeAs.isBlank()) {
             throw new IllegalArgumentException("ComputeStep storeAs must not be blank");
         }
         Objects.requireNonNull(inputs, "inputs");
@@ -74,11 +73,6 @@ public final class ComputeStep implements WorkflowStep {
     @Override
     public String name() {
         return name;
-    }
-
-    /** Returns the workflow variable name under which the compute result is stored. */
-    public String storeAs() {
-        return storeAs;
     }
 
     @Override

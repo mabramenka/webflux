@@ -33,8 +33,4 @@ public final class WorkflowVariableStore {
     public boolean contains(String name) {
         return values.containsKey(name);
     }
-
-    public Map<String, JsonNode> snapshot() {
-        return Map.copyOf(values);
-    }
 }

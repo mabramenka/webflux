@@ -212,9 +212,8 @@ class RecursiveTraversalEngineTest {
                         keys -> Mono.just(Map.of()),
                         this::childKeys,
                         this::isIndividual))
-                .assertNext(result -> {
-                    assertThat(result.groups()).extracting(this::groupId).containsExactly("g-1", "g-2");
-                })
+                .assertNext(result ->
+                        assertThat(result.groups()).extracting(this::groupId).containsExactly("g-1", "g-2"))
                 .verifyComplete();
     }
 

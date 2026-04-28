@@ -46,8 +46,4 @@ public abstract class WorkflowAggregationPart implements AggregationPart {
     public final Mono<AggregationPartResult> execute(AggregationContext context) {
         return workflowExecutor.execute(workflow, context).map(result -> result.toPartResult(workflow.name()));
     }
-
-    protected final AggregationWorkflow workflow() {
-        return workflow;
-    }
 }

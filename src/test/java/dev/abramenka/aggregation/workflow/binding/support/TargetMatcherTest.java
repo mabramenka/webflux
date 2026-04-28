@@ -33,7 +33,7 @@ class TargetMatcherTest {
         List<MatchedTarget> matches = matcher.match(targets, index);
 
         assertThat(matches).hasSize(2);
-        assertThat(matches.get(0).key()).isEqualTo("a");
+        assertThat(matches.getFirst().key()).isEqualTo("a");
         assertThat(matches.get(0).owner()).isSameAs(ownerA);
         assertThat(matches.get(0).responseEntry().path("tag").asString()).isEqualTo("entryA");
         assertThat(matches.get(1).owner()).isSameAs(ownerB);

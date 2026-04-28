@@ -56,10 +56,6 @@ public final class JsonPointer {
         return segments.subList(0, segments.size() - 1);
     }
 
-    public String raw() {
-        return raw;
-    }
-
     @Override
     public String toString() {
         return raw;

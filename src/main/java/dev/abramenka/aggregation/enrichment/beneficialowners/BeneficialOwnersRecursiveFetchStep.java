@@ -51,10 +51,10 @@ final class BeneficialOwnersRecursiveFetchStep implements WorkflowStep {
             Owners ownersClient,
             ObjectMapper objectMapper,
             RootEntityTargets rootEntityTargets) {
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             throw new IllegalArgumentException("BeneficialOwnersRecursiveFetchStep name must not be blank");
         }
-        if (storeAs == null || storeAs.isBlank()) {
+        if (storeAs.isBlank()) {
             throw new IllegalArgumentException("BeneficialOwnersRecursiveFetchStep storeAs must not be blank");
         }
         this.name = name;

@@ -7,7 +7,6 @@ import static org.mockito.Mockito.when;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.UnsupportedAggregationPartException;
 import dev.abramenka.aggregation.model.ClientRequestContext;
-import java.util.List;
 import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -21,7 +20,7 @@ class AggregateControllerProblemMappingTest extends AggregateControllerWebFluxTe
     @Test
     void aggregate_returnsProblemDetailWhenServiceRejectsRequest() {
         when(aggregateService.aggregate(any(AggregateRequest.class), any(ClientRequestContext.class)))
-                .thenReturn(Mono.error(new UnsupportedAggregationPartException(List.of("foo"))));
+                .thenReturn(Mono.error(new UnsupportedAggregationPartException()));
 
         webTestClient
                 .post()

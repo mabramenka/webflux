@@ -6,7 +6,7 @@ public final class UnsupportedAggregationPartException extends FacadeException {
 
     private static final String POINTER = "/request/include";
 
-    public UnsupportedAggregationPartException(List<String> parts) {
+    public UnsupportedAggregationPartException() {
         super(
                 ProblemCatalog.CLIENT_VALIDATION,
                 null,

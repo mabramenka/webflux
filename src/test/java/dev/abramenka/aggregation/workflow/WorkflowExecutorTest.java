@@ -326,7 +326,7 @@ class WorkflowExecutorTest {
                     // step1 produced no writes; step2 produced one
                     JsonPatchDocument patch = Objects.requireNonNull(result.patch(), "patch");
                     assertThat(patch.operations()).hasSize(1);
-                    assertThat(patch.operations().get(0).path()).isEqualTo("/data/0/field2");
+                    assertThat(patch.operations().getFirst().path()).isEqualTo("/data/0/field2");
                 })
                 .verifyComplete();
     }

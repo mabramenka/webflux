@@ -38,9 +38,6 @@ public final class RecursiveTraversalEngine {
         Objects.requireNonNull(batchFetcher, "batchFetcher");
         Objects.requireNonNull(childKeyExtractor, "childKeyExtractor");
         Objects.requireNonNull(isTerminalNode, "isTerminalNode");
-        if (seedGroups.stream().anyMatch(Objects::isNull)) {
-            throw new IllegalArgumentException("seedGroups must not contain null items");
-        }
         List<TraversalSeedGroup> groups = List.copyOf(seedGroups);
         return traverseGroups(groups, 0, new ArrayList<>(), policy, batchFetcher, childKeyExtractor, isTerminalNode)
                 .map(TraversalResult::new);
@@ -91,8 +88,8 @@ public final class RecursiveTraversalEngine {
             return Mono.error(TraversalException.depthExceeded(policy.maxDepth()));
         }
         LinkedHashSet<String> toResolve = new LinkedHashSet<>(frontier);
-        switch (policy.cyclePolicy()) {
-            case SKIP_VISITED -> toResolve.removeAll(visitedKeys);
+        if (Objects.requireNonNull(policy.cyclePolicy()) == CyclePolicy.SKIP_VISITED) {
+            toResolve.removeAll(visitedKeys);
         }
         if (toResolve.isEmpty()) {
             return Mono.just(terminalNodes);
@@ -110,11 +107,8 @@ public final class RecursiveTraversalEngine {
                     terminalNodes.putIfAbsent(key, new TraversalNode(key, node, depth));
                 } else {
                     Iterable<String> childKeys = childKeyExtractor.childKeys(node);
-                    if (childKeys == null) {
-                        continue;
-                    }
                     for (String childKey : childKeys) {
-                        if (childKey != null && !childKey.isBlank()) {
+                        if (!childKey.isBlank()) {
                             nextFrontier.add(childKey);
                         }
                     }
@@ -135,7 +129,7 @@ public final class RecursiveTraversalEngine {
     private static Set<String> normalizeKeys(Iterable<String> keys) {
         Set<String> out = new LinkedHashSet<>();
         for (String key : keys) {
-            if (key != null && !key.isBlank()) {
+            if (!key.isBlank()) {
                 out.add(key);
             }
         }

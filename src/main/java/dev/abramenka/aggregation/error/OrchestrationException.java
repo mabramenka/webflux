@@ -12,10 +12,6 @@ public final class OrchestrationException extends FacadeException {
         return new OrchestrationException(ProblemCatalog.ORCH_MERGE_FAILED, cause);
     }
 
-    public static OrchestrationException mappingFailed(Throwable cause) {
-        return new OrchestrationException(ProblemCatalog.ORCH_MAPPING_FAILED, cause);
-    }
-
     public static OrchestrationException invariantViolated(Throwable cause) {
         return new OrchestrationException(ProblemCatalog.ORCH_INVARIANT_VIOLATED, cause);
     }
