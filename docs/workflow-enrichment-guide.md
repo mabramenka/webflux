@@ -139,10 +139,10 @@ Use this shape when step 2 keys depend on writes produced by step 1.
 1. `RequireRootEntityOwnersStep`
    - reads `ROOT_SNAPSHOT`
    - returns `SKIPPED / NO_KEYS_IN_MAIN` when no root entity owners exist
-2. `BeneficialOwnersRecursiveFetchStep`
-   - wraps `RecursiveFetchStep`
+2. `BeneficialOwnersRecursiveFetcher`
+   - lower-level recursive algorithm service called by the enrichment workflow adapter
    - builds grouped seeds (`TraversalSeedGroup`) with target metadata (`dataIndex`, `ownerIndex`)
-   - stores traversal result as `beneficialOwnersTraversal`
+   - returns traversal results for the adapter to store as `beneficialOwnersTraversal`
 3. `TraversalReducerStep`
    - reads `beneficialOwnersTraversal`
    - applies `BeneficialOwnersTraversalReducer` to write

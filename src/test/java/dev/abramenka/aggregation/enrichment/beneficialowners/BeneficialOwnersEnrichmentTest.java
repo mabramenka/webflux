@@ -465,6 +465,37 @@ class BeneficialOwnersEnrichmentTest {
     }
 
     @Test
+    void execute_malformedOwnersResponse_mapsToLegacyEquivalentContractViolation() {
+        ObjectNode root = json("""
+                {
+                  "data": [
+                    {
+                      "owners1": [
+                        {
+                          "entity": {
+                            "number": "E-1",
+                            "ownershipStructure": [{"principalOwners": [{"memberDetails": {"number": "A"}}]}]
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+        when(ownersClient.fetchOwners(any(ObjectNode.class), anyString(), any(ClientRequestContext.class)))
+                .thenReturn(Mono.just(json("""
+                        {"notData": []}
+                        """)));
+
+        StepVerifier.create(beneficialOwners.execute(context(root)))
+                .expectErrorSatisfies(error -> assertThat(error)
+                        .isInstanceOf(EnrichmentDependencyException.class)
+                        .extracting(ex -> ((EnrichmentDependencyException) ex).catalog())
+                        .isEqualTo(ProblemCatalog.ENRICH_CONTRACT_VIOLATION))
+                .verify();
+    }
+
+    @Test
     void execute_downstreamFacadeExceptionPassThrough_remainsStable() {
         ObjectNode root = json("""
                 {
