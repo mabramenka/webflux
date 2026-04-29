@@ -30,15 +30,20 @@ class AggregationWorkflowTest {
 
     @Test
     void rejectsBlankName() {
-        assertThatThrownBy(
-                        () -> new AggregationWorkflow(" ", Set.of(), PartCriticality.REQUIRED, List.of(stubStep("s"))))
+        Set<String> dependencies = Set.of();
+        List<WorkflowStep> steps = List.of(stubStep("s"));
+
+        assertThatThrownBy(() -> new AggregationWorkflow(" ", dependencies, PartCriticality.REQUIRED, steps))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("blank");
     }
 
     @Test
     void rejectsEmptySteps() {
-        assertThatThrownBy(() -> new AggregationWorkflow("w", Set.of(), PartCriticality.REQUIRED, List.of()))
+        Set<String> dependencies = Set.of();
+        List<WorkflowStep> steps = List.of();
+
+        assertThatThrownBy(() -> new AggregationWorkflow("w", dependencies, PartCriticality.REQUIRED, steps))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("at least one step");
     }

@@ -21,14 +21,18 @@ class ResponseIndexingRuleTest {
 
     @Test
     void rejectsBlankResponseItemPath() {
-        assertThatThrownBy(() -> new ResponseIndexingRule(" ", List.of("id")))
+        List<String> responseKeyPaths = List.of("id");
+
+        assertThatThrownBy(() -> new ResponseIndexingRule(" ", responseKeyPaths))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("responseItemPath");
     }
 
     @Test
     void rejectsEmptyResponseKeyPaths() {
-        assertThatThrownBy(() -> new ResponseIndexingRule("$.data[*]", List.of()))
+        List<String> responseKeyPaths = List.of();
+
+        assertThatThrownBy(() -> new ResponseIndexingRule("$.data[*]", responseKeyPaths))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("responseKeyPaths");
     }

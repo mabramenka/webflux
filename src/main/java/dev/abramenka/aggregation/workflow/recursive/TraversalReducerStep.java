@@ -18,10 +18,10 @@ public final class TraversalReducerStep implements WorkflowStep {
     private final TraversalReducer reducer;
 
     public TraversalReducerStep(String name, String traversalResultName, TraversalReducer reducer) {
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             throw new IllegalArgumentException("TraversalReducerStep name must not be blank");
         }
-        if (traversalResultName == null || traversalResultName.isBlank()) {
+        if (traversalResultName.isBlank()) {
             throw new IllegalArgumentException("TraversalReducerStep traversalResultName must not be blank");
         }
         this.name = name;

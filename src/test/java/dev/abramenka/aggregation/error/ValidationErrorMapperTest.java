@@ -116,13 +116,16 @@ class ValidationErrorMapperTest {
 
     static final class ValidationController {
 
+        @SuppressWarnings("java:S1172")
         void validate(
                 @PathVariable String id,
                 @RequestParam String include,
                 @RequestHeader String header,
                 @CookieValue String session,
                 @RequestBody BodyPayload body,
-                String requestArg) {}
+                String requestArg) {
+            // Intentionally empty: tests inspect only parameter metadata from this fixture method.
+        }
     }
 
     static final class BodyPayload {}

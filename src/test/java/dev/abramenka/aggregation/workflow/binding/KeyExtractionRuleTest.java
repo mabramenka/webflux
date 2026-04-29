@@ -21,7 +21,9 @@ class KeyExtractionRuleTest {
 
     @Test
     void stepResultRequiresStepName() {
-        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.STEP_RESULT, null, "$.data[*]", List.of("id")))
+        List<String> keyPaths = List.of("id");
+
+        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.STEP_RESULT, null, "$.data[*]", keyPaths))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("stepResultName");
     }
@@ -35,21 +37,27 @@ class KeyExtractionRuleTest {
 
     @Test
     void stepResultNameRejectedForOtherSources() {
-        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, "bResult", "$.data[*]", List.of("id")))
+        List<String> keyPaths = List.of("id");
+
+        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, "bResult", "$.data[*]", keyPaths))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("only valid when source is STEP_RESULT");
     }
 
     @Test
     void rejectsBlankSourceItemPath() {
-        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, " ", List.of("id")))
+        List<String> keyPaths = List.of("id");
+
+        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, " ", keyPaths))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("sourceItemPath");
     }
 
     @Test
     void rejectsEmptyKeyPaths() {
-        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of()))
+        List<String> keyPaths = List.of();
+
+        assertThatThrownBy(() -> new KeyExtractionRule(KeySource.ROOT_SNAPSHOT, null, "$.data[*]", keyPaths))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("keyPaths");
     }

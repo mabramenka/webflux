@@ -34,41 +34,25 @@ public final class RecursiveTraversalEngine {
             ChildKeyExtractor childKeyExtractor,
             Predicate<JsonNode> isTerminalNode) {
         Objects.requireNonNull(seedGroups, "seedGroups");
-        Objects.requireNonNull(policy, "policy");
-        Objects.requireNonNull(batchFetcher, "batchFetcher");
-        Objects.requireNonNull(childKeyExtractor, "childKeyExtractor");
-        Objects.requireNonNull(isTerminalNode, "isTerminalNode");
+        TraversalExecution execution = new TraversalExecution(policy, batchFetcher, childKeyExtractor, isTerminalNode);
         List<TraversalSeedGroup> groups = List.copyOf(seedGroups);
-        return traverseGroups(groups, 0, new ArrayList<>(), policy, batchFetcher, childKeyExtractor, isTerminalNode)
-                .map(TraversalResult::new);
+        return traverseGroups(groups, 0, new ArrayList<>(), execution).map(TraversalResult::new);
     }
 
     private Mono<List<TraversalGroupResult>> traverseGroups(
             List<TraversalSeedGroup> seedGroups,
             int index,
             List<TraversalGroupResult> out,
-            TraversalPolicy policy,
-            BatchFetcher batchFetcher,
-            ChildKeyExtractor childKeyExtractor,
-            Predicate<JsonNode> isTerminalNode) {
+            TraversalExecution execution) {
         if (index == seedGroups.size()) {
             return Mono.just(out);
         }
         TraversalSeedGroup group = seedGroups.get(index);
         Set<String> frontier = normalizeKeys(group.initialKeys());
-        return traverseLevel(
-                        frontier,
-                        new LinkedHashSet<>(),
-                        new LinkedHashMap<>(),
-                        1,
-                        policy,
-                        batchFetcher,
-                        childKeyExtractor,
-                        isTerminalNode)
+        return traverseLevel(frontier, new LinkedHashSet<>(), new LinkedHashMap<>(), 1, execution)
                 .flatMap(terminalNodes -> {
                     out.add(new TraversalGroupResult(group.targetMetadata(), new ArrayList<>(terminalNodes.values())));
-                    return traverseGroups(
-                            seedGroups, index + 1, out, policy, batchFetcher, childKeyExtractor, isTerminalNode);
+                    return traverseGroups(seedGroups, index + 1, out, execution);
                 });
     }
 
@@ -77,13 +61,11 @@ public final class RecursiveTraversalEngine {
             Set<String> visitedKeys,
             Map<String, TraversalNode> terminalNodes,
             int depth,
-            TraversalPolicy policy,
-            BatchFetcher batchFetcher,
-            ChildKeyExtractor childKeyExtractor,
-            Predicate<JsonNode> isTerminalNode) {
+            TraversalExecution execution) {
         if (frontier.isEmpty()) {
             return Mono.just(terminalNodes);
         }
+        TraversalPolicy policy = execution.policy();
         if (depth > policy.maxDepth()) {
             return Mono.error(TraversalException.depthExceeded(policy.maxDepth()));
         }
@@ -94,36 +76,75 @@ public final class RecursiveTraversalEngine {
         if (toResolve.isEmpty()) {
             return Mono.just(terminalNodes);
         }
-        return batchFetcher.fetchBatch(toResolve).flatMap(responseByKey -> {
+        return execution.batchFetcher().fetchBatch(toResolve).flatMap(responseByKey -> {
             requireAllRequestedKeys(toResolve, responseByKey, policy.requireAllRequestedKeys());
-            Set<String> nextFrontier = new LinkedHashSet<>();
-            for (String key : toResolve) {
-                JsonNode node = responseByKey.get(key);
-                if (node == null) {
-                    continue;
-                }
-                visitedKeys.add(key);
-                if (isTerminalNode.test(node)) {
-                    terminalNodes.putIfAbsent(key, new TraversalNode(key, node, depth));
-                } else {
-                    Iterable<String> childKeys = childKeyExtractor.childKeys(node);
-                    for (String childKey : childKeys) {
-                        if (!childKey.isBlank()) {
-                            nextFrontier.add(childKey);
-                        }
-                    }
-                }
-            }
-            return traverseLevel(
-                    nextFrontier,
-                    visitedKeys,
-                    terminalNodes,
-                    depth + 1,
-                    policy,
-                    batchFetcher,
-                    childKeyExtractor,
-                    isTerminalNode);
+            Set<String> nextFrontier =
+                    resolveCurrentLevel(toResolve, responseByKey, visitedKeys, terminalNodes, depth, execution);
+            return traverseLevel(nextFrontier, visitedKeys, terminalNodes, depth + 1, execution);
         });
+    }
+
+    private static Set<String> resolveCurrentLevel(
+            Set<String> toResolve,
+            Map<String, JsonNode> responseByKey,
+            Set<String> visitedKeys,
+            Map<String, TraversalNode> terminalNodes,
+            int depth,
+            TraversalExecution execution) {
+        Set<String> nextFrontier = new LinkedHashSet<>();
+        LevelResolution resolution = new LevelResolution(
+                visitedKeys,
+                terminalNodes,
+                nextFrontier,
+                depth,
+                execution.childKeyExtractor(),
+                execution.isTerminalNode());
+        for (String key : toResolve) {
+            JsonNode node = responseByKey.get(key);
+            if (node != null) {
+                resolveNode(key, node, resolution);
+            }
+        }
+        return nextFrontier;
+    }
+
+    private record LevelResolution(
+            Set<String> visitedKeys,
+            Map<String, TraversalNode> terminalNodes,
+            Set<String> nextFrontier,
+            int depth,
+            ChildKeyExtractor childKeyExtractor,
+            Predicate<JsonNode> isTerminalNode) {}
+
+    private record TraversalExecution(
+            TraversalPolicy policy,
+            BatchFetcher batchFetcher,
+            ChildKeyExtractor childKeyExtractor,
+            Predicate<JsonNode> isTerminalNode) {
+
+        private TraversalExecution {
+            Objects.requireNonNull(policy, "policy");
+            Objects.requireNonNull(batchFetcher, "batchFetcher");
+            Objects.requireNonNull(childKeyExtractor, "childKeyExtractor");
+            Objects.requireNonNull(isTerminalNode, "isTerminalNode");
+        }
+    }
+
+    private static void resolveNode(String key, JsonNode node, LevelResolution resolution) {
+        resolution.visitedKeys().add(key);
+        if (resolution.isTerminalNode().test(node)) {
+            resolution.terminalNodes().putIfAbsent(key, new TraversalNode(key, node, resolution.depth()));
+            return;
+        }
+        addChildKeys(resolution.childKeyExtractor().childKeys(node), resolution.nextFrontier());
+    }
+
+    private static void addChildKeys(Iterable<String> childKeys, Set<String> nextFrontier) {
+        for (String childKey : childKeys) {
+            if (!childKey.isBlank()) {
+                nextFrontier.add(childKey);
+            }
+        }
     }
 
     private static Set<String> normalizeKeys(Iterable<String> keys) {

@@ -26,15 +26,17 @@ class WorkflowPatchConflictDetectorTest {
 
     @Test
     void firstWrite_isAlwaysAllowed() {
-        assertThatCode(() -> detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x"))))
-                .doesNotThrowAnyException();
+        JsonPatchOperation operation = new JsonPatchOperation.Add("/a", nf.stringNode("x"));
+
+        assertThatCode(() -> detector.check(operation)).doesNotThrowAnyException();
     }
 
     @Test
     void differentPaths_areIndependent() {
         detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x")));
-        assertThatCode(() -> detector.check(new JsonPatchOperation.Add("/b", nf.stringNode("y"))))
-                .doesNotThrowAnyException();
+        JsonPatchOperation operation = new JsonPatchOperation.Add("/b", nf.stringNode("y"));
+
+        assertThatCode(() -> detector.check(operation)).doesNotThrowAnyException();
     }
 
     // -------------------------------------------------------------------------
@@ -44,8 +46,9 @@ class WorkflowPatchConflictDetectorTest {
     @Test
     void samePath_sameType_sameValue_isIdempotent() {
         detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x")));
-        assertThatCode(() -> detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x"))))
-                .doesNotThrowAnyException();
+        JsonPatchOperation operation = new JsonPatchOperation.Add("/a", nf.stringNode("x"));
+
+        assertThatCode(() -> detector.check(operation)).doesNotThrowAnyException();
     }
 
     // -------------------------------------------------------------------------
@@ -55,7 +58,9 @@ class WorkflowPatchConflictDetectorTest {
     @Test
     void samePath_sameType_differentValue_throws() {
         detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x")));
-        assertThatThrownBy(() -> detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("y"))))
+        JsonPatchOperation operation = new JsonPatchOperation.Add("/a", nf.stringNode("y"));
+
+        assertThatThrownBy(() -> detector.check(operation))
                 .isInstanceOf(OrchestrationException.class)
                 .hasMessageContaining("assemble");
     }
@@ -67,7 +72,9 @@ class WorkflowPatchConflictDetectorTest {
     @Test
     void samePath_differentType_throws() {
         detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x")));
-        assertThatThrownBy(() -> detector.check(new JsonPatchOperation.Replace("/a", nf.stringNode("x"))))
+        JsonPatchOperation operation = new JsonPatchOperation.Replace("/a", nf.stringNode("x"));
+
+        assertThatThrownBy(() -> detector.check(operation))
                 .isInstanceOf(OrchestrationException.class)
                 .hasMessageContaining("assemble");
     }
@@ -75,8 +82,9 @@ class WorkflowPatchConflictDetectorTest {
     @Test
     void samePath_replaceFirst_thenAdd_throws() {
         detector.check(new JsonPatchOperation.Replace("/a", nf.stringNode("x")));
-        assertThatThrownBy(() -> detector.check(new JsonPatchOperation.Add("/a", nf.stringNode("x"))))
-                .isInstanceOf(OrchestrationException.class);
+        JsonPatchOperation operation = new JsonPatchOperation.Add("/a", nf.stringNode("x"));
+
+        assertThatThrownBy(() -> detector.check(operation)).isInstanceOf(OrchestrationException.class);
     }
 
     // -------------------------------------------------------------------------
@@ -85,19 +93,17 @@ class WorkflowPatchConflictDetectorTest {
 
     @Test
     void appendPaths_multipleAllowed() {
-        assertThatCode(() -> {
-                    detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("a")));
-                    detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("b")));
-                    detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("c")));
-                })
-                .doesNotThrowAnyException();
+        detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("a")));
+        detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("b")));
+        detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("c")));
     }
 
     @Test
     void appendPath_doesNotConflictWithNonAppendOnSameArrayPath() {
         // Creating the array at /data/0/tags and appending to /data/0/tags/- are distinct paths
         detector.check(new JsonPatchOperation.Add("/data/0/tags", nf.arrayNode()));
-        assertThatCode(() -> detector.check(new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("v"))))
-                .doesNotThrowAnyException();
+        JsonPatchOperation operation = new JsonPatchOperation.Add("/data/0/tags/-", nf.stringNode("v"));
+
+        assertThatCode(() -> detector.check(operation)).doesNotThrowAnyException();
     }
 }

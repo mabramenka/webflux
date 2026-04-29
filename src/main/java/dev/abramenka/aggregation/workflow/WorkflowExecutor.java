@@ -60,8 +60,8 @@ public class WorkflowExecutor {
         WorkflowStep step = steps.get(index);
         String metricBindingTag = step.bindingName().orElse(step.name());
         return step.execute(context)
-                .doOnNext(result -> bindingMetrics.record(workflowName, metricBindingTag, outcomeTag(result)))
-                .doOnError(ex -> bindingMetrics.record(workflowName, metricBindingTag, "failed"))
+                .doOnNext(result -> bindingMetrics.recordOutcome(workflowName, metricBindingTag, outcomeTag(result)))
+                .doOnError(ex -> bindingMetrics.recordOutcome(workflowName, metricBindingTag, "failed"))
                 .flatMap(result -> switch (result) {
                     case StepResult.Applied(JsonPatchDocument patch, String storeAs, JsonNode storedValue) -> {
                         if (storeAs != null && storedValue != null) {

@@ -346,8 +346,9 @@ class KeyedBindingStepTest {
         DownstreamBinding binding = new DownstreamBinding(
                 new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, null, writeRule);
 
-        // Must not throw.
-        new KeyedBindingStep("step", binding);
+        KeyedBindingStep step = new KeyedBindingStep("step", binding);
+
+        assertThat(step.writtenFieldName()).hasValue("f");
     }
 
     @Test
@@ -358,8 +359,9 @@ class KeyedBindingStepTest {
         DownstreamBinding binding = new DownstreamBinding(
                 new BindingName("b"), rule, (keys, ctx) -> Mono.empty(), indexRule, "stored", null);
 
-        // Must not throw.
-        new KeyedBindingStep("step", binding);
+        KeyedBindingStep step = new KeyedBindingStep("step", binding);
+
+        assertThat(step.writtenFieldName()).isEmpty();
     }
 
     @Test

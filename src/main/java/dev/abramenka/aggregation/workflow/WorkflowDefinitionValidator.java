@@ -34,7 +34,7 @@ final class WorkflowDefinitionValidator {
         Set<String> stepNames = new HashSet<>();
         for (WorkflowStep step : workflow.steps()) {
             String stepName = step.name();
-            if (stepName == null || stepName.isBlank()) {
+            if (stepName.isBlank()) {
                 throw new IllegalStateException("Workflow '" + workflow.name() + "' contains a step with a blank name");
             }
             if (!stepNames.add(stepName)) {

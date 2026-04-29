@@ -29,6 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 class OwnersEnrichment extends WorkflowAggregationPart {
 
     private static final String CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.OWNERS);
+    private static final String DATA_ITEMS_PATH = "$.data[*]";
 
     OwnersEnrichment(Owners ownersClient, WorkflowExecutor workflowExecutor) {
         super(
@@ -43,7 +44,7 @@ class OwnersEnrichment extends WorkflowAggregationPart {
                                         new KeyExtractionRule(
                                                 KeySource.ROOT_SNAPSHOT,
                                                 null,
-                                                "$.data[*]",
+                                                DATA_ITEMS_PATH,
                                                 List.of("basicDetails.owners[*].id", "basicDetails.owners[*].number")),
                                         (keys, ctx) -> {
                                             JsonNodeFactory nf = JsonNodeFactory.instance;
@@ -58,10 +59,10 @@ class OwnersEnrichment extends WorkflowAggregationPart {
                                                             Owners.DEFAULT_FIELDS,
                                                             ctx.clientRequestContext()));
                                         },
-                                        new ResponseIndexingRule("$.data[*]", List.of("individual.number", "id")),
+                                        new ResponseIndexingRule(DATA_ITEMS_PATH, List.of("individual.number", "id")),
                                         null,
                                         new WriteRule(
-                                                "$.data[*]",
+                                                DATA_ITEMS_PATH,
                                                 new WriteRule.MatchBy("basicDetails.owners[*].id", "individual.number"),
                                                 new WriteRule.WriteAction.AppendToArray("owners1"))))),
                         WriteOwnership.of("owners1")),

@@ -336,7 +336,6 @@ class WorkflowExecutorTest {
         ObjectNode root = parseObject("""
                 {"data": [{"id": "a1"}]}
                 """);
-        // Step 1 response stored as "b1result"; items have {id, relatedId}
         JsonNode step1Response = parseObject("""
                 {"items": [{"id": "a1", "relatedId": "r99"}]}
                 """);
