@@ -4,6 +4,12 @@
 **External error contract:** RFC 9457 Problem Details for HTTP APIs
 **Status:** Current source of truth for request-level errors and success-side part outcomes.
 
+Related docs:
+
+- [Architecture](architecture.md)
+- [Workflow enrichment guide](workflow-enrichment-guide.md)
+- [Architecture review notes](architecture-review.md)
+
 ## Purpose and Scope
 
 This service is an aggregation facade. For every aggregate request it validates the caller input, runs a mandatory base part that calls the account-group downstream, executes selected public enrichment parts by dependency level, and merges successful part results into one JSON response.
@@ -526,9 +532,9 @@ Repository tests or contract tests should validate:
 - every response carries a valid `traceparent`, and every problem body contains `traceId`, `timestamp`, and `instance`;
 - `RejectedExecutionException` maps to `PLATFORM-OVERLOADED` with `Retry-After`.
 
-## Detected Repository Conflicts
+## Current Review Notes
 
-No README/code/test conflict was found for the main model described here. The current README, enums, executor, failure policy, and tests agree that:
+No current code/test/docs conflict was found for the implemented model described here. The README, enums, executor, failure policy, and tests agree that:
 
 - `FAILED` exists as a success-side part outcome;
 - `REQUIRED` is default criticality and `OPTIONAL` is opt-in;
@@ -538,3 +544,5 @@ No README/code/test conflict was found for the main model described here. The cu
 - orchestration and merge/invariant failures are fatal.
 
 One nuance to keep explicit: not every `ENRICH-CONTRACT-VIOLATION` is optional-safe. Only contract violations represented as `DownstreamClientException` are eligible for optional `FAILED`. Contract violations represented as `EnrichmentDependencyException` are fatal because the failure policy only downgrades `DownstreamClientException` for optional parts.
+
+The main open product decision is whether required public enrichments should keep the current soft data-absence semantics or move to request-level failures for missing keys, empty downstream data, enrichment 404, partial key coverage, and schema mismatches. That decision is tracked in [architecture-review.md](architecture-review.md).
