@@ -12,7 +12,7 @@
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=code_smells&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 [![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=mabramenka_webflux&metric=duplicated_lines_density&token=f775095566196b3449bd25c7a899aaf4204526ae)](https://sonarcloud.io/summary/new_code?id=mabramenka_webflux)
 
-Reactive Spring Boot service that calls an account group service, executes selected JSON aggregation parts by dependency levels, and merges their results back into the account group JSON document.
+Reactive Spring Boot service that validates aggregation requests, plans selected aggregation parts, executes the mandatory account-group base part plus selected public enrichment parts by dependency levels, and merges their results into one JSON document.
 
 The service keeps downstream payloads dynamic by working with Jackson `JsonNode` / `ObjectNode` instead of fixed response DTOs.
 
@@ -21,7 +21,7 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 - Dynamic JSON aggregation without fixed downstream response DTOs
 - Spring Boot 4 HTTP service clients backed by reactive `WebClient`
 - Dependency-ordered aggregation parts with per-part `APPLIED` / `EMPTY` / `SKIPPED` / `FAILED` outcomes and `REQUIRED` / `OPTIONAL` criticality
-- Declarative path-based enrichment rules for keyed array joins
+- Workflow-based enrichment parts with declarative path-based keyed joins
 - Fallback key paths for inconsistent downstream schemas
 - Recursive beneficial-owners aggregation with bounded depth
 - Header and query parameter forwarding to downstream calls
@@ -123,36 +123,48 @@ All downstream clients send and accept JSON. Downstream 4xx/5xx responses, trans
 
 ## Architecture
 
-Aggregation Gateway is a synchronous domain facade, not an owner of account, account-group, or owner data. Its boundary is response composition: it validates the caller request, calls the mandatory account-group dependency, expands the selected aggregation graph, runs the selected and dependency-enabled enrichment paths, and returns one merged JSON document.
+Aggregation Gateway is a synchronous domain facade, not an owner of account, account-group, or owner data. Its boundary is response composition: it validates the caller request, expands the selected aggregation graph, runs the mandatory base part and selected public enrichment parts, and returns one merged JSON document.
 
 ### Module Boundaries
 
 | Package | Responsibility | Owns |
 | --- | --- | --- |
 | `api` | HTTP endpoints and transport DTOs | Public request shape and route versioning |
-| `service` | Request orchestration entry point | Account-group request construction and top-level observation |
-| `part` | Aggregation graph planning, dependency levels, execution, merge application, metrics | Selected-part execution semantics and per-part outcomes |
-| `enrichment.<name>` | Business-specific enrichment parts | Part name, dependency declaration, downstream request and merge rule |
-| `enrichment.support` | Reusable enrichment mechanics | Path selection, keyed joins, and tolerant keyed-response attachment |
+| `service` | Request orchestration entry point | Part planning handoff, top-level observation, and success metadata attachment |
+| `part` | Aggregation graph planning, dependency levels, execution, merge application, metrics | Selected-part execution semantics, base-part inclusion, dependency expansion, and per-part outcomes |
+| `model` | Shared aggregation domain contracts | `AggregationPart`, context, result, selection, outcome, and request-context model |
+| `enrichment.<name>` | Business-specific aggregation parts | Part name, dependency declaration, downstream request, workflow definition, and merge rule |
+| `workflow` | Workflow implementation model for aggregation parts | `AggregationWorkflow`, `WorkflowAggregationPart`, `WorkflowStep`, variable flow, execution, and validation |
+| `workflow.path` | Narrow project-specific path dialect | Workflow key extraction and response indexing paths |
+| `patch` | Internal JSON write model | Patch documents, pointer handling, write options, and patch application |
 | `client` | Spring HTTP service clients and downstream error filter | Outbound paths, forwarded context, HTTP-layer failure normalization |
 | `error` | Problem Detail mapping | Stable validation and known domain/downstream problem shapes |
 | `config` | WebFlux, client, SSL, MDC, and context propagation wiring | Runtime plumbing and framework integration |
+
+Architectural rules:
+
+- `AggregationPart` is the business-level aggregation unit planned and executed by the part graph.
+- `Workflow` is an implementation style for an `AggregationPart`, not a separate public API surface.
+- `WorkflowStep` is a technical workflow operation inside a workflow-based part.
+- `Patch` is the internal JSON write model used to apply part results; it is not the public HTTP API.
+- `workflow.path` is a small project-specific path dialect for workflow key extraction and response indexing.
 
 ### Runtime Flow
 
 1. `api` validates the inbound POST body or GET path/query arguments.
 2. `config` builds `ClientRequestContext` from selected inbound headers and query parameters.
-3. `service` plans selected parts before calling downstreams, so unknown part names fail before any account-group call.
-4. `service` calls the mandatory account-group downstream and requires an object-shaped JSON response.
-5. `part` expands dependencies, groups parts by dependency level, and validates every selected part against the current root snapshot.
-6. A selected part whose `supports(context)` is false is recorded under `meta.parts` as `SKIPPED` with reason `UNSUPPORTED_CONTEXT`.
-7. Runnable parts in the same level execute concurrently; the next level starts only after successful results are applied in graph order.
-8. Data absence is soft per part: `NO_KEYS_IN_MAIN`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `UNSUPPORTED_CONTEXT`, and `DEPENDENCY_EMPTY` succeed with `meta.parts`; transport/auth/timeout/invalid-payload/merge failures still terminate the request unless the part opts in to `OPTIONAL` criticality, in which case its `DownstreamClientException` is recorded as `meta.parts.<name> = { status: FAILED, criticality: OPTIONAL, reason, errorCode }` and the request continues. Orchestration/merge/invariant failures always propagate regardless of criticality.
+3. `service` asks `part` to plan the requested `include` set before any downstream call, so unknown public part names fail early.
+4. `part` expands public part dependencies, automatically includes the mandatory internal `accountGroup` base part, and groups selected parts by dependency level.
+5. `executor` runs the base `accountGroup` part first; that part calls `/account-groups` and replaces the initially empty root with the object-shaped account-group response.
+6. `executor` runs selected public enrichment parts by dependency level. Runnable parts in the same level execute concurrently; the next level starts only after successful results are applied in graph order.
+7. A public selected part whose `supports(context)` is false is recorded under `meta.parts` as `SKIPPED` with reason `UNSUPPORTED_CONTEXT`. Internal/base part outcomes are not exposed as public selectable part metadata.
+8. Data absence is soft per public part: `NO_KEYS_IN_MAIN`, `DOWNSTREAM_EMPTY`, `DOWNSTREAM_NOT_FOUND`, `UNSUPPORTED_CONTEXT`, and `DEPENDENCY_EMPTY` succeed with `meta.parts`; transport/auth/timeout/invalid-payload/merge failures still terminate the request unless the part opts in to `OPTIONAL` criticality, in which case its `DownstreamClientException` is recorded as `meta.parts.<name> = { status: FAILED, criticality: OPTIONAL, reason, errorCode }` and the request continues. Orchestration/merge/invariant failures always propagate regardless of criticality.
 
 ### Consistency And Failure Semantics
 
-- The account-group call is the mandatory root. If it fails or returns unreadable/non-object JSON, the whole request fails.
-- `include == null` selects every registered part. `include == []` returns only the account-group response.
+- `accountGroup` is the mandatory internal base `AggregationPart`. If it fails or returns unreadable/non-object JSON, the whole request fails.
+- `include == null` selects every public enrichment part plus the base `accountGroup` part. `include == []` returns only the account-group response through the base part.
+- Public `include` values select public enrichment parts only. The `accountGroup` base part is included automatically and cannot be requested as a public part.
 - Explicitly selected transitive dependencies are enabled automatically. For example, `beneficialOwners` also selects `owners`.
 - Keyed enrichments (`account`, `owners`) request every distinct key found in the root payload and attach only the entries that are actually returned.
 - Same-level part results are generated from the same immutable root snapshot, then merged into the mutable root in stable graph order.
@@ -203,12 +215,13 @@ Fields sent to the account group service:
 
 - `ids`: required non-empty array of non-blank, pattern-matching strings (bounded by `AccountGroupIds.MAX_PER_REQUEST`)
 
-`include` controls aggregation parts:
+`include` controls public enrichment parts:
 
-- omitted or `null`: all registered parts are selected
-- empty array: only the account group response is returned
+- omitted or `null`: all public enrichment parts are selected; the base part is still included automatically
+- empty array: only the mandatory `accountGroup` base part runs and only the account-group response is returned
 - supported values: `account`, `owners`, `beneficialOwners`
 - unknown values fail before calling the account group service
+- `accountGroup` is mandatory, internal, included automatically, and not a supported public `include` value
 - selected parts may finish as `APPLIED`, `EMPTY`, `SKIPPED`, or `FAILED` in `meta.parts`; each entry carries its `criticality` (`REQUIRED` by default; `OPTIONAL` is opt-in per part)
 - dependency transport/auth/timeout/invalid-payload failures fail the request for `REQUIRED` parts and are recorded as `FAILED` outcomes for `OPTIONAL` parts; merge/invariant failures always fail the request
 
@@ -330,18 +343,20 @@ Unclassified exceptions use `/problems/platform/internal` with `errorCode: PLATF
 ## Aggregation Flow
 
 1. Validate the inbound request and `include` selection.
-2. Build and send the account group request to `/account-groups`.
-3. Expand aggregation part dependencies for the requested `include` set.
-4. Build dependency levels from the selected aggregation parts.
-5. For each level, evaluate whether each selected part can run against the current root snapshot or should yield a soft `meta.parts` outcome.
-6. Execute runnable parts in the same level in parallel; fatal dependency, decoding, merge, or invariant failures fail the request.
-7. Apply successful results in stable graph order before the next dependency level starts.
-8. Record non-fatal no-op outcomes in `meta.parts` and skip dependents with `DEPENDENCY_EMPTY` when a prerequisite part did not apply.
+2. Expand public enrichment dependencies for the requested `include` set.
+3. Include the mandatory internal `accountGroup` base part automatically.
+4. Build dependency levels from the effective aggregation part set.
+5. Execute the base part to build and send the account-group request to `/account-groups`, then replace the root with the account-group response.
+6. For each public enrichment level, evaluate whether each selected part can run against the current root snapshot or should yield a soft `meta.parts` outcome.
+7. Execute runnable parts in the same level in parallel; fatal dependency, decoding, merge, or invariant failures fail the request.
+8. Apply successful results in stable graph order before the next dependency level starts.
+9. Record non-fatal no-op outcomes in `meta.parts` and skip dependents with `DEPENDENCY_EMPTY` when a prerequisite part did not apply.
 
 Default part dependency order:
 
-1. `account` and `owners` can run in parallel.
-2. `beneficialOwners` waits for `owners`, then runs against the merged owner data.
+1. `accountGroup` runs first as the mandatory internal base part.
+2. `account` and `owners` can run in parallel after the base response exists.
+3. `beneficialOwners` waits for `owners`, then runs against the merged owner data.
 
 ## Aggregation Parts
 
