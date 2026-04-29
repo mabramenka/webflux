@@ -36,7 +36,6 @@ The service keeps downstream payloads dynamic by working with Jackson `JsonNode`
 
 - [Error handling design](docs/error-handling-design.md)
 - [Workflow enrichment guide](docs/workflow-enrichment-guide.md)
-- [Aggregation workflow migration plan](docs/AGGREGATION_WORKFLOW_MIGRATION_PLAN.md)
 - [Changelog](docs/CHANGELOG.md)
 - [Account group base enrichment prompt](docs/account_group_base_enrichment_prompt_20260428_201354.md)
 - [Codex review notes](docs/codex_review_20260428_193050.md)
