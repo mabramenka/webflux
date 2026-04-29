@@ -1,6 +1,5 @@
 package dev.abramenka.aggregation.workflow.step;
 
-import dev.abramenka.aggregation.enrichment.support.keyed.PathExpression;
 import dev.abramenka.aggregation.error.DownstreamClientException;
 import dev.abramenka.aggregation.error.OrchestrationException;
 import dev.abramenka.aggregation.model.AggregationContext;
@@ -19,6 +18,7 @@ import dev.abramenka.aggregation.workflow.binding.support.KeyExtractor;
 import dev.abramenka.aggregation.workflow.binding.support.MatchedTarget;
 import dev.abramenka.aggregation.workflow.binding.support.ResponseIndexer;
 import dev.abramenka.aggregation.workflow.binding.support.TargetMatcher;
+import dev.abramenka.aggregation.workflow.path.PathExpression;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;

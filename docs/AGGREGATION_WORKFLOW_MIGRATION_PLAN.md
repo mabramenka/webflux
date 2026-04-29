@@ -1254,7 +1254,7 @@ Do not migrate `account` in the same phase as Phase 7.
 
 - **Completed:** Phase 7 — Keyed binding step
 - **Files added:** `workflow/step/KeyedBindingStep.java`, `workflow/step/package-info.java`
-- **Files modified:** `enrichment/support/keyed/PathExpression.java` (added `toItemPointerAt(int)`), `WorkflowExecutorTest.java` (2 integration tests added)
+- **Files modified:** `workflow/path/PathExpression.java` (added `toItemPointerAt(int)`), `WorkflowExecutorTest.java` (2 integration tests added)
 - **Files added (test):** `workflow/step/KeyedBindingStepTest.java` (14 scenarios)
 - **Intentionally not done:** no existing enrichment migrated; CURRENT_ROOT/STEP_RESULT/TRAVERSAL_STATE sources rejected at construction; multi-binding not implemented. AppendToArray auto-creation was finalized later during Phase 8 to match legacy keyed-enrichment behavior.
 - **Local checks run:** `./gradlew test --tests '*KeyedBindingStepTest' --tests '*WorkflowExecutorTest'` — green; `spotlessJavaCheck` — green
