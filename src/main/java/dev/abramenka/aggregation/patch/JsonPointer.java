@@ -7,7 +7,7 @@ import java.util.List;
  * Parsed RFC 6901 JSON Pointer. Internal helper for the patch model — operations carry raw
  * pointer strings, this class is used by the applicator to navigate.
  */
-public final class JsonPointer {
+final class JsonPointer {
 
     private static final JsonPointer ROOT = new JsonPointer("", List.of());
 

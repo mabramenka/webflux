@@ -32,7 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
  * /data/{dataIndex}/owners1/{ownerIndex}/beneficialOwnersDetails
  * </pre>
  */
-public final class BeneficialOwnersTraversalReducer implements TraversalReducer {
+final class BeneficialOwnersTraversalReducer implements TraversalReducer {
 
     private static final String REDUCER_PART_NAME = "beneficialOwners";
 

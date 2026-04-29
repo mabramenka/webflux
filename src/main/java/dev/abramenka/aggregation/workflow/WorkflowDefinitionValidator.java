@@ -21,7 +21,7 @@ import java.util.Set;
  *       definition at construction time, before any runtime conflict detection is needed.
  * </ul>
  */
-public final class WorkflowDefinitionValidator {
+final class WorkflowDefinitionValidator {
 
     private WorkflowDefinitionValidator() {}
 

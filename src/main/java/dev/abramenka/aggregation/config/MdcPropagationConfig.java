@@ -6,7 +6,7 @@ import org.slf4j.MDC;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration(proxyBeanMethods = false)
-public class MdcPropagationConfig {
+class MdcPropagationConfig {
 
     public static final String REQUEST_ID_KEY = "requestId";
     public static final String CORRELATION_ID_KEY = "correlationId";

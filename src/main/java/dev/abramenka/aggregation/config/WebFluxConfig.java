@@ -8,7 +8,7 @@ import org.springframework.web.reactive.result.method.annotation.ArgumentResolve
 
 @Configuration(proxyBeanMethods = false)
 @RequiredArgsConstructor
-public class WebFluxConfig implements WebFluxConfigurer {
+class WebFluxConfig implements WebFluxConfigurer {
 
     private final ServerClientRequestContextArgumentResolver clientRequestContextArgumentResolver;
 

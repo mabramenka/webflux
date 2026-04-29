@@ -12,7 +12,7 @@ import tools.jackson.databind.JsonNode;
  * non-null only when the binding had a {@code storeAs} name. {@code reason} is set for non-{@link
  * BindingOutcome#SUCCESS} outcomes to identify why the binding skipped, was empty, or failed.
  */
-public record BindingResult(
+record BindingResult(
         BindingName name,
         BindingOutcome outcome,
         @Nullable JsonPatchDocument patch,

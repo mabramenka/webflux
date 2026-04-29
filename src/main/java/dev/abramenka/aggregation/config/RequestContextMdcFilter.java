@@ -14,7 +14,7 @@ import reactor.core.publisher.Mono;
 import reactor.util.context.Context;
 
 @Component
-public class RequestContextMdcFilter implements WebFilter, Ordered {
+class RequestContextMdcFilter implements WebFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {

@@ -1,9 +1,8 @@
-package dev.abramenka.aggregation.workflow.recursive;
+package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import dev.abramenka.aggregation.enrichment.beneficialowners.BeneficialOwnersTraversalReducer;
 import dev.abramenka.aggregation.error.EnrichmentDependencyException;
 import dev.abramenka.aggregation.error.ProblemCatalog;
 import dev.abramenka.aggregation.patch.JsonPatchApplicator;
