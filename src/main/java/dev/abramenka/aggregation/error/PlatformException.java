@@ -2,7 +2,7 @@ package dev.abramenka.aggregation.error;
 
 import org.jspecify.annotations.Nullable;
 
-public final class PlatformException extends FacadeException {
+final class PlatformException extends FacadeException {
 
     private PlatformException(ProblemCatalog catalog, @Nullable Throwable cause) {
         super(catalog, null, cause);

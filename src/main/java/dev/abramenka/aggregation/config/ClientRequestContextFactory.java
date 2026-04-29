@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MultiValueMap;
 
 @Component
-public class ClientRequestContextFactory {
+class ClientRequestContextFactory {
 
     public ClientRequestContext from(HttpHeaders headers, MultiValueMap<String, String> queryParams) {
         return new ClientRequestContext(

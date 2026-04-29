@@ -29,7 +29,7 @@ import org.springframework.web.service.registry.ImportHttpServices;
         group = HttpServiceGroups.OWNERS,
         types = Owners.class,
         clientType = HttpServiceGroup.ClientType.WEB_CLIENT)
-public class HttpServiceClientConfig {
+class HttpServiceClientConfig {
 
     private static final String OUTBOUND_BUNDLE = "downstream";
 

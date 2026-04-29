@@ -11,7 +11,7 @@ import reactor.core.publisher.Mono;
 
 @Component
 @RequiredArgsConstructor
-public class ServerClientRequestContextArgumentResolver implements HandlerMethodArgumentResolver {
+class ServerClientRequestContextArgumentResolver implements HandlerMethodArgumentResolver {
 
     private final ClientRequestContextFactory clientRequestContextFactory;
 

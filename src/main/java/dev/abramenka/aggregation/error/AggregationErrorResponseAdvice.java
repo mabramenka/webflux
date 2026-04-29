@@ -17,7 +17,7 @@ import org.springframework.web.server.ServerWebInputException;
 import reactor.core.publisher.Mono;
 
 @RestControllerAdvice
-public final class AggregationErrorResponseAdvice extends ResponseEntityExceptionHandler {
+final class AggregationErrorResponseAdvice extends ResponseEntityExceptionHandler {
 
     private static final String ERROR_CODE_PROPERTY = "errorCode";
     private static final String RETRY_AFTER_HEADER = "Retry-After";
