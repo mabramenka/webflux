@@ -52,8 +52,9 @@ class WorkflowAggregationPartTest {
     void invalidWorkflowFailsAtConstruction() {
         AggregationWorkflow invalid = new AggregationWorkflow(
                 "test", Set.of(), PartCriticality.REQUIRED, List.of(applyStep("dup"), applyStep("dup")));
+        WorkflowExecutor executor = AccountEnrichmentTestFactory.noopWorkflowExecutor();
 
-        assertThatThrownBy(() -> new TestPart(invalid, AccountEnrichmentTestFactory.noopWorkflowExecutor()))
+        assertThatThrownBy(() -> new TestPart(invalid, executor))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("duplicate step name");
     }

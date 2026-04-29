@@ -66,16 +66,19 @@ final class JsonPointer {
             return token;
         }
         StringBuilder result = new StringBuilder(token.length());
-        for (int i = 0; i < token.length(); i++) {
-            char c = token.charAt(i);
+        int index = 0;
+        while (index < token.length()) {
+            char c = token.charAt(index);
             if (c != '~') {
                 result.append(c);
+                index++;
                 continue;
             }
-            if (i + 1 >= token.length()) {
+            int nextIndex = index + 1;
+            if (nextIndex >= token.length()) {
                 throw new JsonPatchException("Invalid JSON Pointer escape in token '" + token + "'");
             }
-            char next = token.charAt(++i);
+            char next = token.charAt(nextIndex);
             switch (next) {
                 case '0' -> result.append('~');
                 case '1' -> result.append('/');
@@ -83,6 +86,7 @@ final class JsonPointer {
                     throw new JsonPatchException(
                             "Invalid JSON Pointer escape '~" + next + "' in token '" + token + "'");
             }
+            index += 2;
         }
         return result.toString();
     }

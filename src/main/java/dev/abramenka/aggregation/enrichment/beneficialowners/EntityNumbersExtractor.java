@@ -6,10 +6,13 @@ import tools.jackson.databind.JsonNode;
 
 final class EntityNumbersExtractor {
 
+    private static final String ENTITY_FIELD = "entity";
+    private static final String NUMBER_FIELD = "number";
+
     private EntityNumbersExtractor() {}
 
     static Set<String> childNumbers(JsonNode entityOwnerNode) {
-        JsonNode entity = entityOwnerNode.path("entity");
+        JsonNode entity = entityOwnerNode.path(ENTITY_FIELD);
         if (!entity.isObject()) {
             return Set.of();
         }
@@ -26,7 +29,7 @@ final class EntityNumbersExtractor {
     }
 
     static boolean isEntity(JsonNode ownerNode) {
-        return ownerNode.path("entity").isObject();
+        return ownerNode.path(ENTITY_FIELD).isObject();
     }
 
     static boolean isIndividual(JsonNode ownerNode) {
@@ -34,11 +37,12 @@ final class EntityNumbersExtractor {
     }
 
     static String ownerNumber(JsonNode ownerNode) {
-        String individualNumber = ownerNode.path("individual").path("number").asString("");
+        String individualNumber =
+                ownerNode.path("individual").path(NUMBER_FIELD).asString("");
         if (!individualNumber.isBlank()) {
             return individualNumber;
         }
-        return ownerNode.path("entity").path("number").asString("");
+        return ownerNode.path(ENTITY_FIELD).path(NUMBER_FIELD).asString("");
     }
 
     private static void collect(JsonNode ownersArray, Set<String> out) {
@@ -46,7 +50,7 @@ final class EntityNumbersExtractor {
             return;
         }
         for (JsonNode owner : ownersArray.values()) {
-            String number = owner.path("memberDetails").path("number").asString("");
+            String number = owner.path("memberDetails").path(NUMBER_FIELD).asString("");
             if (!number.isBlank()) {
                 out.add(number);
             }

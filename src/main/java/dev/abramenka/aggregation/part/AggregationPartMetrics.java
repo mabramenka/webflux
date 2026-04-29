@@ -14,7 +14,7 @@ class AggregationPartMetrics {
 
     private final MeterRegistry meterRegistry;
 
-    void record(String partName, String outcome) {
+    void recordOutcome(String partName, String outcome) {
         meterRegistry
                 .counter(PART_REQUESTS_METRIC, PART_TAG, partName, OUTCOME_TAG, outcome)
                 .increment();

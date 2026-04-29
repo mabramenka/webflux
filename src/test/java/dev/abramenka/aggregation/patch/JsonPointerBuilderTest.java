@@ -66,7 +66,9 @@ class JsonPointerBuilderTest {
 
     @Test
     void index_rejectsNegativeValues() {
-        assertThatThrownBy(() -> JsonPointerBuilder.create().index(-1))
+        JsonPointerBuilder builder = JsonPointerBuilder.create();
+
+        assertThatThrownBy(() -> builder.index(-1))
                 .isInstanceOf(JsonPatchException.class)
                 .hasMessageContaining("non-negative");
     }

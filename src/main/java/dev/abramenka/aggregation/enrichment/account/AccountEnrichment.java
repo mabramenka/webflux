@@ -29,6 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 class AccountEnrichment extends WorkflowAggregationPart {
 
     private static final String CLIENT_NAME = HttpServiceGroups.downstreamClientName(HttpServiceGroups.ACCOUNT);
+    private static final String DATA_ITEMS_PATH = "$.data[*]";
 
     AccountEnrichment(Accounts accountClient, WorkflowExecutor workflowExecutor) {
         super(
@@ -41,7 +42,10 @@ class AccountEnrichment extends WorkflowAggregationPart {
                                 new DownstreamBinding(
                                         new BindingName("account"),
                                         new KeyExtractionRule(
-                                                KeySource.ROOT_SNAPSHOT, null, "$.data[*]", List.of("accounts[*].id")),
+                                                KeySource.ROOT_SNAPSHOT,
+                                                null,
+                                                DATA_ITEMS_PATH,
+                                                List.of("accounts[*].id")),
                                         (keys, ctx) -> {
                                             JsonNodeFactory nf = JsonNodeFactory.instance;
                                             ArrayNode idsArray = nf.arrayNode(keys.size());
@@ -55,10 +59,10 @@ class AccountEnrichment extends WorkflowAggregationPart {
                                                             Accounts.DEFAULT_FIELDS,
                                                             ctx.clientRequestContext()));
                                         },
-                                        new ResponseIndexingRule("$.data[*]", List.of("id")),
+                                        new ResponseIndexingRule(DATA_ITEMS_PATH, List.of("id")),
                                         null,
                                         new WriteRule(
-                                                "$.data[*]",
+                                                DATA_ITEMS_PATH,
                                                 new WriteRule.MatchBy("accounts[*].id", "id"),
                                                 new WriteRule.WriteAction.AppendToArray("account1"))))),
                         WriteOwnership.of("account1")),

@@ -77,9 +77,9 @@ class JsonPatchApplicatorTest {
         ObjectNode root = object("""
             {"data": {}}
             """);
+        JsonPatchDocument patch = JsonPatchDocument.of(new JsonPatchOperation.Replace("/data/score", number(7)));
 
-        assertThatThrownBy(() -> applicator.apply(
-                        JsonPatchDocument.of(new JsonPatchOperation.Replace("/data/score", number(7))), root))
+        assertThatThrownBy(() -> applicator.apply(patch, root))
                 .isInstanceOf(JsonPatchException.class)
                 .hasMessageContaining("replace missing field");
     }
@@ -100,9 +100,9 @@ class JsonPatchApplicatorTest {
         ObjectNode root = object("""
             {"data": {"score": 7}}
             """);
+        JsonPatchDocument patch = JsonPatchDocument.of(new JsonPatchOperation.Test("/data/score", number(8)));
 
-        assertThatThrownBy(() -> applicator.apply(
-                        JsonPatchDocument.of(new JsonPatchOperation.Test("/data/score", number(8))), root))
+        assertThatThrownBy(() -> applicator.apply(patch, root))
                 .isInstanceOf(JsonPatchException.class)
                 .hasMessageContaining("Test operation failed");
     }
@@ -112,9 +112,9 @@ class JsonPatchApplicatorTest {
         ObjectNode root = object("""
             {"data": {}}
             """);
+        JsonPatchDocument patch = JsonPatchDocument.of(new JsonPatchOperation.Add("/missing/field", number(1)));
 
-        assertThatThrownBy(() -> applicator.apply(
-                        JsonPatchDocument.of(new JsonPatchOperation.Add("/missing/field", number(1))), root))
+        assertThatThrownBy(() -> applicator.apply(patch, root))
                 .isInstanceOf(JsonPatchException.class)
                 .hasMessageContaining("Missing parent");
     }
@@ -139,9 +139,9 @@ class JsonPatchApplicatorTest {
     @Test
     void apply_rejectsRootPointer() {
         ObjectNode root = objectMapper.createObjectNode();
+        JsonPatchDocument patch = JsonPatchDocument.of(new JsonPatchOperation.Add("", number(1)));
 
-        assertThatThrownBy(
-                        () -> applicator.apply(JsonPatchDocument.of(new JsonPatchOperation.Add("", number(1))), root))
+        assertThatThrownBy(() -> applicator.apply(patch, root))
                 .isInstanceOf(JsonPatchException.class)
                 .hasMessageContaining("Root pointer");
     }
@@ -151,9 +151,9 @@ class JsonPatchApplicatorTest {
         ObjectNode root = object("""
             {"items": [{"id": "A"}]}
             """);
+        JsonPatchDocument patch = JsonPatchDocument.of(new JsonPatchOperation.Replace("/items/5", item("X")));
 
-        assertThatThrownBy(() -> applicator.apply(
-                        JsonPatchDocument.of(new JsonPatchOperation.Replace("/items/5", item("X"))), root))
+        assertThatThrownBy(() -> applicator.apply(patch, root))
                 .isInstanceOf(JsonPatchException.class)
                 .hasMessageContaining("out of bounds");
     }

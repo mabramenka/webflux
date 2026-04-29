@@ -29,7 +29,9 @@ class WriteRuleTest {
 
     @Test
     void rejectsBlankTargetItemPath() {
-        assertThatThrownBy(() -> new WriteRule(" ", null, new WriteAction.ReplaceField("x")))
+        WriteAction action = new WriteAction.ReplaceField("x");
+
+        assertThatThrownBy(() -> new WriteRule(" ", null, action))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("targetItemPath");
     }

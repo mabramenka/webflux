@@ -31,6 +31,12 @@ import tools.jackson.databind.node.ObjectNode;
 @Slf4j
 public class AggregationPartExecutor {
 
+    private static final String OUTCOME_EMPTY = "empty";
+    private static final String OUTCOME_FAILED = "failed";
+    private static final String OUTCOME_FAILURE = "failure";
+    private static final String OUTCOME_SKIPPED = "skipped";
+    private static final String OUTCOME_SUCCESS = "success";
+
     private final AggregationPartRunner partRunner;
     private final AggregationPartFailurePolicy failurePolicy;
     private final AggregationPartResultApplicator resultApplicator;
@@ -89,7 +95,7 @@ public class AggregationPartExecutor {
                             return Mono.error(OrchestrationException.invariantViolated(new IllegalStateException(
                                     "FailureDecision with failRequest=true must include error")));
                         }
-                        metrics.record(part.name(), "failure");
+                        metrics.recordOutcome(part.name(), OUTCOME_FAILURE);
                         return Mono.error(decisionError);
                     }
                     PartOutcomeReason reason = decision.reason();
@@ -119,10 +125,10 @@ public class AggregationPartExecutor {
         try {
             return part.supports(context);
         } catch (FacadeException ex) {
-            metrics.record(part.name(), "failure");
+            metrics.recordOutcome(part.name(), OUTCOME_FAILURE);
             throw ex;
         } catch (Exception ex) {
-            metrics.record(part.name(), "failure");
+            metrics.recordOutcome(part.name(), OUTCOME_FAILURE);
             throw OrchestrationException.invariantViolated(ex);
         }
     }
@@ -135,38 +141,44 @@ public class AggregationPartExecutor {
             Map<String, PartOutcome> outcomes) {
         requireOneResultPerPart(level, resultsByName);
         for (AggregationPart part : level) {
-            PartExecutionResult executionResult = resultsByName.get(part.name());
-            if (executionResult == null) {
-                continue;
-            }
-            if (executionResult.failed()) {
-                PartOutcomeReason reason = Objects.requireNonNull(executionResult.failureReason());
-                String errorCode = Objects.requireNonNull(executionResult.errorCode());
-                recordFailure(part, reason, errorCode, outcomes);
-                continue;
-            }
-            AggregationPartResult result = Objects.requireNonNull(executionResult.result());
-            if (result instanceof AggregationPartResult.NoOp noOp) {
-                recordNoOp(part, noOp, outcomes);
-                continue;
-            }
-            try {
-                resultApplicator.apply(result, root);
-            } catch (FacadeException ex) {
-                metrics.record(part.name(), "failure");
-                throw ex;
-            } catch (Exception ex) {
-                metrics.record(part.name(), "failure");
-                throw OrchestrationException.mergeFailed(ex);
-            }
-            metrics.record(part.name(), "success");
-            executionState.markApplied(part);
-            putOutcome(part, PartOutcome.applied(part.criticality()), outcomes);
+            PartExecutionResult executionResult = Objects.requireNonNull(resultsByName.get(part.name()));
+            applyResult(part, executionResult, root, executionState, outcomes);
         }
     }
 
+    private void applyResult(
+            AggregationPart part,
+            PartExecutionResult executionResult,
+            ObjectNode root,
+            AggregationPartExecutionState executionState,
+            Map<String, PartOutcome> outcomes) {
+        if (executionResult.failed()) {
+            PartOutcomeReason reason = Objects.requireNonNull(executionResult.failureReason());
+            String errorCode = Objects.requireNonNull(executionResult.errorCode());
+            recordFailure(part, reason, errorCode, outcomes);
+            return;
+        }
+        AggregationPartResult result = Objects.requireNonNull(executionResult.result());
+        if (result instanceof AggregationPartResult.NoOp noOp) {
+            recordNoOp(part, noOp, outcomes);
+            return;
+        }
+        try {
+            resultApplicator.apply(result, root);
+        } catch (FacadeException ex) {
+            metrics.recordOutcome(part.name(), OUTCOME_FAILURE);
+            throw ex;
+        } catch (Exception ex) {
+            metrics.recordOutcome(part.name(), OUTCOME_FAILURE);
+            throw OrchestrationException.mergeFailed(ex);
+        }
+        metrics.recordOutcome(part.name(), OUTCOME_SUCCESS);
+        executionState.markApplied(part);
+        putOutcome(part, PartOutcome.applied(part.criticality()), outcomes);
+    }
+
     private void recordSkip(AggregationPart part, PartSkipReason reason, Map<String, PartOutcome> outcomes) {
-        metrics.record(part.name(), "skipped");
+        metrics.recordOutcome(part.name(), OUTCOME_SKIPPED);
         putOutcome(part, PartOutcome.skipped(part.criticality(), reason), outcomes);
     }
 
@@ -174,13 +186,13 @@ public class AggregationPartExecutor {
         PartOutcome outcome = noOp.status() == PartOutcomeStatus.EMPTY
                 ? PartOutcome.empty(part.criticality(), noOp.reason())
                 : PartOutcome.skipped(part.criticality(), noOp.reason());
-        metrics.record(part.name(), noOp.status() == PartOutcomeStatus.EMPTY ? "empty" : "skipped");
+        metrics.recordOutcome(part.name(), noOp.status() == PartOutcomeStatus.EMPTY ? OUTCOME_EMPTY : OUTCOME_SKIPPED);
         putOutcome(part, outcome, outcomes);
     }
 
     private void recordFailure(
             AggregationPart part, PartOutcomeReason reason, String errorCode, Map<String, PartOutcome> outcomes) {
-        metrics.record(part.name(), "failed");
+        metrics.recordOutcome(part.name(), OUTCOME_FAILED);
         putOutcome(part, PartOutcome.failed(part.criticality(), reason, errorCode), outcomes);
     }
 
@@ -193,7 +205,7 @@ public class AggregationPartExecutor {
     private void requireOneResultPerPart(List<AggregationPart> level, Map<String, PartExecutionResult> resultsByName) {
         for (AggregationPart part : level) {
             if (!resultsByName.containsKey(part.name())) {
-                metrics.record(part.name(), "failure");
+                metrics.recordOutcome(part.name(), OUTCOME_FAILURE);
                 throw OrchestrationException.invariantViolated(
                         new IllegalStateException("Aggregation part '" + part.name() + "' did not emit a result"));
             }

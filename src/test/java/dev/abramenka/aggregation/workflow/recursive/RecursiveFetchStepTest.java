@@ -243,9 +243,7 @@ class RecursiveFetchStepTest {
                 seedGroupExtractor,
                 policy,
                 new RecursiveTraversalEngine(),
-                fetcher,
-                childKeyExtractor,
-                isTerminalNode);
+                new RecursiveFetchStep.TraversalCallbacks(fetcher, childKeyExtractor, isTerminalNode));
     }
 
     private RecursiveTraversalEngine.BatchFetcher fetcher(List<List<String>> fetchCalls) {

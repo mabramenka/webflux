@@ -365,8 +365,9 @@ class BeneficialOwnersTraversalReducerTest {
                 }
                 """);
         JsonNode traversal = json(traversalJson);
+        BeneficialOwnersTraversalReducer reducer = new BeneficialOwnersTraversalReducer();
 
-        assertThatThrownBy(() -> new BeneficialOwnersTraversalReducer().reduce(traversal, root))
+        assertThatThrownBy(() -> reducer.reduce(traversal, root))
                 .isInstanceOf(EnrichmentDependencyException.class)
                 .extracting(error -> ((EnrichmentDependencyException) error).catalog())
                 .isEqualTo(ProblemCatalog.ENRICH_CONTRACT_VIOLATION);

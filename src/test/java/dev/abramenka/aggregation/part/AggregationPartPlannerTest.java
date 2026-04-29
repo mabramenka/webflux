@@ -79,8 +79,9 @@ class AggregationPartPlannerTest {
     void plan_rejectsNonPublicPartInInclude() {
         AggregationPartPlanner planner =
                 new AggregationPartPlanner(List.of(basePart(), enrichment("account", "accountGroup")));
+        List<String> include = List.of("accountGroup");
 
-        assertThatThrownBy(() -> planner.plan(List.of("accountGroup")))
+        assertThatThrownBy(() -> planner.plan(include))
                 .isInstanceOf(UnsupportedAggregationPartException.class)
                 .hasMessage("One or more request fields failed validation.");
     }
@@ -89,53 +90,64 @@ class AggregationPartPlannerTest {
     void plan_rejectsUnknownRequestedPart() {
         AggregationPartPlanner planner =
                 new AggregationPartPlanner(List.of(basePart(), enrichment("account", "accountGroup")));
+        List<String> include = List.of("missing");
 
-        assertThatThrownBy(() -> planner.plan(List.of("missing")))
+        assertThatThrownBy(() -> planner.plan(include))
                 .isInstanceOf(UnsupportedAggregationPartException.class)
                 .hasMessage("One or more request fields failed validation.");
     }
 
     @Test
     void constructor_rejectsMissingBasePart() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(enrichment("account"))))
+        List<AggregationPart> parts = List.of(enrichment("account"));
+
+        assertThatThrownBy(() -> new AggregationPartPlanner(parts))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Exactly one base aggregation part is required");
     }
 
     @Test
     void constructor_rejectsMultipleBaseParts() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(basePart(), secondBasePart())))
+        List<AggregationPart> parts = List.of(basePart(), secondBasePart());
+
+        assertThatThrownBy(() -> new AggregationPartPlanner(parts))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Exactly one base aggregation part is required");
     }
 
     @Test
     void constructor_rejectsBaseDependencies() {
-        assertThatThrownBy(() ->
-                        new AggregationPartPlanner(List.of(basePart("owners"), enrichment("owners", "accountGroup"))))
+        List<AggregationPart> parts = List.of(basePart("owners"), enrichment("owners", "accountGroup"));
+
+        assertThatThrownBy(() -> new AggregationPartPlanner(parts))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("must not declare dependencies");
     }
 
     @Test
     void constructor_rejectsDuplicatePartNames() {
-        assertThatThrownBy(() ->
-                        new AggregationPartPlanner(List.of(basePart(), enrichment("account"), enrichment("account"))))
+        List<AggregationPart> parts = List.of(basePart(), enrichment("account"), enrichment("account"));
+
+        assertThatThrownBy(() -> new AggregationPartPlanner(parts))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Duplicate aggregation component name: account");
     }
 
     @Test
     void constructor_rejectsUnknownDependencies() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(List.of(basePart(), enrichment("account", "missing"))))
+        List<AggregationPart> parts = List.of(basePart(), enrichment("account", "missing"));
+
+        assertThatThrownBy(() -> new AggregationPartPlanner(parts))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Unknown aggregation component dependency for account: missing");
     }
 
     @Test
     void constructor_rejectsCyclicDependencies() {
-        assertThatThrownBy(() -> new AggregationPartPlanner(
-                        List.of(basePart(), enrichment("account", "owners"), enrichment("owners", "account"))))
+        List<AggregationPart> parts =
+                List.of(basePart(), enrichment("account", "owners"), enrichment("owners", "account"));
+
+        assertThatThrownBy(() -> new AggregationPartPlanner(parts))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Cyclic aggregation component dependency");
     }
@@ -154,10 +166,12 @@ class AggregationPartPlannerTest {
         assertThat(plan.selectedLevels())
                 .extracting(AggregationPartPlannerTest::partNames)
                 .containsExactly(List.of("accountGroup"));
-        assertThatThrownBy(() -> plan.selectedLevels().add(List.of(part)))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> plan.selectedLevels().getFirst().add(part))
-                .isInstanceOf(UnsupportedOperationException.class);
+        List<List<AggregationPart>> selectedLevels = plan.selectedLevels();
+        List<AggregationPart> appendedLevel = List.of(part);
+        List<AggregationPart> firstLevel = selectedLevels.getFirst();
+
+        assertThatThrownBy(() -> selectedLevels.add(appendedLevel)).isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> firstLevel.add(part)).isInstanceOf(UnsupportedOperationException.class);
     }
 
     private static AggregationPart basePart(String... dependencies) {

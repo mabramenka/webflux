@@ -29,7 +29,7 @@ public class WorkflowBindingMetrics {
 
     private final MeterRegistry meterRegistry;
 
-    void record(String partName, String bindingName, String outcome) {
+    void recordOutcome(String partName, String bindingName, String outcome) {
         meterRegistry
                 .counter(BINDING_REQUESTS_METRIC, PART_TAG, partName, BINDING_TAG, bindingName, OUTCOME_TAG, outcome)
                 .increment();

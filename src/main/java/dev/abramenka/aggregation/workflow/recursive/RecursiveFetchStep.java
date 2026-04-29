@@ -21,15 +21,25 @@ public final class RecursiveFetchStep implements WorkflowStep {
         List<TraversalSeedGroup> extract(JsonNode source);
     }
 
+    public record TraversalCallbacks(
+            RecursiveTraversalEngine.BatchFetcher batchFetcher,
+            RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor,
+            Predicate<JsonNode> isTerminalNode) {
+
+        public TraversalCallbacks {
+            Objects.requireNonNull(batchFetcher, "batchFetcher");
+            Objects.requireNonNull(childKeyExtractor, "childKeyExtractor");
+            Objects.requireNonNull(isTerminalNode, "isTerminalNode");
+        }
+    }
+
     private final String name;
     private final String storeAs;
     private final KeySource seedSource;
     private final TraversalSeedGroupExtractor seedGroupExtractor;
     private final TraversalPolicy traversalPolicy;
     private final RecursiveTraversalEngine traversalEngine;
-    private final RecursiveTraversalEngine.BatchFetcher batchFetcher;
-    private final RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor;
-    private final Predicate<JsonNode> isTerminalNode;
+    private final TraversalCallbacks traversalCallbacks;
 
     public RecursiveFetchStep(
             String name,
@@ -38,9 +48,7 @@ public final class RecursiveFetchStep implements WorkflowStep {
             TraversalSeedGroupExtractor seedGroupExtractor,
             TraversalPolicy traversalPolicy,
             RecursiveTraversalEngine traversalEngine,
-            RecursiveTraversalEngine.BatchFetcher batchFetcher,
-            RecursiveTraversalEngine.ChildKeyExtractor childKeyExtractor,
-            Predicate<JsonNode> isTerminalNode) {
+            TraversalCallbacks traversalCallbacks) {
         if (name.isBlank()) {
             throw new IllegalArgumentException("RecursiveFetchStep name must not be blank");
         }
@@ -52,9 +60,7 @@ public final class RecursiveFetchStep implements WorkflowStep {
         Objects.requireNonNull(seedGroupExtractor, "seedGroupExtractor");
         Objects.requireNonNull(traversalPolicy, "traversalPolicy");
         Objects.requireNonNull(traversalEngine, "traversalEngine");
-        Objects.requireNonNull(batchFetcher, "batchFetcher");
-        Objects.requireNonNull(childKeyExtractor, "childKeyExtractor");
-        Objects.requireNonNull(isTerminalNode, "isTerminalNode");
+        Objects.requireNonNull(traversalCallbacks, "traversalCallbacks");
 
         this.name = name;
         this.storeAs = storeAs;
@@ -62,9 +68,7 @@ public final class RecursiveFetchStep implements WorkflowStep {
         this.seedGroupExtractor = seedGroupExtractor;
         this.traversalPolicy = traversalPolicy;
         this.traversalEngine = traversalEngine;
-        this.batchFetcher = batchFetcher;
-        this.childKeyExtractor = childKeyExtractor;
-        this.isTerminalNode = isTerminalNode;
+        this.traversalCallbacks = traversalCallbacks;
     }
 
     @Override
@@ -78,7 +82,12 @@ public final class RecursiveFetchStep implements WorkflowStep {
         List<TraversalSeedGroup> seedGroups = Objects.requireNonNull(seedGroupExtractor.extract(source), "seedGroups");
 
         return traversalEngine
-                .traverse(seedGroups, traversalPolicy, batchFetcher, childKeyExtractor, isTerminalNode)
+                .traverse(
+                        seedGroups,
+                        traversalPolicy,
+                        traversalCallbacks.batchFetcher(),
+                        traversalCallbacks.childKeyExtractor(),
+                        traversalCallbacks.isTerminalNode())
                 .map(result -> StepResult.stored(storeAs, result.toJsonNode(JsonNodeFactory.instance)));
     }
 

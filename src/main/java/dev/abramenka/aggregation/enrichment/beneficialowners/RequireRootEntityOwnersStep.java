@@ -19,10 +19,10 @@ final class RequireRootEntityOwnersStep implements WorkflowStep {
     private final String markerStoreAs;
 
     RequireRootEntityOwnersStep(String name, RootEntityTargets rootEntityTargets, String markerStoreAs) {
-        if (name == null || name.isBlank()) {
+        if (name.isBlank()) {
             throw new IllegalArgumentException("RequireRootEntityOwnersStep name must not be blank");
         }
-        if (markerStoreAs == null || markerStoreAs.isBlank()) {
+        if (markerStoreAs.isBlank()) {
             throw new IllegalArgumentException("RequireRootEntityOwnersStep markerStoreAs must not be blank");
         }
         this.name = name;

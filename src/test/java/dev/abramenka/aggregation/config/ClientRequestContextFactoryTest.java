@@ -36,8 +36,9 @@ class ClientRequestContextFactoryTest {
     void from_rejectsBlankDetokenizeQueryParam() {
         MultiValueMap<String, String> queryParams = new LinkedMultiValueMap<>();
         queryParams.add("detokenize", " ");
+        HttpHeaders headers = new HttpHeaders();
 
-        assertThatThrownBy(() -> factory.from(new HttpHeaders(), queryParams))
+        assertThatThrownBy(() -> factory.from(headers, queryParams))
                 .isInstanceOf(RequestValidationException.class)
                 .satisfies(error -> assertThat(
                                 ((RequestValidationException) error).getBody().getProperties())

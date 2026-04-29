@@ -13,6 +13,7 @@ import dev.abramenka.aggregation.workflow.StepResult;
 import dev.abramenka.aggregation.workflow.WorkflowContext;
 import dev.abramenka.aggregation.workflow.compute.ComputationException;
 import dev.abramenka.aggregation.workflow.compute.ComputationInput;
+import dev.abramenka.aggregation.workflow.compute.WorkflowComputation;
 import dev.abramenka.aggregation.workflow.compute.WorkflowValues;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -291,14 +292,20 @@ class ComputeStepTest {
 
     @Test
     void construction_blankName_throws() {
-        assertThatThrownBy(() -> new ComputeStep("  ", "out", List.of(), values -> mapper.createObjectNode()))
+        List<ComputationInput> inputs = List.of();
+        WorkflowComputation computation = values -> mapper.createObjectNode();
+
+        assertThatThrownBy(() -> new ComputeStep("  ", "out", inputs, computation))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("name");
     }
 
     @Test
     void construction_blankStoreAs_throws() {
-        assertThatThrownBy(() -> new ComputeStep("step", "  ", List.of(), values -> mapper.createObjectNode()))
+        List<ComputationInput> inputs = List.of();
+        WorkflowComputation computation = values -> mapper.createObjectNode();
+
+        assertThatThrownBy(() -> new ComputeStep("step", "  ", inputs, computation))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("storeAs");
     }
