@@ -33,6 +33,10 @@ final class ExampleEnrichment extends WorkflowAggregationPart {
 
 `WorkflowAggregationPart` delegates execution to `WorkflowExecutor`; the public part contract (`name`, dependencies, criticality, `meta.parts`) stays unchanged.
 
+`AggregationPart` remains the business-level include unit. A workflow is an implementation style inside one part, not a replacement for the part boundary.
+
+Each `DownstreamBinding` represents one concrete REST dependency and owns its endpoint-specific key extraction/indexing rules. Do not add a single global key extractor for a whole part when different downstream calls need different paths.
+
 ## 2) Workflow Context Sources
 
 Use these sources deliberately:
@@ -40,6 +44,7 @@ Use these sources deliberately:
 - `ROOT_SNAPSHOT`
   - immutable snapshot visible at workflow start.
   - use for deterministic key extraction from part input.
+  - scoped to the currently executing part after earlier dependency levels have been applied.
 - `CURRENT_ROOT`
   - workflow-local mutable document; prior step patches are already applied.
   - use only when later key extraction must see writes from earlier steps.
@@ -48,6 +53,8 @@ Use these sources deliberately:
   - use for pipelines where one step computes/fetches and another step consumes the result.
 
 Do not mutate `ROOT_SNAPSHOT` directly.
+
+Workflow steps may mutate only workflow-local state through patches and stored step results. The global root is owned by `AggregationPartExecutor`, which applies the final part result after the part completes.
 
 ## 3) Step Types and When to Use Them
 
@@ -190,3 +197,4 @@ If fff tools are unavailable in your shell, use `rg` as fallback and keep search
 - Do not move business reducer logic into shared recursive runtime.
 - Do not mutate global root from workflow steps.
 - Do not change public response/meta.parts/RFC 9457 contracts as part of authoring refactors.
+- Do not introduce new public `PartSkipReason`, `PartOutcomeReason`, problem categories, or error codes without an explicit contract change with tests and docs.
