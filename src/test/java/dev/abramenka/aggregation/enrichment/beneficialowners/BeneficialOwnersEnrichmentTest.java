@@ -64,6 +64,9 @@ class BeneficialOwnersEnrichmentTest {
 
     @Test
     void dependencies_includeOwnersEnrichment() {
+        assertThat(beneficialOwners.name()).isEqualTo("beneficialOwners");
+        assertThat(beneficialOwners.base()).isFalse();
+        assertThat(beneficialOwners.publicSelectable()).isTrue();
         assertThat(beneficialOwners.dependencies()).containsExactly("owners");
     }
 

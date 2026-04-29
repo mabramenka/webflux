@@ -7,6 +7,7 @@ import dev.abramenka.aggregation.model.AggregationPart;
 import dev.abramenka.aggregation.model.AggregationPartResult;
 import dev.abramenka.aggregation.model.ClientRequestContext;
 import dev.abramenka.aggregation.model.ForwardedHeaders;
+import dev.abramenka.aggregation.model.PartCriticality;
 import dev.abramenka.aggregation.model.PartOutcomeStatus;
 import dev.abramenka.aggregation.model.PartSkipReason;
 import dev.abramenka.aggregation.model.Projections;
@@ -33,6 +34,15 @@ class OwnersEnrichmentWorkflowTest {
         meterRegistry = new SimpleMeterRegistry();
         WorkflowExecutor executor = new WorkflowExecutor(new WorkflowBindingMetrics(meterRegistry));
         owners = new OwnersEnrichment(this::fetchOwners, executor);
+    }
+
+    @Test
+    void metadata_matchesPublicWorkflowPart() {
+        assertThat(owners.name()).isEqualTo("owners");
+        assertThat(owners.base()).isFalse();
+        assertThat(owners.publicSelectable()).isTrue();
+        assertThat(owners.dependencies()).containsExactly("accountGroup");
+        assertThat(owners.criticality()).isEqualTo(PartCriticality.REQUIRED);
     }
 
     // -------------------------------------------------------------------------

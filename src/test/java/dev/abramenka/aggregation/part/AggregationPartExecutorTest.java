@@ -164,6 +164,24 @@ class AggregationPartExecutorTest {
         assertPartMetric("dependent", "success", 1);
     }
 
+    @Test
+    void execute_filtersInternalPartOutcomeFromPublicResults() {
+        AggregationPart internal = internalPart("accountGroup", "baseRan");
+        AggregationPart publicPart = flagPart("account", "accountRan", "accountGroup");
+
+        StepVerifier.create(execute(internal, publicPart))
+                .assertNext(result -> {
+                    assertThat(result.data().path("baseRan").asBoolean()).isTrue();
+                    assertThat(result.data().path("accountRan").asBoolean()).isTrue();
+                    assertThat(result.partOutcomes()).containsOnlyKeys("account");
+                    assertThat(outcome(result, "account").status()).isEqualTo(PartOutcomeStatus.APPLIED);
+                })
+                .verifyComplete();
+
+        assertPartMetric("accountGroup", "success", 1);
+        assertPartMetric("account", "success", 1);
+    }
+
     private static PartOutcome outcome(AggregationResult result, String partName) {
         PartOutcome outcome = result.partOutcomes().get(partName);
         if (outcome == null) {
@@ -193,6 +211,25 @@ class AggregationPartExecutorTest {
                 Set.of(dependencies),
                 context -> true,
                 context -> Mono.just(flagResult(name, context.accountGroupResponse(), flag)));
+    }
+
+    private static AggregationPart internalPart(String name, String flag) {
+        return new AggregationPart() {
+            @Override
+            public String name() {
+                return name;
+            }
+
+            @Override
+            public boolean publicSelectable() {
+                return false;
+            }
+
+            @Override
+            public Mono<AggregationPartResult> execute(AggregationContext context) {
+                return Mono.just(flagResult(name, context.accountGroupResponse(), flag));
+            }
+        };
     }
 
     private static AggregationPartResult flagResult(String name, ObjectNode rootSnapshot, String flag) {
