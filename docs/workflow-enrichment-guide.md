@@ -6,6 +6,8 @@ This guide documents the workflow-based enrichment style that is now used by:
 - `owners` (`OwnersEnrichment`)
 - `beneficialOwners` (`BeneficialOwnersEnrichment`)
 
+`accountGroup` is intentionally not covered by this guide. It is the mandatory internal base `AggregationPart`, not a workflow-backed public enrichment.
+
 It is intentionally focused on the current `main` implementation and avoids future/optional abstractions.
 
 ## 1) Part Shape
@@ -181,13 +183,13 @@ For patch-verifying part tests, follow `BeneficialOwnersEnrichmentTest`:
 
 ## 8) Navigation Tips (fff-first)
 
-Preferred repository search commands:
+Preferred repository search tools:
 
-- `fffind` for file/path/class search
-- `ffgrep` for content search
-- `fff-multi-grep` for related symbols
+- fff MCP `find_files` for file/path/class search
+- fff MCP `grep` for content search
+- fff MCP `multi_grep` for related symbols
 
-If fff tools are unavailable in your shell, use `rg` as fallback and keep searches narrow.
+These are MCP tools, not shell binaries. If the fff MCP tools are unavailable or insufficient, use `rg` as fallback and keep searches narrow.
 
 ## 9) What Not To Do
 
