@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.enrichment.support.keyed;
+package dev.abramenka.aggregation.workflow.path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

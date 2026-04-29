@@ -1,8 +1,8 @@
 package dev.abramenka.aggregation.workflow.binding.support;
 
-import dev.abramenka.aggregation.enrichment.support.keyed.KeyPathGroups;
-import dev.abramenka.aggregation.enrichment.support.keyed.PathExpression;
 import dev.abramenka.aggregation.workflow.binding.ResponseIndexingRule;
+import dev.abramenka.aggregation.workflow.path.KeyPathGroups;
+import dev.abramenka.aggregation.workflow.path.PathExpression;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import tools.jackson.databind.JsonNode;

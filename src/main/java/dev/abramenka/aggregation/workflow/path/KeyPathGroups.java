@@ -1,4 +1,4 @@
-package dev.abramenka.aggregation.enrichment.support.keyed;
+package dev.abramenka.aggregation.workflow.path;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
