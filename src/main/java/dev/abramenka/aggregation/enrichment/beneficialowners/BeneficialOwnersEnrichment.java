@@ -2,7 +2,6 @@ package dev.abramenka.aggregation.enrichment.beneficialowners;
 
 import dev.abramenka.aggregation.client.Owners;
 import dev.abramenka.aggregation.error.EnrichmentDependencyException;
-import dev.abramenka.aggregation.error.FacadeException;
 import dev.abramenka.aggregation.model.PartCriticality;
 import dev.abramenka.aggregation.workflow.AggregationWorkflow;
 import dev.abramenka.aggregation.workflow.StepResult;
@@ -54,19 +53,16 @@ class BeneficialOwnersEnrichment extends WorkflowAggregationPart {
     }
 
     private static Throwable mapFetchError(Throwable error) {
-        if (error instanceof FacadeException) {
-            return error;
-        }
-        if (error instanceof BeneficialOwnersRecursiveFetchException) {
-            return EnrichmentDependencyException.contractViolation(NAME, error);
-        }
-        if (error instanceof RecursiveTraversalEngine.TraversalException traversalException) {
-            return switch (traversalException.reason()) {
-                case DEPTH_EXCEEDED, CONTRACT_VIOLATION ->
-                    EnrichmentDependencyException.contractViolation(NAME, traversalException);
-            };
-        }
-        return error;
+        return switch (error) {
+            case BeneficialOwnersRecursiveFetchException ignored ->
+                EnrichmentDependencyException.contractViolation(NAME, error);
+            case RecursiveTraversalEngine.TraversalException traversalException ->
+                switch (traversalException.reason()) {
+                    case DEPTH_EXCEEDED, CONTRACT_VIOLATION ->
+                        EnrichmentDependencyException.contractViolation(NAME, traversalException);
+                };
+            default -> error;
+        };
     }
 
     private record RecursiveFetchAdapterStep(
