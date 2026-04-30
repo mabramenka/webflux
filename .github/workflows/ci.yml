@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     - cron: "0 2 * * *"
 
@@ -37,7 +38,7 @@ jobs:
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6
 
       - name: Cache Dependency-Check data
-        if: github.event_name != 'pull_request' && env.NVD_API_KEY != ''
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.NVD_API_KEY != ''
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: ~/.gradle/dependency-check-data
@@ -49,8 +50,8 @@ jobs:
         run: ./gradlew check
 
       - name: Security Check
-        if: github.event_name != 'pull_request' && env.NVD_API_KEY != ''
-        timeout-minutes: 25
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.NVD_API_KEY != ''
+        timeout-minutes: 60
         run: ./gradlew securityCheck
 
       - name: SonarQube Cloud
