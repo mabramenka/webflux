@@ -1,7 +1,7 @@
 [versions]
 java = "21"
 spring-boot = "4.0.6"
-sonarqube = "7.2.3.7755"
+sonarqube = "7.3.0.8198"
 jacoco = "0.8.14"
 errorprone-plugin = "5.1.0"
 errorprone = "2.49.0"
