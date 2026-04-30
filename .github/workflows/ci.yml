@@ -63,7 +63,7 @@ jobs:
       - name: Security Check
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && env.NVD_API_KEY != ''
         timeout-minutes: 60
-        run: ./gradlew securityCheck
+        run: ./gradlew --no-configuration-cache securityCheck
 
       - name: SonarQube Cloud
         if: env.SONAR_TOKEN != ''
