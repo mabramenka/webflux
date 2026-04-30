@@ -27,7 +27,6 @@ final class ProblemResponseSupport {
             case 406 -> ProblemCatalog.CLIENT_NOT_ACCEPTABLE;
             case 415 -> ProblemCatalog.CLIENT_UNSUPPORTED_MEDIA;
             case 429 -> ProblemCatalog.CLIENT_RATE_LIMITED;
-            case 500 -> ProblemCatalog.PLATFORM_INTERNAL;
             default -> ProblemCatalog.PLATFORM_INTERNAL;
         };
     }
