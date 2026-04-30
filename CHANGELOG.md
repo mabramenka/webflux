@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/mabramenka/webflux/compare/v0.15.1...v0.15.2) (2026-04-30)
+
+
+### Bug Fixes
+
+* align release-please changelog sections with release policy ([b8fae55](https://github.com/mabramenka/webflux/commit/b8fae55e62f3f406f9f07ffbe05b687d0ac7479c))
+
 ## [0.15.1](https://github.com/mabramenka/webflux/compare/v0.15.0...v0.15.1) (2026-04-30)
 
 
