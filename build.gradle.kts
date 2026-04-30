@@ -61,9 +61,7 @@ tasks.withType<JavaCompile>().configureEach {
             "-Werror"
         )
     )
-}
 
-tasks.withType<JavaCompile>().configureEach {
     options.errorprone {
         error("NullAway")
         option("NullAway:AnnotatedPackages", "dev.abramenka")

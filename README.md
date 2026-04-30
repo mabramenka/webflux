@@ -84,7 +84,7 @@ The build uses stable release dependencies. Release candidates such as Spring Bo
 - springdoc-openapi 3.0.3
 - Lombok, Error Prone 2.49.0, NullAway 0.13.4
 - Spotless 8.4.0, JaCoCo 0.8.14, OWASP Dependency-Check 12.2.1
-- SonarQube Gradle plugin 7.2.3.7755
+- SonarQube Gradle plugin 7.3.0.8198
 
 Version pins live in [libs.versions.toml](gradle/libs.versions.toml). BOM-managed runtime versions can be checked with `dependencyInsight`.
 
@@ -253,7 +253,7 @@ Run OWASP Dependency Check when an NVD API key is available:
 
 ```bash
 export NVD_API_KEY=...
-./gradlew securityCheck
+./gradlew --no-configuration-cache securityCheck
 ```
 
 Apply formatting:
