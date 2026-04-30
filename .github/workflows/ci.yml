@@ -28,6 +28,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate Conventional Commit subject
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            bash scripts/validate-conventional-subject.sh "$PR_TITLE"
+          else
+            bash scripts/validate-conventional-subject.sh "$(git log -1 --pretty=%s)"
+          fi
+
       - name: Set up Java
         uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
         with:

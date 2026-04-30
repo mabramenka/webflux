@@ -38,6 +38,38 @@ The service intentionally keeps downstream payloads dynamic by working with Jack
 - [Architecture review notes](docs/architecture-review.md)
 - [Changelog](CHANGELOG.md)
 
+## Release Automation
+
+Release Please runs on pushes to `main` and creates release PRs from Conventional Commit subjects.
+
+Use this subject format:
+
+```text
+<type>[optional scope]: <description>
+```
+
+Release-triggering types:
+
+- `feat:` for user-visible features
+- `fix:` for user-visible fixes
+- `deps:` for dependency updates
+
+Valid non-release types include `ci:`, `docs:`, `test:`, `refactor:`, `perf:`, `build:`, `style:`, and `chore:`.
+
+Do not use bare subjects such as `Run dependency security check on schedule`. For dependency updates, use `deps:` instead of `chore(deps):`; `chore(deps):` is conventional, but release-please skips it for this repository.
+
+PR titles are validated in CI because squash merges use the PR title as the final commit subject. Validate a subject locally with:
+
+```bash
+bash scripts/validate-conventional-subject.sh "fix: handle missing owner data"
+```
+
+Force an explicit release only when needed:
+
+```bash
+git commit --allow-empty -m "chore: release 0.15.1" -m "Release-As: 0.15.1"
+```
+
 ## Stack
 
 The build uses stable release dependencies. Release candidates such as Spring Boot `4.1.0-RC1` are not part of the default baseline.
@@ -243,6 +275,7 @@ Reports are written under `build/reports/`.
 Renovate is configured in [renovate.json](renovate.json):
 
 - best-practices preset
+- semantic commit subjects using `deps:`
 - dependency dashboard
 - dependency PR label
 - grouped Spring Boot, Lombok, Jackson, Micrometer, and Reactor updates
